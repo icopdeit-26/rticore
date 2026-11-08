@@ -6,11 +6,13 @@ import {walletTotals,canPostFlex,type FlexEventKind,type FlexEvent} from '@/lib/
 export const dynamic='force-dynamic';
 const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:privateHeaders});
 const fail=(message:string,status=422)=>reply({success:false,message},status);
-const activeRoles=['admin','finance','approver','sales','presales'];
+const activeRoles=['admin','finance','approver','sales','presales','project_manager'];
+// Roles limited to wallets of their own deal (Sales) or of the project they manage (Presales/PM).
+const scoped=['sales','presales','project_manager'];
 const bound=(n:unknown)=>Number.isSafeInteger(n)&&Number(n)>=1&&Number(n)<=100000;
 const txt=(v:unknown,max=1000)=>typeof v==='string'?v.trim().slice(0,max):'';
 function permitted(role:string,email:string,w:{owner_email:string;pm_email:string|null}){
- return !['sales','presales'].includes(role)||(role==='sales'?w.owner_email?.toLowerCase()===email:w.pm_email?.toLowerCase()===email);
+ return !scoped.includes(role)||(role==='sales'?w.owner_email?.toLowerCase()===email:w.pm_email?.toLowerCase()===email);
 }
 const walletSQL="SELECT w.*,a.legal_name,c.status contract_status,c.model,c.end_date,p.opportunity_id,p.pm_email,o.created_by owner_email FROM india_flexguard_wallets w JOIN india_sales_accounts a ON a.id=w.customer_id AND a.tenant_id=w.tenant_id JOIN india_service_contracts c ON c.id=w.contract_id AND c.tenant_id=w.tenant_id JOIN india_delivery_projects p ON p.id=c.project_id AND p.tenant_id=c.tenant_id JOIN india_sales_opportunities o ON o.id=p.opportunity_id AND o.tenant_id=p.tenant_id";
 type Wallet={id:string;customer_id:string;contract_id:string;legal_name:string;status:string;entitlement_units:number;created_by:string;approved_by:string|null;end_date:string;opportunity_id:string;pm_email:string|null;owner_email:string};
@@ -28,7 +30,7 @@ export async function GET(req:Request){
   const id=new URL(req.url).searchParams.get('wallet_id');
   if(id&&!safeID(id))return fail('Wallet ID tidak valid',422);
   const rows=id?{success:true,results:[await wallet(db,id)].filter(Boolean) as Wallet[]}:
-    await db.prepare(walletSQL+' WHERE w.tenant_id=? AND (? NOT IN (\'sales\',\'presales\') OR (?=\'sales\' AND lower(o.created_by)=?) OR (?=\'presales\' AND lower(p.pm_email)=?)) ORDER BY w.created_at DESC LIMIT 51')
+    await db.prepare(walletSQL+' WHERE w.tenant_id=? AND (? NOT IN (\'sales\',\'presales\',\'project_manager\') OR (?=\'sales\' AND lower(o.created_by)=?) OR (? IN (\'presales\',\'project_manager\') AND lower(p.pm_email)=?)) ORDER BY w.created_at DESC LIMIT 51')
       .bind(TENANT,role,role,email,role,email).all<Wallet>();
   if(!rows.success)throw Error('D1 tidak tersedia');
   const visible=rows.results.filter(w=>permitted(role,email,w)).slice(0,50);

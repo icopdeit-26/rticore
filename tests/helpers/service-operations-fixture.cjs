@@ -1,6 +1,7 @@
-const {Harness,users,tenant,expect}=require('./sales-flow-harness.cjs');
+const {Harness,users,tenant,expect,roleOf}=require('./sales-flow-harness.cjs');
 const today=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);
-function fixture(maxVersion=Infinity){const h=new Harness(true,true,maxVersion).seed();for(const [k,email] of Object.entries(users))h.sql.prepare('INSERT OR IGNORE INTO india_members(email,role,active) VALUES(?,?,1)').run(email,k==='other'?'sales':k==='admin2'?'admin':k);return h;}
+// OR IGNORE also skips project_manager members on fixtures capped before migration 0047.
+function fixture(maxVersion=Infinity){const h=new Harness(true,true,maxVersion).seed();for(const [k,email] of Object.entries(users))h.sql.prepare('INSERT OR IGNORE INTO india_members(email,role,active) VALUES(?,?,1)').run(email,roleOf(k));return h;}
 async function upload(h,kind='supporting',role='finance',opp='opp-qa'){
  const library=['supporting','quotation','nda','rks','kak'].includes(kind);const release=library?null:h.release()?.id;
  const q=new URLSearchParams({opportunity_id:opp,kind,filename:kind+'-'+crypto.randomUUID()+'.pdf',...(release?{release_id:release}:{})});

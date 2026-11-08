@@ -13,9 +13,15 @@ export function check(ok:unknown,message:string,status=422):asserts ok {if(!ok)t
 export const financeRole=(role:string)=>['admin','finance'].includes(role);
 export const cents=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e13&&Math.abs(v*100-Math.round(v*100))<0.001?Math.round(v*100):null;
 export const daysBetween=(a:string,b:string)=>Math.floor((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000);
+/** Project Manager scope: only Opportunities whose delivery project names this account as PM. */
+export async function pmOwnsProject(db:D1DB,email:string,opportunityId:string){
+ return !!await db.prepare('SELECT id FROM india_delivery_projects WHERE tenant_id=? AND opportunity_id=? AND lower(pm_email)=?').bind(TENANT,opportunityId,email.toLowerCase()).first();
+}
 export async function accessibleDeal(a:BoQIdentity,id:string){
  const d=await a.db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
- check(d,'Opportunity tidak ditemukan',404);check(canReadDeal(a.role,a.email,d.created_by),'Akses Opportunity ditolak',403);return d;
+ check(d,'Opportunity tidak ditemukan',404);
+ const ok=a.role==='project_manager'?await pmOwnsProject(a.db,a.email,d.id):canReadDeal(a.role,a.email,d.created_by);
+ check(ok,a.role==='project_manager'?'Proyek ini tidak ditugaskan kepada Anda sebagai PM':'Akses Opportunity ditolak',403);return d;
 }
 export const getProject=(db:D1DB,id:string)=>db.prepare('SELECT * FROM india_delivery_projects WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first<Project>();
 /** Supporting originals reuse the encrypted Vault; arbitrary references are never accepted as BAST/invoice/payment proof. */

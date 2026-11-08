@@ -23,7 +23,7 @@ on:
         required: true
         type: string
       apply_migrations:
-        description: 'Apply pending D1 migrations (0046-0050 incl. tenant rekey)'
+        description: 'Apply pending D1 migrations (0046-0051 incl. tenant rekey and Project Manager role)'
         required: true
         default: true
         type: boolean
@@ -157,7 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           q() { npx wrangler d1 execute "$D1_NAME" --remote --json --command "$1" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.stdout.write(JSON.stringify(j[0].results))})"; }
-          V=$(q "SELECT max(version) v FROM india_schema_migrations"); echo "schema: $V"; echo "$V" | grep -q '"v":50'
+          V=$(q "SELECT max(version) v FROM india_schema_migrations"); echo "schema: $V"; echo "$V" | grep -q '"v":51'
           L=$(q "SELECT (SELECT count(*) FROM india_sales_opportunities WHERE tenant_id='defendit360')+(SELECT count(*) FROM india_boq WHERE tenant_id='defendit360')+(SELECT count(*) FROM india_document_vault WHERE tenant_id='defendit360') n")
           echo "rows still on legacy key: $L"; echo "$L" | grep -q '"n":0'
           P=$(q "SELECT value_json FROM india_sys_parameters WHERE tenant_id='rti' AND key='company.tenant_key'"); echo "tenant parameter: $P"; echo "$P" | grep -q 'rti'

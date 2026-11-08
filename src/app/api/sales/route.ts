@@ -46,6 +46,14 @@ async function requireBoq(db:D1DB,d:SalesDeal,a:SalesAccount):Promise<{boq:BoQRo
 export async function GET(req:Request){
  const auth=await authorizeBoQ(req);if(!auth.ok)return auth.response;
  const db=auth.identity.db,u=new URL(req.url),entity=u.searchParams.get('entity')||'deals';
+ if(auth.identity.role==='project_manager'){
+  // PM only needs the selector of its own delivery projects; no CRM, account or deal detail.
+  if(entity!=='deals')return fail('Project Manager hanya dapat membuka daftar proyek yang ditugaskan',403);
+  try{
+   const rows=await db.prepare('SELECT d.id,d.title,d.stage,d.flow_version,a.legal_name AS company_name FROM india_delivery_projects p JOIN india_sales_opportunities d ON d.id=p.opportunity_id AND d.tenant_id=p.tenant_id JOIN india_sales_accounts a ON a.id=d.company_id AND a.tenant_id=d.tenant_id WHERE p.tenant_id=? AND lower(p.pm_email)=? ORDER BY p.created_at DESC LIMIT 250').bind(TENANT,auth.identity.email.toLowerCase()).all<{id:string;title:string;stage:string;flow_version:number;company_name:string}>();
+   return answer({success:true,deals:rows.results,role:auth.identity.role});
+  }catch{return fail('Daftar proyek PM belum tersedia; periksa migrasi delivery',503);}
+ }
  if(!allowed(auth.identity.role,servicePerms))return fail('Hak akses data Sales tidak tersedia untuk role ini',403);
  try{
   if(entity==='accounts'){
