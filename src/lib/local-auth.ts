@@ -53,3 +53,15 @@ export function isLoopbackRequest(request:Request):boolean{
   const host=new URL(request.url).hostname.replace(/^\[|\]$/g,'');
   return host==='localhost'||host==='127.0.0.1'||host==='::1'||host.endsWith('.localhost');
 }
+
+/** Next.js may normalize request.url to localhost; Host retains the browser address. */
+export function isSameLocalOrigin(request:Request):boolean{
+  if(!isLoopbackRequest(request))return false;
+  const origin=request.headers.get('origin');
+  if(!origin)return request.headers.get('sec-fetch-site')!=='cross-site';
+  try{
+    const source=new URL(origin),target=new URL(request.url);
+    return isLoopbackRequest(new Request(source.origin))&&source.protocol===target.protocol&&
+      source.host===(request.headers.get('host')||target.host);
+  }catch{return false;}
+}

@@ -10,9 +10,9 @@ test('RTICORE account dropdown exposes Cloudflare Access logout on mobile and de
   assert.match(navbar, /<details className="group relative min-w-0">/);
   assert.match(navbar, /aria-label="Menu akun dan logout"/);
   assert.match(navbar, /Keluar \/ Logout/);
-  assert.match(navbar, /href="\/cdn-cgi\/access\/logout"/);
+  assert.match(navbar, /LogoutButton/);
   assert.match(sidebar, /Keluar akun \/ Logout/);
-  assert.match(sidebar, /href="\/cdn-cgi\/access\/logout"/);
+  assert.match(sidebar, /LogoutButton/);
   assert.doesNotMatch(navbar, /document\.cookie\s*=/);
 });
 
@@ -22,7 +22,7 @@ test('RTICORE login page uses Cloudflare Access instead of a second insecure pas
   assert.match(page, /Login RTICORE/);
   assert.match(page, /Masuk dengan Cloudflare Access/);
   assert.match(page, /<a href="\/" /);
-  assert.match(page, /href="\/cdn-cgi\/access\/logout"/);
+  assert.match(page, /LogoutButton/);
   assert.doesNotMatch(page, /type=["']password["']|localStorage\.setItem|jwtVerify\(/);
   assert.match(shell, /const isLoginPage=pathname==='\/login'/);
   assert.match(shell, /if\(isLoginPage\)return <>{children}<\/>/);

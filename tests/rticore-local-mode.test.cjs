@@ -72,3 +72,12 @@ test('authorizeBoQ keeps Cloudflare Access in cloud mode and uses the signed loc
   assert.match(pkg.scripts['dev:local'],/-H 127\.0\.0\.1/);
   assert.match(read('.gitignore'),/^\.local-data\/$/m);
 });
+
+
+test('local origin accepts browser loopback Host after Next URL normalization and rejects foreign origins',()=>{
+ const req=(origin,host='127.0.0.1:3000')=>new Request('http://localhost:3000/api/local-auth',{headers:{origin,host}});
+ assert.equal(auth.isSameLocalOrigin(req('http://127.0.0.1:3000')),true);
+ assert.equal(auth.isSameLocalOrigin(req('http://localhost:3000','localhost:3000')),true);
+ for(const origin of ['https://evil.example','http://127.0.0.1:4000','http://localhost:3000','null'])assert.equal(auth.isSameLocalOrigin(req(origin)),false,origin);
+ assert.equal(auth.isSameLocalOrigin(new Request('http://localhost:3000/api/local-auth',{headers:{'sec-fetch-site':'cross-site'}})),false);
+});

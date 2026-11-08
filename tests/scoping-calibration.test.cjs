@@ -56,6 +56,13 @@ test('AI proposals are bounded to ±0.15 of statistics and the 0.6–1.4 range',
   assert.ok(ai.adjusted.includes('VAPT'));
   assert.equal(ai.rationale.includes('<'), false);
   assert.throws(() => C.parseAiProposal('tidak ada json', stats));
+  // SOC has no closed deals of its own: AI cannot move it away from the statistical/global factor.
+  assert.equal(ai.factors.SOC, C.statisticalFactors(stats).SOC);
+});
+
+test('model table enforces unique versions in DDL and migration', () => {
+  assert.match(source('src/lib/scoping-model-store.ts'), /UNIQUE INDEX IF NOT EXISTS idx_rticore_scoping_models_version/);
+  assert.match(source('migrations/0046_scoping_model_calibration.sql'), /UNIQUE INDEX IF NOT EXISTS idx_rticore_scoping_models_version/);
 });
 
 test('prompt carries aggregates only', () => {

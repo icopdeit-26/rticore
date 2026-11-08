@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import type {D1DB} from '@/lib/boq-auth';
 import {getRuntimeEnv, isLocalMode} from '@/lib/runtime-env';
-import {LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL_SECONDS, createLocalSession, isLoopbackRequest, validSessionSecret} from '@/lib/local-auth';
+import {LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL_SECONDS, createLocalSession, isLoopbackRequest, isSameLocalOrigin, validSessionSecret} from '@/lib/local-auth';
 import {ROLE_PREVIEW_COOKIE} from '@/lib/role-preview';
 
 /**
@@ -38,8 +38,7 @@ export async function GET(request:Request){
 export async function POST(request:Request){
   const ctx=await localContext(request);
   if('error' in ctx)return ctx.error;
-  const origin=request.headers.get('origin');
-  if(origin&&origin!==new URL(request.url).origin)return json({success:false,message:'Origin tidak diizinkan.'},403);
+  if(!isSameLocalOrigin(request))return json({success:false,message:'Origin tidak diizinkan.'},403);
   let email='';
   try{email=String((await request.json())?.email||'').trim().toLowerCase();}catch{/* invalid body */}
   if(!email.includes('@')||email.length>254)return json({success:false,message:'Email tidak valid.'},400);
@@ -52,7 +51,9 @@ export async function POST(request:Request){
   return response;
 }
 
-export async function DELETE(){
+export async function DELETE(request:Request){
+  if(!isLocalMode())return json({success:false,localMode:false},404);
+  if(!isSameLocalOrigin(request))return json({success:false,message:'Origin tidak diizinkan.'},403);
   const response=json({success:true});
   response.cookies.delete(LOCAL_SESSION_COOKIE);
   response.cookies.delete(ROLE_PREVIEW_COOKIE);

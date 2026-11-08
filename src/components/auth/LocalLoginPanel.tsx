@@ -50,7 +50,7 @@ export function LocalLoginPanel(){
       if(!response.ok||body?.success!==true){setMessage(String(body?.message||'Login lokal gagal.'));return;}
       router.push(firstAccessibleHref(body.role)||'/');
       router.refresh();
-    }finally{setBusy(false);}
+    }catch{setMessage('Login lokal gagal terhubung. Silakan coba lagi.');}finally{setBusy(false);}
   }
 
   return (

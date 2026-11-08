@@ -27,9 +27,11 @@ const actionRoles={
  approve:['admin','approver'],
  manage_members:['admin']
 };
-test('canonical baseline: eight identities, 40 unique navigable pages and 12 business groups',()=>{
+test('canonical baseline: eight identities, 41 unique navigable pages and 12 business groups',()=>{
  assert.deepEqual([...roles].sort(),[...roleSet].sort());
- assert.equal(items.length,40);
+ // 41 = previous 40 + Admin-only "Model Scoping & Harga" (/settings/scoping-model).
+ assert.equal(items.length,41);
+ assert.deepEqual(items.find(x=>x.href==='/settings/scoping-model')?.roles,['admin']);
  assert.equal(RTICORE_NAVIGATION.length,12);
  assert.equal(new Set(items.map(x=>x.href)).size,items.length);
  for(const item of items){
@@ -40,7 +42,7 @@ test('canonical baseline: eight identities, 40 unique navigable pages and 12 bus
  }
 });
 for(const role of roleSet){
- test('negative navigation ACL matrix for '+role+' across all 40 menus',()=>{
+ test('negative navigation ACL matrix for '+role+' across all 41 menus',()=>{
   const visible=navigationForRole(role).flatMap(g=>g.items);
   const hrefs=new Set(visible.map(x=>x.href));
   for(const item of items){

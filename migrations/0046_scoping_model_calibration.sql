@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS rticore_scoping_models (
  activated_by TEXT, activated_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_rticore_scoping_models_status ON rticore_scoping_models(tenant_id,status,version);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rticore_scoping_models_version ON rticore_scoping_models(tenant_id,version);
 CREATE TABLE IF NOT EXISTS rticore_scoping_model_settings (
  tenant_id TEXT PRIMARY KEY, provider_id TEXT, model TEXT,
  updated_by TEXT NOT NULL, updated_at TEXT NOT NULL

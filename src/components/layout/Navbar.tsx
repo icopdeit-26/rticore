@@ -1,4 +1,5 @@
 'use client';
+import {LogoutButton} from '@/components/auth/LogoutButton';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -7,7 +8,6 @@ import {
   Shield,
   Bell,
   UserCheck,
-  LogOut,
   Search,
   ChevronDown,
   CheckCircle2,
@@ -287,9 +287,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 )}
                 <Link href="/login"  className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Halaman login RTICORE</Link>
-                <a href="/cdn-cgi/access/logout" className="mt-1 flex min-h-11 items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-500">
-                  <LogOut className="h-4 w-4" aria-hidden="true"/> Keluar / Logout
-                </a>
+                <LogoutButton href="/cdn-cgi/access/logout" className="mt-1 flex min-h-11 items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-500" label="Keluar / Logout"/>
               </div>
             </details>
           </div>

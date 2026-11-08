@@ -1,11 +1,12 @@
 'use client';
+import {LogoutButton} from '@/components/auth/LogoutButton';
 
 import React, {useEffect, useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {
   BriefcaseBusiness, Calculator, ChartNoAxesCombined, ChevronDown, ClipboardCheck,
-  Handshake, LayoutDashboard, LogOut, Megaphone, PanelLeftClose, Search, Settings2,
+  Handshake, LayoutDashboard, Megaphone, PanelLeftClose, Search, Settings2,
   ShieldCheck, UsersRound, WalletCards,
   type LucideIcon,
 } from 'lucide-react';
@@ -124,9 +125,7 @@ function NavigationContent({role, onClose, onNavigate, mobile}:{
       </nav>
       <div className="shrink-0 border-t border-slate-100 bg-slate-50 px-5 py-3">
         <p className="text-[11px] font-semibold text-slate-600">RTICORE · Integrated Business Platform</p>
-        <a href="/cdn-cgi/access/logout" className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-500">
-          <LogOut className="h-4 w-4" aria-hidden="true"/> Keluar akun / Logout
-        </a>
+        <LogoutButton href="/cdn-cgi/access/logout" className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-500" label="Keluar akun / Logout"/>
       </div>
     </div>
   );

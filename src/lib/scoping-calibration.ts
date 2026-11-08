@@ -155,7 +155,9 @@ export function parseAiProposal(raw: string, stats: CalibrationStats): AiProposa
   for (const product of SCOPING_SERVICE_TYPES) {
     const stat = statistical[product] ?? 1;
     const ai = obj.factors[product];
-    if (typeof ai === 'number' && Number.isFinite(ai)) {
+    // Products without enough closed deals are never moved by the AI, whatever it answers.
+    const enoughData = (stats.products[product]?.n ?? 0) >= MIN_PRODUCT_SAMPLES;
+    if (enoughData && typeof ai === 'number' && Number.isFinite(ai)) {
       const bounded = round3(clamp(clamp(ai, stat - AI_MAX_DELTA, stat + AI_MAX_DELTA), FACTOR_MIN, FACTOR_MAX));
       factors[product] = bounded;
       if (bounded !== round3(ai)) adjusted.push(product);
