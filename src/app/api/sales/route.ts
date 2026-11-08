@@ -124,7 +124,7 @@ export async function POST(req:Request){
    let fields;
    try{fields=synchronizeBillingAddress(await canonicalPostalFields(db,cleanFields(p.fields||{},ACCOUNT_KEYS)));}
    catch(e){return fail(e instanceof Error?e.message:'Wilayah kantor pusat tidak valid',422);}
-   const id=crypto.randomUUID(),customer_number='IND-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+id.slice(0,8).toUpperCase();
+   const id=crypto.randomUUID(),customer_number='RTI-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+id.slice(0,8).toUpperCase();
    try{await db.batch([db.prepare('INSERT INTO rticore_sales_accounts(id,tenant_id,legal_name,customer_number,data_json,created_by) VALUES (?,?,?,?,?,?)')
     .bind(id,TENANT,legal_name,customer_number,JSON.stringify(fields),email),db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email) VALUES (?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,'account',id,'CREATE',email)]);
    }catch(error){

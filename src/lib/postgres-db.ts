@@ -87,6 +87,9 @@ async function createExecutor(): Promise<QueryExecutor> {
       exec: (sql) => pool.query(sql),
     };
     await ensureSchema(exec, schemaSQL);
+    // Business-rule triggers generated from the SQLite migrations; idempotent.
+    const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');
+    if (fs.existsSync(triggersPath)) await exec.exec(fs.readFileSync(triggersPath, 'utf8'));
     return exec;
   }
 

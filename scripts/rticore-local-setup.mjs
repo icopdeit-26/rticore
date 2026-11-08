@@ -87,6 +87,8 @@ if(fs.existsSync(pgSchemaFile)){
   const {PGlite}=await import('@electric-sql/pglite');
   const pg=new PGlite(pgDataDir);
   await pg.exec(pgSchema);
+  const {ensureTriggers}=await import('./postgres-worker.mjs');
+  await ensureTriggers(pg);
   if(admin){
     const email=admin.trim().toLowerCase(),role=(opt('role')||'admin').trim();
     await pg.query(
@@ -96,8 +98,9 @@ if(fs.existsSync(pgSchemaFile)){
   }
   const pgMembers=await pg.query('SELECT COUNT(*) AS n FROM rticore_members WHERE active=1');
   const pgTables=await pg.query("SELECT COUNT(*) AS n FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'rticore_%'");
+  const pgTriggers=await pg.query("SELECT COUNT(*) AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace s ON s.oid=c.relnamespace WHERE NOT t.tgisinternal AND s.nspname='public'");
   await pg.close();
-  console.log('PostgreSQL lokal (.pgdata): '+pgTables.rows[0].n+' tabel rticore_*, '+pgMembers.rows[0].n+' akun aktif siap digunakan.');
+  console.log('PostgreSQL lokal (.pgdata): '+pgTables.rows[0].n+' tabel rticore_*, '+pgTriggers.rows[0].n+' trigger aturan bisnis, '+pgMembers.rows[0].n+' akun aktif siap digunakan.');
 }
 
 if(!members)console.log('\nPERHATIAN: belum ada akun aktif. Jalankan: npm run local:setup -- --admin email@anda');

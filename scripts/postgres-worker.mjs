@@ -1,11 +1,35 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 
 const root = workerData?.root || process.cwd();
 const dataDir = workerData?.dataDir || path.join(root, '.pgdata');
 const schemaPath = path.join(root, 'rticore_postgresql_schema.sql');
+const triggersPath = path.join(root, 'rticore_postgresql_triggers.sql');
+
+/**
+ * Business-rule triggers generated from the SQLite migrations
+ * (scripts/generate-postgres-triggers.mjs). Re-applied only when the file changes.
+ */
+export async function ensureTriggers(pg) {
+  if (!fs.existsSync(triggersPath)) return;
+  const sql = fs.readFileSync(triggersPath, 'utf8');
+  const version = crypto.createHash('sha256').update(sql).digest('hex');
+  await pg.exec('CREATE TABLE IF NOT EXISTS rticore_pg_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  const current = await pg.query("SELECT value FROM rticore_pg_meta WHERE key='triggers_sha256'");
+  if (current.rows?.[0]?.value === version) return;
+  await pg.exec('BEGIN');
+  try {
+    await pg.exec(sql);
+    await pg.query("INSERT INTO rticore_pg_meta(key,value) VALUES('triggers_sha256',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [version]);
+    await pg.exec('COMMIT');
+  } catch (err) {
+    try { await pg.exec('ROLLBACK'); } catch { /* ignore */ }
+    throw err;
+  }
+}
 
 let pgPromise = null;
 
@@ -23,6 +47,7 @@ async function getPg() {
           await pg.exec(fs.readFileSync(schemaPath, 'utf8'));
         }
       }
+      await ensureTriggers(pg);
       return pg;
     })();
   }

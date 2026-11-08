@@ -19,6 +19,9 @@ const ALL: BoQRole[] = ['admin','marketing','sales','presales','finance','approv
 const COMMERCIAL: BoQRole[] = ['admin','sales','presales','finance','approver','legal'];
 const SALES: BoQRole[] = ['admin','sales','approver','finance'];
 const PRESALES: BoQRole[] = ['admin','presales','approver','finance','legal'];
+// Tender work where Sales is the maker (RKS/KAK register, clauses, bid checklist)
+// or must see the gate blocking its Opportunity. APIs enforce ownership per deal.
+const TENDER: BoQRole[] = [...PRESALES,'sales'];
 const FINANCE: BoQRole[] = ['admin','finance','approver'];
 const item = (label:string,href:string,roles: readonly BoQRole[]):RTICoreNavItem => ({label,href,roles});
 
@@ -40,9 +43,9 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
   ]},
   {id:'presales',label:'04 · Presales, Tender & Solution',items:[
     item('Smart Scoping & Sizing','/scoping',['admin','presales','sales']),
-    item('Tender Compliance','/sales/compliance',PRESALES),
-    item('Bid Readiness','/sales/bid-readiness',PRESALES),
-    item('Resource & Solution Feasibility','/sales/feasibility',PRESALES),
+    item('Tender Compliance','/sales/compliance',TENDER),
+    item('Bid Readiness','/sales/bid-readiness',TENDER),
+    item('Resource & Solution Feasibility','/sales/feasibility',TENDER),
   ]},
   {id:'commercial',label:'05 · Commercial, Pricing & Approval',items:[
     item('BoQ Management','/boq',[...COMMERCIAL,'viewer']),
@@ -63,7 +66,7 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
   ]},
   {id:'partners',label:'08 · Vendor, OEM & Partners',items:[
     item('Vendor & Partner Records','/partners',PRESALES),
-    item('Procurement & Supplier','/sales/procurement',PRESALES),
+    item('Procurement & Supplier','/sales/procurement',TENDER),
   ]},
   {id:'reporting',label:'09 · Reporting, Analytics & AI',items:[
     item('Enterprise Reports','/reports',['admin','marketing','sales','finance','approver']),
@@ -94,6 +97,18 @@ export function navigationForRole(role: string|null|undefined):RTICoreNavGroup[]
   if(!role || !ALL.includes(role as BoQRole))return [];
   return RTICORE_NAVIGATION.map(group=>({...group,items:group.items.filter(link=>link.roles.includes(role as BoQRole))}))
     .filter(group=>group.items.length>0);
+}
+
+/**
+ * For in-page shortcut links. Menu routes follow the role menu; contextual
+ * workflow pages that are not menu items (e.g. /sales/lifecycle) stay visible
+ * and remain protected by their API. UI hint only, never authorization.
+ */
+export function canOpenRoute(role:string|null|undefined,href:string):boolean{
+  const pathOnly=href.split('?')[0];
+  const owner=RTICORE_NAVIGATION.flatMap(group=>group.items).find(link=>link.href===pathOnly);
+  if(!owner)return true;
+  return !!role&&owner.roles.includes(role as BoQRole);
 }
 
 export function firstAccessibleHref(role:string|null|undefined):string|null {

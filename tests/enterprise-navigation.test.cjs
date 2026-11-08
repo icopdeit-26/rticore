@@ -53,6 +53,22 @@ test('Smart Scoping is discoverable in Presales for Admin, Sales and Presales on
  assert.match(scoped,/SCOPING_SERVICE_TYPES\.map/);
 });
 
+test('Sales sees the tender workflow it acts in, and shortcut links follow the role menu',()=>{
+ const {canOpenRoute}=exportsObject;
+ const sales=navigationForRole('sales').flatMap(g=>g.items.map(x=>x.href));
+ for(const href of ['/sales/compliance','/sales/bid-readiness','/sales/feasibility','/sales/procurement'])
+  assert.ok(sales.includes(href),href);
+ for(const href of ['/sales/billing','/sales/revenue','/sales/delivery']){
+  assert.ok(!sales.includes(href),href);
+  assert.equal(canOpenRoute('sales',href+'?opportunity_id=x'),false,href);
+ }
+ assert.equal(canOpenRoute('finance','/sales/billing'),true);
+ assert.equal(canOpenRoute('sales','/sales/lifecycle?opportunity_id=x'),true,'contextual pages stay reachable');
+ assert.equal(canOpenRoute(undefined,'/sales/billing'),false);
+ for(const file of ['src/components/sales/CommercialUI.tsx','src/app/sales/forecast/page.tsx','src/app/customers/page.tsx'])
+  assert.match(read(file),/canOpenRoute\(/,file);
+});
+
 test('current-user endpoint delegates to server Access and never reads client role',()=>{
  const handler=read('src/app/api/sales/identity/route.ts');
  assert.match(handler,/await authorizeBoQ\(req\)/);

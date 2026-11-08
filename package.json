@@ -10,6 +10,8 @@
     "local:fast": "node scripts/start-local-fast.mjs",
     "local:postal:import": "node scripts/import-postal-local.mjs",
     "local:setup": "node scripts/rticore-local-setup.mjs",
+    "pg:triggers": "node scripts/generate-postgres-triggers.mjs --check",
+    "test:pg-triggers": "node --test tests/rticore-postgres-triggers.test.cjs",
     "test:local-mode": "node --test tests/rticore-local-mode.test.cjs",
     "build": "next build --webpack",
     "start": "next start",

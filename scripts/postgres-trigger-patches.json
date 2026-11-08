@@ -1,0 +1,13 @@
+{
+  "rticore_delivery_initial": [
+    ["AND json_extract(value,'$.amount')>0 THEN CAST(round(json_extract(value,'$.amount')*100) AS INTEGER)", "AND (json_extract(value,'$.amount'))::numeric>0 THEN CAST(round((json_extract(value,'$.amount'))::numeric*100) AS INTEGER)"]
+  ],
+  "rticore_flow_po_insert": [
+    ["a.document_number=NEW.po_number COLLATE NOCASE", "lower(a.document_number)=lower(NEW.po_number)"],
+    ["a.po_data_json=jsonb_build_object(", "a.po_data_json::jsonb=jsonb_build_object("]
+  ],
+  "rticore_project_source": [
+    ["s.baseline_json=NEW.baseline_json", "s.baseline_json::jsonb=NEW.baseline_json::jsonb"],
+    ["s.budget_json=NEW.budget_json", "s.budget_json::jsonb=NEW.budget_json::jsonb"]
+  ]
+}

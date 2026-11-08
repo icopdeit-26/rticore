@@ -152,7 +152,7 @@ export async function POST(req:Request){
      .bind(email,row.id,TENANT,row.version,row.assigned_sales_email)];
    if(!existing)statements.push(
     db.prepare("INSERT INTO rticore_sales_accounts(id,tenant_id,legal_name,customer_number,data_json,created_by) SELECT ?,tenant_id,account_name,?,?,assigned_sales_email FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
-     .bind(customerId,'IND-'+customerId.slice(0,12).toUpperCase(),JSON.stringify(customerData),TENANT,row.id,nextVersion)
+     .bind(customerId,'RTI-'+customerId.slice(0,12).toUpperCase(),JSON.stringify(customerData),TENANT,row.id,nextVersion)
    );
    statements.push(
     db.prepare("INSERT INTO rticore_sales_opportunities(id,tenant_id,company_id,title,stage,estimated_value_idr,data_json,created_by) SELECT ?,tenant_id,? ,?,'prospecting',?,?,assigned_sales_email FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
