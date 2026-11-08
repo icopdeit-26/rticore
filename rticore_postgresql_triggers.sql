@@ -4,6 +4,17 @@
 -- Idempotent: safe to apply on every start after rticore_postgresql_schema.sql.
 -- =============================================================================
 
+-- Schema upgrades for databases created before the current rticore_postgresql_schema.sql.
+ALTER TABLE rticore_members DROP CONSTRAINT IF EXISTS rticore_members_role_check;
+ALTER TABLE rticore_members ADD CONSTRAINT rticore_members_role_check
+ CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer'));
+CREATE OR REPLACE VIEW rticore_delivery_planned_pm AS
+ SELECT f.tenant_id,f.opportunity_id,min(e.email) pm_email,f.start_date,f.end_date
+ FROM rticore_feasibility_plans f JOIN rticore_resource_allocations a ON a.tenant_id=f.tenant_id AND a.opportunity_id=f.opportunity_id AND a.status='active' AND lower(trim(a.work_role)) IN ('pm','project manager','project_manager')
+ JOIN rticore_resource_people e ON e.tenant_id=a.tenant_id AND e.id=a.person_id AND e.active=1
+ JOIN rticore_members m ON lower(m.email)=lower(e.email) AND m.active=1 AND m.role IN ('presales','admin','project_manager')
+ WHERE f.status='approved' GROUP BY f.tenant_id,f.opportunity_id,f.start_date,f.end_date HAVING count(DISTINCT lower(e.email))=1;
+
 -- SQLite compatibility helpers used by translated triggers.
 CREATE OR REPLACE FUNCTION rticore_raise(msg text) RETURNS text LANGUAGE plpgsql VOLATILE AS $f$
 BEGIN RAISE EXCEPTION USING MESSAGE = msg, ERRCODE = 'P0001'; END $f$;
@@ -2718,7 +2729,7 @@ CREATE TRIGGER rticore_project_baseline_frozen BEFORE UPDATE ON rticore_delivery
 CREATE OR REPLACE FUNCTION rticore_project_pm_active_fn() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE _rc bigint := 0;
 BEGIN
-  IF (NEW.pm_email IS NOT NULL AND NOT EXISTS(SELECT 1 FROM rticore_members WHERE email=NEW.pm_email AND active=1 AND role IN ('presales','admin'))) THEN
+  IF (NEW.pm_email IS NOT NULL AND NOT EXISTS(SELECT 1 FROM rticore_members WHERE email=NEW.pm_email AND active=1 AND role IN ('presales','admin','project_manager'))) THEN
     PERFORM rticore_raise('DELIVERY_CONFLICT: PM must be an active delivery member');
   END IF;
   RETURN NEW;

@@ -109,7 +109,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentRoleInfo = {label: email||'Sesi belum terverifikasi',badge: role||'Login diperlukan'};
   const roleLabels:Record<string,string>={
     admin:'Administrator',marketing:'Marketing',sales:'Sales',presales:'Presales / Solution',
-    finance:'Finance',approver:'Approver',legal:'Legal',viewer:'Viewer',
+    finance:'Finance',approver:'Approver',legal:'Legal',project_manager:'Project Manager',viewer:'Viewer',
   };
   const handleRoleSwitch=async(nextRole:string)=>{
     if(assignedRole!=='admin'||!email||roleSwitchBusy||nextRole===role)return;

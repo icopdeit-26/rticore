@@ -18,6 +18,8 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const {db,role}=a.identity;
+  // Project Manager works from the approved delivery baseline, not commercial BoQ pricing.
+  if(role==='project_manager')return problem('BoQ tidak tersedia untuk Project Manager; gunakan baseline di Service Delivery',403);
   const result=role==='sales'
    ?await db.prepare("SELECT b.* FROM rticore_boq b LEFT JOIN rticore_sales_opportunities d ON b.opportunity_id=d.id AND b.tenant_id=d.tenant_id WHERE b.tenant_id=? AND (b.created_by=? OR d.created_by=?) ORDER BY b.updated_at DESC LIMIT 100").bind('defendit360',a.identity.email,a.identity.email).all<Row>()
    :await db.prepare('SELECT * FROM rticore_boq WHERE tenant_id=? ORDER BY updated_at DESC LIMIT 100').bind('defendit360').all<Row>();

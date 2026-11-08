@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useState} from 'react';
 import VaultPicker from '@/components/sales/VaultPicker';
 import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
+import {ProjectManagerWorkspaceGuide} from '@/components/sales/ProjectManagerWorkspaceGuide';
 type Deal={id:string;title:string;company_name:string;stage:string};
 type Doc={id:string;source:'release'|'library';release_id?:string;kind:string;file_name:string;version:number;sha256:string;byte_length:number;retention_until:string|null;legal_hold:number;created_at:string;created_by:string};
 type Audit={document_id:string;source:string;action:string;actor_email:string;actor_role:string;event_at:string};
@@ -59,7 +60,7 @@ export default function DocumentVaultPage(){
    setNotice('Kebijakan tersimpan dan tercatat pada audit.');setKey(n=>n+1);
   }catch(e){setNotice(e instanceof Error?e.message:String(e));}
  }
- const allowedUpload=(role==='finance'&&kind==='supporting')||['admin','sales'].includes(role)||(role==='presales'&&['rks','kak','supporting'].includes(kind))||(role==='legal'&&['nda','supporting'].includes(kind));
+ const allowedUpload=(['finance','project_manager'].includes(role)&&kind==='supporting')||['admin','sales'].includes(role)||(role==='presales'&&['rks','kak','supporting'].includes(kind))||(role==='legal'&&['nda','supporting'].includes(kind));
  return <main className="mx-auto w-full max-w-7xl min-w-0 space-y-5 px-3 py-5 pb-24 sm:px-6">
   <header className="rounded-2xl bg-slate-900 p-5 text-white">
    <p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">RTICORE · Secure Document Management</p>
@@ -75,6 +76,7 @@ export default function DocumentVaultPage(){
    </label>
    <p className="mt-2 text-xs text-slate-500">Data tampil sesuai hak akses sesi terverifikasi dan kepemilikan Opportunity. Role aktif: {role||'—'}.</p>
   </section>
+  {role==='project_manager'&&<ProjectManagerWorkspaceGuide role={role} opportunityId={opp} currentStation="Secure Document Vault"/>}
   {opp&&<section className="rounded-2xl border bg-white p-4 shadow-sm">
    <h2 className="font-bold text-slate-900">Simpan Dokumen Asli</h2>
    <div className="mt-3 grid gap-3 sm:grid-cols-2">

@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
+import {ProjectManagerWorkspaceGuide} from '@/components/sales/ProjectManagerWorkspaceGuide';
 type Tx={id:string;kind:string;units:number;created_at:string;explanation:string};
 type Wallet={id:string;customer_name:string;contract_id:string;opportunity_id:string;status:string;expires_at:string;entitlement_units:number;balance:{issued:number;available:number;reserved:number;consumed:number;expired:number};events?:Tx[]};
 const input='block w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2 text-sm';
@@ -29,9 +30,10 @@ export default function FlexGuardPage(){
   <header className="rounded-xl border bg-white p-5"><h1 className="text-xl font-bold">FlexGuard · Immutable Token Ledger</h1>
    <p className="mt-2 text-sm text-slate-600">Kuota dan saldo dihitung dari event ledger immutable. Reservasi, konsumsi dan refund memerlukan saldo serta referensi sah. Semua transaksi ditolak bila migrasi 0030 belum diterapkan.</p>
    <Link href="/flexguard" className="mt-3 mr-4 inline-block text-sm font-semibold text-indigo-700 underline">Semua wallet →</Link>
-   <Link href="/sales/renewals" className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">Kontrak & Renewal →</Link></header>
+   {role!=='project_manager'&&<Link href="/sales/renewals" className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">Kontrak & Renewal →</Link>}</header>
   {error&&<p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">BLOCKED — {error}</p>}
   {notice&&<p role="status" className="rounded-xl border border-emerald-200 p-3 text-sm">{notice}</p>}
+  {role==='project_manager'&&<ProjectManagerWorkspaceGuide role={role} opportunityId={active?.opportunity_id} currentStation="FlexGuard Token Wallet"/>}
   {(role==='admin'||role==='finance')&&<form className="space-y-3 rounded-xl border bg-white p-5" onSubmit={e=>{e.preventDefault();void post({action:'create_wallet',contract_id:contract,entitlement_units:Number(quota)});}}>
    <h2 className="font-bold">Registrasi entitlement dari kontrak FlexGuard approved</h2>
    <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs">Contract ID<input className={input} value={contract} onChange={e=>setContract(e.target.value)} required/></label>
@@ -46,7 +48,7 @@ export default function FlexGuardPage(){
     <div className="grid gap-3 sm:grid-cols-4">{Object.entries(active.balance).map(([label,val])=><div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs capitalize text-slate-600">{label}</p><p className="text-xl font-bold">{val} MD</p></div>)}</div>
     {active.status==='draft'&&(role==='approver'||role==='admin')&&<button disabled={busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white" onClick={()=>void post({action:'approve_wallet',wallet_id:active.id,notes:notes.trim()})}>Setujui entitlement independen (catatan min. 12 karakter)</button>}
     <form className="grid gap-3 border-t pt-4 sm:grid-cols-2" onSubmit={e=>{e.preventDefault();void post({action,wallet_id:active.id,units:Number(units),invoice_id:invoice||undefined,opportunity_id:opp||undefined,source_event_id:source||undefined,document_id:document||undefined,request_key:crypto.randomUUID(),explanation:notes});}}>
-     <label className="text-xs">Jenis event<select className={input} value={action} onChange={e=>setAction(e.target.value)}>{['ISSUE','TOPUP','RESERVE','RELEASE','DEBIT','REFUND','EXPIRY'].map(v=><option key={v}>{v}</option>)}</select></label>
+     <label className="text-xs">Jenis event<select className={input} value={action} onChange={e=>setAction(e.target.value)}>{(role==='project_manager'?['RESERVE','RELEASE','DEBIT']:['ISSUE','TOPUP','RESERVE','RELEASE','DEBIT','REFUND','EXPIRY']).map(v=><option key={v}>{v}</option>)}</select></label>
      <label className="text-xs">Jumlah token (integer)<input className={input} type="number" min="1" step="1" value={units} onChange={e=>setUnits(e.target.value)} required/></label>
      <label className="text-xs">Invoice ID (ISSUE/TOPUP)<input className={input} value={invoice} onChange={e=>setInvoice(e.target.value)}/></label>
      <label className="text-xs">Opportunity ID (RESERVE/RELEASE/DEBIT)<input className={input} value={opp} onChange={e=>setOpp(e.target.value)}/></label>

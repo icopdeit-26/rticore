@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS rticore_marketing_leads (
 
 CREATE TABLE IF NOT EXISTS "rticore_members" (
  email TEXT PRIMARY KEY NOT NULL ,
- role TEXT NOT NULL CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','viewer')),
+ role TEXT NOT NULL CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer')),
  active BIGINT NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
  created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
  created_by TEXT
@@ -1583,7 +1583,7 @@ CREATE OR REPLACE VIEW rticore_delivery_planned_pm AS
  SELECT f.tenant_id,f.opportunity_id,min(e.email) pm_email,f.start_date,f.end_date
  FROM rticore_feasibility_plans f JOIN rticore_resource_allocations a ON a.tenant_id=f.tenant_id AND a.opportunity_id=f.opportunity_id AND a.status='active' AND lower(trim(a.work_role)) IN ('pm','project manager','project_manager')
  JOIN rticore_resource_people e ON e.tenant_id=a.tenant_id AND e.id=a.person_id AND e.active=1
- JOIN rticore_members m ON lower(m.email)=lower(e.email) AND m.active=1 AND m.role IN ('presales','admin')
+ JOIN rticore_members m ON lower(m.email)=lower(e.email) AND m.active=1 AND m.role IN ('presales','admin','project_manager')
  WHERE f.status='approved' GROUP BY f.tenant_id,f.opportunity_id,f.start_date,f.end_date HAVING count(DISTINCT lower(e.email))=1;
 
 CREATE OR REPLACE VIEW rticore_effective_settings AS

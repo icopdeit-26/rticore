@@ -8,7 +8,9 @@ export const dynamic='force-dynamic';
 const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:privateHeaders});
 const fail=(message:string,status=422)=>reply({success:false,message},status);
 const reviewers=['finance','approver'];
-const roles=['admin','presales',...reviewers];
+// project_manager: sees/reviews entries only on projects where it is the assigned PM; never cost snapshots.
+const roles=['admin','presales','project_manager',...reviewers];
+const PM_SCOPE="lower(p.pm_email)=?";
 const iso=(value:unknown)=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
 const error=(e:unknown)=>/CONFLICT|constraint|IMMUTABLE|FOREIGN KEY/i.test(String(e))?fail('Timesheet berubah atau melebihi alokasi. Muat ulang.',409):fail('Timesheet belum tersedia; periksa migrasi 0033.',503);
 
@@ -18,16 +20,20 @@ export async function GET(req:Request){
  const {db,email,role}=a.identity;if(!roles.includes(role))return fail('Akses timesheet ditolak',403);
  try{
   const u=new URL(req.url),id=u.searchParams.get('project_id');
-  const privileged=reviewers.includes(role);
-  const projects=await db.prepare(`SELECT p.id,p.title,p.status,p.start_date,p.end_date FROM rticore_delivery_projects p
-   WHERE p.tenant_id=? AND (${privileged?'1=1':'EXISTS(SELECT 1 FROM rticore_resource_allocations x JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.status=\'active\' AND lower(r.email)=?)'}) ORDER BY p.created_at DESC LIMIT 100`).bind(TENANT,...(privileged?[]:[email])).all();
-  if(!id)return reply({success:true,reviewer:privileged,projects:projects.results,items:[],allocations:[]});
+  const privileged=reviewers.includes(role),pm=role==='project_manager';
+  const allocated='EXISTS(SELECT 1 FROM rticore_resource_allocations x JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.status=\'active\' AND lower(r.email)=?)';
+  const projects=await db.prepare(`SELECT p.id,p.title,p.status,p.start_date,p.end_date,lower(coalesce(p.pm_email,''))=? AS managed FROM rticore_delivery_projects p
+   WHERE p.tenant_id=? AND (${privileged?'1=1':pm?PM_SCOPE+' OR '+allocated:allocated}) ORDER BY p.created_at DESC LIMIT 100`).bind(email,TENANT,...(privileged?[]:pm?[email,email]:[email])).all<{id:string;managed:number|boolean}>();
+  // A PM reviews its own project's team; other allocated projects behave like a team member.
+  const managed=(pid:string)=>pm&&projects.results.some(p=>p.id===pid&&!!Number(p.managed));
+  if(!id)return reply({success:true,reviewer:privileged,pm_projects:pm?projects.results.filter(p=>!!Number(p.managed)).map(p=>p.id):[],projects:projects.results,items:[],allocations:[]});
   if(!safeID(id)||!projects.results.some(p=>p.id===id))return fail('Proyek tidak tersedia untuk akun ini',404);
+  const seesAll=privileged||managed(id);
   const [entries,allocations]=await Promise.all([
-   db.prepare(`SELECT t.id,t.project_id,t.work_date,t.minutes,t.billable,t.description,t.status,t.version,t.created_by,t.reviewed_by,t.review_notes,${privileged?'t.cost_snapshot_cents':'0 AS cost_snapshot_cents'} FROM rticore_project_timesheets t WHERE t.tenant_id=? AND t.project_id=? ${privileged?'':'AND lower(t.created_by)=?'} ORDER BY t.work_date DESC,t.created_at DESC LIMIT 500`).bind(TENANT,id,...(privileged?[]:[email])).all<Row>(),
+   db.prepare(`SELECT t.id,t.project_id,t.work_date,t.minutes,t.billable,t.description,t.status,t.version,t.created_by,t.reviewed_by,t.review_notes,${privileged?'t.cost_snapshot_cents':'0 AS cost_snapshot_cents'} FROM rticore_project_timesheets t WHERE t.tenant_id=? AND t.project_id=? ${seesAll?'':'AND lower(t.created_by)=?'} ORDER BY t.work_date DESC,t.created_at DESC LIMIT 500`).bind(TENANT,id,...(seesAll?[]:[email])).all<Row>(),
    db.prepare("SELECT x.id,x.allocation_month,x.person_days,r.display_name FROM rticore_resource_allocations x JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id JOIN rticore_delivery_projects p ON p.opportunity_id=x.opportunity_id AND p.tenant_id=x.tenant_id WHERE p.tenant_id=? AND p.id=? AND x.status='active' AND lower(r.email)=? ORDER BY x.allocation_month").bind(TENANT,id,email).all()
   ]);
-  return reply({success:true,reviewer:privileged,projects:projects.results,items:entries.results,allocations:allocations.results});
+  return reply({success:true,reviewer:seesAll,pm_projects:pm?projects.results.filter(p=>!!Number(p.managed)).map(p=>p.id):[],projects:projects.results,items:entries.results,allocations:allocations.results});
  }catch(e){return error(e);}
 }
 export async function POST(req:Request){
@@ -47,10 +53,12 @@ export async function POST(req:Request){
    ]);return reply({success:true,id},201);
   }
   if(v.action==='review'){
-   if(!reviewers.includes(role))return fail('Review hanya untuk Finance atau Approver',403);
+   if(!reviewers.includes(role)&&role!=='project_manager')return fail('Review hanya untuk Finance, Approver atau PM proyek',403);
    if(!safeID(v.id)||!Number.isInteger(v.version)||typeof v.approve!=='boolean'||typeof v.notes!=='string'||v.notes.trim().length<12||v.notes.length>1000)return fail('ID, versi, keputusan dan alasan review wajib valid');
    const row=await db.prepare('SELECT * FROM rticore_project_timesheets WHERE tenant_id=? AND id=?').bind(TENANT,v.id).first<Row>();
    if(!row)return fail('Timesheet tidak ditemukan',404);
+   if(role==='project_manager'&&!await db.prepare('SELECT id FROM rticore_delivery_projects p WHERE p.tenant_id=? AND p.id=? AND '+PM_SCOPE).bind(TENANT,row.project_id,email).first())
+    return fail('PM hanya mereview timesheet tim pada proyek yang ditugaskan kepadanya',403);
    if(row.created_by.toLowerCase()===email)return fail('Maker tidak boleh menyetujui sendiri',403);
    if(row.status!=='submitted'||row.version!==v.version)return fail('Versi/status timesheet berubah',409);
    await atomicSales(db,"EXISTS(SELECT 1 FROM rticore_project_timesheets WHERE tenant_id=? AND id=? AND version=? AND status='submitted' AND lower(created_by)!=?)",[TENANT,row.id,row.version,email],[

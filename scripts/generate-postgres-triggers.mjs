@@ -229,6 +229,21 @@ WHERE l.status NOT IN ('converted','disqualified')
 ON CONFLICT DO NOTHING;
 `;
 
+// Constraint/view changes that rticore_postgresql_schema.sql (CREATE ... IF NOT EXISTS)
+// cannot apply to a database created by an older schema. Idempotent.
+// Mirrors migration 0047 (project_manager login role).
+export const SCHEMA_UPGRADE_SQL=`-- Schema upgrades for databases created before the current rticore_postgresql_schema.sql.
+ALTER TABLE rticore_members DROP CONSTRAINT IF EXISTS rticore_members_role_check;
+ALTER TABLE rticore_members ADD CONSTRAINT rticore_members_role_check
+ CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer'));
+CREATE OR REPLACE VIEW rticore_delivery_planned_pm AS
+ SELECT f.tenant_id,f.opportunity_id,min(e.email) pm_email,f.start_date,f.end_date
+ FROM rticore_feasibility_plans f JOIN rticore_resource_allocations a ON a.tenant_id=f.tenant_id AND a.opportunity_id=f.opportunity_id AND a.status='active' AND lower(trim(a.work_role)) IN ('pm','project manager','project_manager')
+ JOIN rticore_resource_people e ON e.tenant_id=a.tenant_id AND e.id=a.person_id AND e.active=1
+ JOIN rticore_members m ON lower(m.email)=lower(e.email) AND m.active=1 AND m.role IN ('presales','admin','project_manager')
+ WHERE f.status='approved' GROUP BY f.tenant_id,f.opportunity_id,f.start_date,f.end_date HAVING count(DISTINCT lower(e.email))=1;
+`;
+
 export function generate(){
   const patches=loadPatches();
   const triggers=sqliteTriggers();
@@ -238,7 +253,7 @@ export function generate(){
     `-- ${converted.length} business-rule triggers translated from migrations/*.sql (SQLite/D1).\n`+
     `-- Idempotent: safe to apply on every start after rticore_postgresql_schema.sql.\n`+
     `-- =============================================================================\n\n`+
-    COMPAT_SQL+'\n'+converted.map(c=>c.code).join('\n')+'\n'+BACKFILL_SQL;
+    SCHEMA_UPGRADE_SQL+'\n'+COMPAT_SQL+'\n'+converted.map(c=>c.code).join('\n')+'\n'+BACKFILL_SQL;
   return {sql,converted};
 }
 

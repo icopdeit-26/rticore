@@ -10,13 +10,19 @@ import {accessibleDeal,getProject,publicProject,financeRole,supportingOriginal,p
 export const dynamic='force-dynamic';
 const reply=(x:unknown,status=200)=>Response.json(x,{status,headers:privateHeaders});
 const fail=(message:string,status=422)=>reply({success:false,message},status);
-const roles=['admin','sales','presales','finance','approver','legal'];
+const roles=['admin','sales','presales','finance','approver','legal','project_manager'];
+// Delivery execution (tasks, kickoff, monthly report, activation, milestones, BAST review).
+// project_manager reaches only its own project: accessibleDeal() enforces pm_email.
+const DELIVERY=['admin','presales','project_manager'];
+// Members eligible to be assigned as PM (mirrors trigger rticore_project_pm_active, migration 0047).
+const PM_ELIGIBLE="('presales','admin','project_manager')";
 const error=(e:unknown)=>e instanceof ServiceError?fail(e.message,e.status):fail(/constraint|DELIVERY_CONFLICT|FLOW_CONFLICT/i.test(String(e))?'Versi, batas nilai, review atau keterkaitan transaksi berubah; muat ulang.':'Operasi belum tersedia. Periksa migrasi 0027 dan integritas Vault.',/constraint|DELIVERY_CONFLICT|FLOW_CONFLICT/i.test(String(e))?409:503);
 export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  if(!roles.includes(role))return fail('Akses delivery/cash/renewal ditolak',403);
  const u=new URL(req.url),id=u.searchParams.get('opportunity_id');
  if(!id&&u.searchParams.get('view')==='renewals'){
+  if(role==='project_manager')return fail('Daftar renewal lintas kontrak tidak tersedia untuk Project Manager',403);
   try{const rows=await db.prepare("SELECT c.*,p.opportunity_id,p.title,a.customer_number,a.legal_name FROM rticore_service_contracts c JOIN rticore_delivery_projects p ON p.id=c.project_id AND p.tenant_id=c.tenant_id JOIN rticore_sales_opportunities d ON d.id=p.opportunity_id AND d.tenant_id=p.tenant_id JOIN rticore_sales_accounts a ON a.id=c.customer_id AND a.tenant_id=c.tenant_id WHERE c.tenant_id=? AND (?!='sales' OR lower(d.created_by)=?) ORDER BY c.end_date LIMIT 501").bind(TENANT,role,email).all<Contract>();
    const items=rows.results.slice(0,500).map(c=>renewalState(c));return reply({success:true,role,identityEmail:email,items,truncated:rows.results.length>500,mrr_idr:financialSum(items.map(c=>c.mrr_idr)),weighted_renewal_90d_idr:financialSum(items.filter(c=>c.days_to_expiry!==null&&c.days_to_expiry>=0&&c.days_to_expiry<=90).map(c=>c.weighted_renewal_idr))});
   }catch(e){return error(e);}
@@ -31,7 +37,7 @@ export async function GET(req:Request){
    db.prepare("SELECT i.*,coalesce((SELECT sum(t.amount_cents) FROM rticore_billing_payments t WHERE t.invoice_id=i.id AND t.tenant_id=i.tenant_id AND t.status='approved'),0) AS paid_cents FROM rticore_billing_invoices i WHERE i.tenant_id=? AND i.project_id=? ORDER BY i.issue_date DESC,i.rowid DESC").bind(TENANT,p.id).all<Invoice>(),
    db.prepare('SELECT t.* FROM rticore_billing_payments t JOIN rticore_billing_invoices i ON i.id=t.invoice_id AND i.tenant_id=t.tenant_id WHERE i.tenant_id=? AND i.project_id=? ORDER BY t.rowid DESC').bind(TENANT,p.id).all(),
    db.prepare('SELECT * FROM rticore_service_contracts WHERE tenant_id=? AND project_id=?').bind(TENANT,p.id).first<Contract>(),
-   ['admin','presales'].includes(role)?db.prepare("SELECT email,role FROM rticore_members WHERE active=1 AND role IN ('presales','admin') ORDER BY email LIMIT 200").all():{results:[]},
+   ['admin','presales'].includes(role)?db.prepare("SELECT email,role FROM rticore_members WHERE active=1 AND role IN "+PM_ELIGIBLE+" ORDER BY CASE role WHEN 'project_manager' THEN 0 ELSE 1 END,email LIMIT 200").all():{results:[]},
    db.prepare("SELECT r.id,r.amount_before_vat,r.recognition_date,r.invoice_reference,r.reversal_of FROM rticore_sales_revenue r WHERE r.tenant_id=? AND r.opportunity_id=? AND r.status='approved'").bind(TENANT,d.id).all<{id:string;amount_before_vat:number}>(),
    db.prepare('SELECT l.* FROM rticore_invoice_revenue_links l JOIN rticore_billing_invoices i ON i.id=l.invoice_id WHERE i.tenant_id=? AND i.project_id=?').bind(TENANT,p.id).all(),
    financeRole(role)?db.prepare("SELECT amount_idr,reverses_id FROM rticore_actual_costs WHERE tenant_id=? AND opportunity_id=? AND status='approved'").bind(TENANT,d.id).all<{amount_idr:number;reverses_id:string|null}>():null
@@ -62,16 +68,16 @@ export async function POST(req:Request){
   }
   check(p,'Draft proyek belum tersedia',409);check(v.project_version===p.version,'Versi proyek berubah; muat ulang',409);
   const writes:D1Prepared[]=[],id=crypto.randomUUID();
-  const technical=['admin','presales'].includes(role),financial=financeRole(role),reviewer=['admin','finance','approver'].includes(role);
+  const technical=DELIVERY.includes(role),financial=financeRole(role),reviewer=['admin','finance','approver'].includes(role);
   if(action==='assign'){
-   check(technical,'Assignment hanya Admin/Presales',403);check(p.status==='draft','Assignment baseline hanya pada draft',409);
+   check(['admin','presales'].includes(role),'Assignment hanya Admin/Presales',403);check(p.status==='draft','Assignment baseline hanya pada draft',409);
    check(typeof v.pm_email==='string'&&validISODate(v.start_date)&&validISODate(v.end_date)&&v.start_date<=v.end_date&&Number(v.end_date.slice(0,4))*12+Number(v.end_date.slice(5,7))-(Number(v.start_date.slice(0,4))*12+Number(v.start_date.slice(5,7)))<60,'PM dan periode proyek wajib valid');
-   check(await db.prepare("SELECT email FROM rticore_members WHERE email=? AND active=1 AND role IN ('presales','admin')").bind(v.pm_email.toLowerCase()).first(),'PM harus anggota delivery aktif (Presales/Admin)',409);
+   check(await db.prepare("SELECT email FROM rticore_members WHERE email=? AND active=1 AND role IN "+PM_ELIGIBLE).bind(v.pm_email.toLowerCase()).first(),'PM harus anggota delivery aktif (Project Manager/Presales/Admin)',409);
    // No extra version bump: projectWrite owns CAS/version.
    writes.push(db.prepare('UPDATE rticore_delivery_projects SET pm_email=?,start_date=?,end_date=?,version=version+1 WHERE id=? AND tenant_id=?').bind(v.pm_email.toLowerCase(),v.start_date,v.end_date,p.id,TENANT));
    await atomicSales(db,'EXISTS(SELECT 1 FROM rticore_delivery_projects WHERE tenant_id=? AND id=? AND version=?)',[TENANT,p.id,p.version],[...writes,operationEvent(db,'delivery',p.id,'ASSIGN',email,{pm_email:v.pm_email,start_date:v.start_date,end_date:v.end_date})]);return reply({success:true});
   }else if(action==='task'){
-   check(technical,'Workflow layanan hanya Admin/Presales',403);check(p.status!=='completed','Proyek sudah selesai',409);check(safeID(v.id)&&txt(v.detail,2000).length>=12&&validISODate(v.due_date),'Task, parameter/evidence dan deadline wajib');
+   check(technical,'Workflow layanan hanya Admin/Presales/PM proyek',403);check(p.status!=='completed','Proyek sudah selesai',409);check(safeID(v.id)&&txt(v.detail,2000).length>=12&&validISODate(v.due_date),'Task, parameter/evidence dan deadline wajib');
    const task=await db.prepare('SELECT code,status FROM rticore_delivery_tasks WHERE id=? AND tenant_id=? AND project_id=?').bind(v.id as string,TENANT,p.id).first<{code:string;status:string}>();check(task&&task.status==='pending','Task sudah selesai/tidak tersedia',409);
    check(v.complete===true||v.complete===false,'Keputusan complete wajib');
    let doc:string|null=null;
@@ -81,11 +87,11 @@ export async function POST(req:Request){
     check(safeID(v.document_id),'Dokumen supporting wajib untuk menyelesaikan task');await supportingOriginal(db,v.document_id,d.id);doc=v.document_id;}
    writes.push(db.prepare('UPDATE rticore_delivery_tasks SET detail=?,due_date=?,status=?,document_id=?,completed_by=? WHERE id=? AND tenant_id=? AND project_id=?').bind(JSON.stringify({notes:txt(v.detail,2000),parameters:params}),v.due_date,v.complete?'done':'pending',doc,v.complete?email:null,v.id as string,TENANT,p.id));
   }else if(action==='monthly_report'){
-   check(technical,'Monthly report hanya Admin/Presales',403);check(p.service_family==='SOC/MDR'&&periodOK(v.period),'Monthly report memerlukan SOC/MDR dan periode valid');
+   check(technical,'Monthly report hanya Admin/Presales/PM proyek',403);check(p.service_family==='SOC/MDR'&&periodOK(v.period),'Monthly report memerlukan SOC/MDR dan periode valid');
    check(p.start_date&&p.end_date&&v.period>=p.start_date.slice(0,7)&&v.period<=p.end_date.slice(0,7),'Periode harus di dalam jadwal proyek',409);
    writes.push(db.prepare("INSERT INTO rticore_delivery_tasks(id,tenant_id,project_id,code,title,period) VALUES(?,?,?,'soc_report','Monthly service report',?)").bind(id,TENANT,p.id,v.period));
   }else if(action==='activate'||action==='complete'){
-   check(technical,'Status proyek hanya Admin/Presales',403);
+   check(technical,'Status proyek hanya Admin/Presales/PM proyek',403);
    if(action==='activate'){
     check(p.status==='draft'&&p.pm_email&&p.start_date&&p.end_date,'Assignment dan jadwal proyek wajib',409);
     const gaps=await db.prepare("SELECT id FROM rticore_delivery_tasks WHERE tenant_id=? AND project_id=? AND code LIKE 'kickoff_%' AND status!='done'").bind(TENANT,p.id).all();check(!gaps.results.length,'Kickoff checklist belum lengkap',409);
@@ -100,13 +106,13 @@ export async function POST(req:Request){
    writes.push(db.prepare('UPDATE rticore_delivery_projects SET status=?,version=version+1 WHERE tenant_id=? AND id=?').bind(action==='activate'?'active':'completed',TENANT,p.id));
    await atomicSales(db,'EXISTS(SELECT 1 FROM rticore_delivery_projects WHERE tenant_id=? AND id=? AND version=?)',[TENANT,p.id,p.version],[...writes,operationEvent(db,'delivery',p.id,action.toUpperCase(),email,{})]);return reply({success:true});
   }else if(action==='milestone'||action==='edit_milestone'){
-   check(technical||financial,'Milestone hanya Admin/Presales/Finance',403);const amount=cents(v.amount_idr);check(amount&&amount<=p.contract_cents&&txt(v.title,240).length>=3&&txt(v.trigger_text,1000).length>=3&&validISODate(v.due_date),'Milestone, trigger, tanggal dan nilai wajib');
+   check(technical||financial,'Milestone hanya Admin/Presales/PM proyek/Finance',403);const amount=cents(v.amount_idr);check(amount&&amount<=p.contract_cents&&txt(v.title,240).length>=3&&txt(v.trigger_text,1000).length>=3&&validISODate(v.due_date),'Milestone, trigger, tanggal dan nilai wajib');
    const existing=action==='edit_milestone'&&safeID(v.id)?await db.prepare("SELECT id FROM rticore_delivery_milestones WHERE tenant_id=? AND project_id=? AND id=? AND status='draft'").bind(TENANT,p.id,v.id).first<{id:string}>():null;check(action!=='edit_milestone'||existing,'Pilih milestone draft',409);
    const total=await db.prepare('SELECT coalesce(sum(amount_cents),0) total FROM rticore_delivery_milestones WHERE tenant_id=? AND project_id=? AND id!=?').bind(TENANT,p.id,existing?.id||'').first<{total:number}>();check((total?.total||0)+amount<=p.contract_cents,'Jumlah milestone melampaui PO',409);
    if(existing)writes.push(db.prepare('UPDATE rticore_delivery_milestones SET title=?,trigger_text=?,amount_cents=?,due_date=?,created_by=? WHERE tenant_id=? AND id=?').bind(txt(v.title,240),txt(v.trigger_text,1000),amount,v.due_date,email,TENANT,existing.id));
    else writes.push(db.prepare('INSERT INTO rticore_delivery_milestones(id,tenant_id,project_id,title,trigger_text,amount_cents,due_date,created_by) VALUES(?,?,?,?,?,?,?,?)').bind(id,TENANT,p.id,txt(v.title,240),txt(v.trigger_text,1000),amount,v.due_date,email));
   }else if(action==='accept_milestone'){
-   check(technical||financial,'Review BAST hanya Admin/Presales/Finance',403);check(safeID(v.id)&&safeID(v.document_id),'Milestone dan dokumen BAST Vault wajib');await supportingOriginal(db,v.document_id,d.id);
+   check(technical||financial,'Review BAST hanya Admin/Presales/PM proyek/Finance',403);check(safeID(v.id)&&safeID(v.document_id),'Milestone dan dokumen BAST Vault wajib');await supportingOriginal(db,v.document_id,d.id);
    const m=await db.prepare('SELECT * FROM rticore_delivery_milestones WHERE tenant_id=? AND project_id=? AND id=?').bind(TENANT,p.id,v.id).first<{status:string;created_by:string;amount_cents:number}>();check(m&&m.status==='draft'&&m.amount_cents>0,'Milestone tidak valid',409);check(m.created_by.toLowerCase()!==email,'Reviewer BAST harus berbeda dari maker',403);
    writes.push(db.prepare("UPDATE rticore_delivery_milestones SET status='accepted',document_id=?,accepted_by=? WHERE tenant_id=? AND id=?").bind(v.document_id,email,TENANT,v.id));
   }else if(action==='invoice'){

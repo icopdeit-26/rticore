@@ -15,7 +15,7 @@ export type RTICoreNavGroup = {
   readonly label: string;
   readonly items: readonly RTICoreNavItem[];
 };
-const ALL: BoQRole[] = ['admin','marketing','sales','presales','finance','approver','legal','viewer'];
+const ALL: BoQRole[] = ['admin','marketing','sales','presales','finance','approver','legal','project_manager','viewer'];
 const COMMERCIAL: BoQRole[] = ['admin','sales','presales','finance','approver','legal'];
 const SALES: BoQRole[] = ['admin','sales','approver','finance'];
 const PRESALES: BoQRole[] = ['admin','presales','approver','finance','legal'];
@@ -54,15 +54,16 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
     item('Submission & Proposal Evidence','/sales/submission',COMMERCIAL),
   ]},
   {id:'delivery',label:'06 · Project Delivery & Operations',items:[
-    item('Service Delivery & Projects','/sales/delivery',['admin','presales','finance','approver']),
-    item('Project Timesheets','/psa/timesheets',['admin','presales','finance','approver']),
+    // project_manager: scoped by the API to projects where it is the assigned PM.
+    item('Service Delivery & Projects','/sales/delivery',['admin','presales','project_manager','finance','approver']),
+    item('Project Timesheets','/psa/timesheets',['admin','presales','project_manager','finance','approver']),
     item('Official Post-PO Forms','/post-po',['admin','sales','presales','finance','approver','legal']),
   ]},
   {id:'cash',label:'07 · Contract-to-Cash & Renewal',items:[
     item('Billing & Collections','/sales/billing',FINANCE),
     item('Revenue Register','/sales/revenue',FINANCE),
     item('Contracts & Renewal','/sales/renewals',COMMERCIAL),
-    item('FlexGuard Token Wallet','/flexguard',['admin','sales','presales','finance','approver']),
+    item('FlexGuard Token Wallet','/flexguard',['admin','sales','presales','project_manager','finance','approver']),
   ]},
   {id:'partners',label:'08 · Vendor, OEM & Partners',items:[
     item('Vendor & Partner Records','/partners',PRESALES),
@@ -72,7 +73,7 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
     item('Enterprise Reports','/reports',['admin','marketing','sales','finance','approver']),
   ]},
   {id:'governance',label:'10 · Document Center & Governance',items:[
-    item('Secure Document Vault','/sales/documents',COMMERCIAL),
+    item('Secure Document Vault','/sales/documents',[...COMMERCIAL,'project_manager']),
   ]},
   {id:'enterprise_erp',label:'12 · ERP Finance, Procurement & Cybersecurity',items:[
     item('Organization & ERP Access','/erp/organization',['admin','approver']),

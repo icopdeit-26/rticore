@@ -19,7 +19,7 @@ export function walletTotals(events:readonly FlexEvent[]):FlexTotals{
  return s;
 }
 export const eventRoles:Record<FlexEventKind,readonly string[]>={
- ISSUE:['admin','finance'],TOPUP:['admin','finance'],RESERVE:['admin','sales','presales'],
- RELEASE:['admin','sales','presales'],DEBIT:['admin','presales'],REFUND:['admin','finance'],EXPIRY:['admin','finance']
+ ISSUE:['admin','finance'],TOPUP:['admin','finance'],RESERVE:['admin','sales','presales','project_manager'],
+ RELEASE:['admin','sales','presales','project_manager'],DEBIT:['admin','presales','project_manager'],REFUND:['admin','finance'],EXPIRY:['admin','finance']
 };
 export function canPostFlex(role:string,kind:FlexEventKind){return !!eventRoles[kind]?.includes(role);}

@@ -2,10 +2,11 @@ import {authorizeBoQ,privateHeaders,type D1DB} from '@/lib/boq-auth';
 import {TENANT,safeID} from '@/lib/sales-workflow';
 import {canReadDeal} from '@/lib/sales-access';
 import {atomicSales,dealGuard,salesAudit,type FlowDeal} from '@/lib/sales-transactions';
+import {pmOwnsProject} from '@/lib/service-operations';
 import {VAULT_MAX_BYTES,documentHash,sealDocument,openDocument,inspectDocument,vaultError,type VaultDoc} from '@/lib/document-vault';
 export const dynamic='force-dynamic';
 const kinds=['nda','rks','kak','quotation','supporting'] as const;
-const readers=['admin','sales','presales','finance','approver','legal'];
+const readers=['admin','sales','presales','finance','approver','legal','project_manager'];
 const res=(data:unknown,status=200)=>Response.json(data,{status,headers:privateHeaders});
 const deny=(message:string,status=400)=>res({success:false,message},status);
 const goodDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
@@ -19,7 +20,8 @@ async function identityDeal(req:Request){
  if(!safeID(id))return {error:deny('Opportunity tidak valid',422)};
  const deal=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE id=? AND tenant_id=?').bind(id,TENANT).first<FlowDeal>();
  if(!deal)return {error:deny('Opportunity tidak ditemukan',404)};
- if(!canReadDeal(role,email,deal.created_by))return {error:deny('Opportunity bukan milik Sales ini',403)};
+ if(role==='project_manager'?!await pmOwnsProject(db,email,deal.id):!canReadDeal(role,email,deal.created_by))
+  return {error:deny(role==='project_manager'?'Proyek ini tidak ditugaskan kepada Anda sebagai PM':'Opportunity bukan milik Sales ini',403)};
  return {db,role,email,deal,id};
 }
 async function boundedBody(req:Request){
@@ -48,6 +50,8 @@ export async function GET(req:Request){
   }
   if(docId){
    if(!safeID(docId)||!['library','release'].includes(source))return deny('Dokumen tidak valid',422);
+   // Commercial package originals (proposal, negotiation, PO/SPK) stay with commercial roles.
+   if(role==='project_manager'&&source!=='library')return deny('Paket komersial tidak tersedia untuk Project Manager',403);
    const doc=await findDoc(db,opp,docId,source);if(!doc)return deny('Dokumen tidak ditemukan',404);
    if(doc.retention_until&&doc.retention_until<new Date().toISOString().slice(0,10)&&!doc.legal_hold&&!['admin','legal'].includes(role))
     return deny('Masa retensi terlampaui. Minta tinjauan Admin/Legal.',403);
@@ -57,7 +61,7 @@ export async function GET(req:Request){
    return new Response(new Uint8Array(data),{headers:{...privateHeaders,'Content-Type':doc.media_type,'Content-Length':String(data.length),'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(doc.file_name),'Content-Security-Policy':"sandbox; default-src 'none'",'Referrer-Policy':'no-referrer'}});
   }
   const [a1,a2]=await Promise.all([
-   db.prepare('SELECT v.id,v.release_id,v.kind,v.file_name,v.media_type,v.byte_length,v.sha256,v.created_by,v.created_at,g.version,g.retention_until,g.legal_hold FROM rticore_document_vault v JOIN rticore_document_governance g ON g.document_id=v.id WHERE v.tenant_id=? AND v.opportunity_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 150').bind(TENANT,opp).all(),
+   role==='project_manager'?{results:[] as Record<string,unknown>[]}:db.prepare('SELECT v.id,v.release_id,v.kind,v.file_name,v.media_type,v.byte_length,v.sha256,v.created_by,v.created_at,g.version,g.retention_until,g.legal_hold FROM rticore_document_vault v JOIN rticore_document_governance g ON g.document_id=v.id WHERE v.tenant_id=? AND v.opportunity_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 150').bind(TENANT,opp).all(),
    db.prepare('SELECT id,kind,file_name,media_type,byte_length,sha256,created_by,created_at,version,retention_until,legal_hold FROM rticore_document_library WHERE tenant_id=? AND opportunity_id=? ORDER BY created_at DESC,id DESC LIMIT 150').bind(TENANT,opp).all()
   ]);
   return res({success:true,documents:[...a1.results.map(d=>({...d,source:'release'})),...a2.results.map(d=>({...d,source:'library'}))]});
@@ -66,7 +70,7 @@ export async function GET(req:Request){
 export async function POST(req:Request){
  const a=await identityDeal(req);if(a.error)return a.error;
  const {db,role,email,id:opp,deal}=a;if(!db||!role||!email||!opp||!deal)return deny('Auth invalid',403);
- if(!['admin','sales','presales','finance','legal'].includes(role))return deny('Role tidak diizinkan mengunggah',403);
+ if(!['admin','sales','presales','finance','legal','project_manager'].includes(role))return deny('Role tidak diizinkan mengunggah',403);
  if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return deny('Origin ditolak',403);
  const q=new URL(req.url).searchParams,kind=q.get('kind')||'',name=q.get('filename')||'';
  if(!kinds.includes(kind as typeof kinds[number])||!name||name.length>180||/[\x00-\x1f\x7f/\\]/.test(name))return deny('Jenis atau nama dokumen tidak valid',422);
@@ -74,6 +78,7 @@ export async function POST(req:Request){
  if(role==='legal'&&!['nda','supporting'].includes(kind))return deny('Legal hanya mengunggah dokumen NDA atau supporting hukum',403);
  if(deal.stage==='closed_lost'||(deal.stage==='closed_won'&&kind!=='supporting'))return deny('Won hanya menerima supporting delivery; Closed Lost tetap ditutup',409);
  if(role==='finance'&&(deal.stage!=='closed_won'||kind!=='supporting'))return deny('Finance hanya mengunggah supporting delivery setelah Won',403);
+ if(role==='project_manager'&&(deal.stage!=='closed_won'||kind!=='supporting'))return deny('Project Manager hanya mengunggah supporting delivery (evidence, BAST, laporan) proyeknya',403);
  try{
   const bytes=await boundedBody(req);if(!bytes.length)return deny('File kosong',422);
   const media=await inspectDocument(name,bytes);if(!media)return deny('Hanya file PDF, DOCX, PNG, JPEG atau EML yang valid',415);

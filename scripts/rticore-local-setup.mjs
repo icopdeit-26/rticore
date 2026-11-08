@@ -13,7 +13,7 @@ const root=path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/
 const args=process.argv.slice(2);
 const opt=name=>{const i=args.indexOf('--'+name);return i>=0?args[i+1]:undefined;};
 const flag=name=>args.includes('--'+name);
-const ROLES=['admin','marketing','finance','presales','sales','approver','legal','viewer'];
+const ROLES=['admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer'];
 
 // 1. .env.local
 const envFile=path.join(root,'.env.local');

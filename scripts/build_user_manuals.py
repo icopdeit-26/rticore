@@ -11,7 +11,7 @@ from PIL import Image, ImageOps, ImageDraw
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'output/pdf'; OUT.mkdir(parents=True,exist_ok=True)
 TMP=ROOT/'tmp/pdfs'; TMP.mkdir(parents=True,exist_ok=True)
-ROLE={'admin':'Administrator','marketing':'Marketing','sales':'Sales','presales':'Presales / Solution','finance':'Finance','approver':'Approver','legal':'Legal','viewer':'Viewer'}
+ROLE={'admin':'Administrator','marketing':'Marketing','sales':'Sales','presales':'Presales / Solution','finance':'Finance','approver':'Approver','legal':'Legal','project_manager':'Project Manager','viewer':'Viewer'}
 # Read the actual sidebar definition rather than maintaining a second menu matrix.
 nav=(ROOT/'src/lib/enterprise-navigation.ts').read_text(encoding='utf-8')
 # Every role-set constant, in source order, so spreads such as TENDER=[...PRESALES,'sales'] resolve.
@@ -206,6 +206,63 @@ WORK={
   'Persetujuan ditolak bila perjanjian sudah kedaluwarsa atau checksum dokumen Vault tidak lagi cocok. Unggah ulang dokumen yang benar dan buat record baru bila perlu.'
  ],'Perjanjian kemitraan tercatat dengan dokumen asli dan review independen.',
   'Legal tidak melihat data pembelian dan evaluasi vendor (data biaya) dan tidak mengelola lisensi atau pembelian.')],
+'project_manager':[
+ task('Menerima penugasan dan membuka proyek','/sales/delivery',[
+  'Presales/Admin menetapkan akun Anda sebagai PM pada draft proyek melalui form Assignment PM & jadwal (atau otomatis dari rencana Feasibility approved yang memuat satu PM). Tanpa penugasan, daftar proyek Anda kosong.',
+  'Buka Service Delivery & Projects. Pemilih proyek hanya berisi Opportunity Closed Won yang menetapkan Anda sebagai PM.',
+  'Periksa ringkasan proyek: layanan, status, versi, nomor PO, nilai kontrak, PM, tanggal mulai dan selesai.',
+  'Baca Scope baseline approved: scope teknis, spesifikasi, kuantitas, deliverable, model delivery, lokasi, PIC proyek, timeline, durasi, SKU/lisensi, service level, termin dan model kontrak. Baseline adalah acuan; perubahan scope melalui alur yang disetujui, bukan diubah di proyek.',
+  'Bila jadwal atau PIC tidak sesuai, minta Presales/Admin memperbaiki assignment selama proyek masih draft.'
+ ],'PM mengetahui baseline, jadwal dan nilai proyek yang menjadi acuan delivery.',
+  'PM tidak dapat menugaskan PM, mengubah jadwal assignment atau membuat handover Won lama. Budget HPP, BoQ dan CRM tidak tersedia untuk PM.'),
+ task('Menyelesaikan kickoff dan mengaktifkan proyek','/sales/delivery',[
+  'Unggah bukti kickoff (notulen, daftar hadir, konfirmasi timeline) ke Vault sebagai dokumen supporting melalui panel Vault di halaman delivery atau Secure Document Vault.',
+  'Pada setiap task kickoff yang pending, isi catatan pelaksanaan minimal 12 karakter, parameter layanan yang diminta form, target selesai dan pilih dokumen Vault.',
+  'Centang Tandai selesai dengan evidence lalu simpan. Task hanya dapat diselesaikan dengan dokumen supporting asli pada Opportunity yang sama dan setelah tahap prasyaratnya selesai.',
+  'Setelah assignment, jadwal dan seluruh checklist kickoff selesai, klik Aktifkan setelah kickoff lengkap.',
+  'Muat ulang dan pastikan status proyek berubah menjadi active serta versi bertambah.'
+ ],'Proyek aktif dengan checklist kickoff yang memiliki bukti.',
+  'Setiap perubahan dikunci versi proyek. Bila muncul pesan versi berubah (HTTP 409), muat ulang lalu ulangi.'),
+ task('Menjalankan deliverable dan laporan layanan','/sales/delivery',[
+  'Kerjakan task layanan sesuai urutan prasyarat, misalnya VAPT: scope, pengujian, laporan, retest; SOC: log, SLA, laporan; GRC: assessment, gap, remediasi; teknologi: lisensi, implementasi, dukungan.',
+  'Untuk setiap task, isi parameter dan catatan, lalu selesaikan dengan dokumen evidence dari Vault.',
+  'Untuk SOC/MDR, tambahkan laporan bulanan dengan periode YYYY-MM yang berada di dalam jadwal proyek; satu laporan per bulan kontrak.',
+  'Pantau tabel Kickoff & service deliverables: status, target dan pengguna yang menyelesaikan.',
+  'Setelah semua task (dan seluruh laporan SOC bulanan) selesai, klik Selesaikan proyek.'
+ ],'Setiap deliverable selesai dengan bukti dan proyek dapat ditutup.',
+  'Proyek completed tidak dapat diubah lagi. Task yang sudah done tidak dapat dibuka ulang.'),
+ task('Mengusulkan milestone dan menerima BAST','/sales/delivery',[
+  'Tambahkan milestone: nama, trigger pembayaran (misalnya BAST ditandatangani), nilai sebelum PPN dan target. Total semua milestone tidak boleh melebihi nilai PO.',
+  'Perbaiki milestone yang masih draft melalui Lengkapi milestone. Milestone accepted terkunci.',
+  'Setelah serah terima, unggah BAST asli yang ditandatangani pelanggan ke Vault sebagai dokumen supporting.',
+  'Terima BAST hanya untuk milestone yang dibuat pengguna lain (misalnya Finance): pilih milestone dan dokumen BAST lalu klik Terima BAST.',
+  'Untuk milestone yang Anda buat, minta Finance, Presales atau Admin lain menerima BAST. Milestone accepted menjadi dasar invoice Finance.'
+ ],'Milestone accepted dengan BAST asli siap ditagih oleh Finance.',
+  'PM tidak membuat invoice, mencatat pembayaran, mereview keuangan atau mengakui revenue.'),
+ task('Mereview timesheet tim proyek','/psa/timesheets',[
+  'Buka Project Timesheets dan pilih proyek. Proyek yang Anda pimpin menampilkan seluruh entri tim.',
+  'Periksa tanggal, durasi (menit), alokasi, penanda billable dan keterangan pekerjaan terhadap rencana kerja.',
+  'Isi catatan review minimal 12 karakter, lalu pilih Setujui atau Tolak untuk entri submitted.',
+  'Untuk mencatat jam Anda sendiri, pilih alokasi aktif milik Anda, isi tanggal, menit kelipatan 15 (15-480), billable dan keterangan minimal 12 karakter.',
+  'Entri milik Anda direview Finance, Approver atau PM lain. Muat ulang untuk melihat status terbaru.'
+ ],'Jam kerja tim terverifikasi oleh PM proyek secara independen.',
+  'PM hanya mereview proyek yang dipimpinnya, tidak mereview entri sendiri dan tidak melihat snapshot biaya. Timesheet tidak otomatis menjadi payroll atau jurnal GL.'),
+ task('Mengelola pemakaian token FlexGuard','/flexguard',[
+  'Buka FlexGuard Token Wallet. Daftar hanya berisi wallet dari kontrak proyek yang Anda pimpin.',
+  'Periksa status wallet (harus active), masa berlaku dan saldo: issued, available, reserved, consumed dan expired.',
+  'RESERVE token untuk pekerjaan yang dijadwalkan, dengan Opportunity Won milik customer wallet. RELEASE reservasi yang batal dengan event sumbernya.',
+  'Setelah layanan diberikan, DEBIT token dengan ID dokumen supporting asli dari Vault sebagai bukti delivery.',
+  'Setiap event memakai request key unik dan justifikasi minimal 12 karakter. Kesalahan dikoreksi dengan event baru, bukan menghapus riwayat.'
+ ],'Konsumsi token layanan tercatat pada ledger dengan bukti delivery.',
+  'ISSUE, TOPUP, REFUND dan EXPIRY dilakukan Finance/Admin; aktivasi wallet oleh Approver/Admin.'),
+ task('Menyimpan evidence di Document Vault','/sales/documents',[
+  'Buka Secure Document Vault dan pilih proyek (hanya proyek yang Anda pimpin).',
+  'Pilih jenis Supporting Document lalu unggah file asli (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB).',
+  'Periksa pesan sukses: versi dan awalan SHA-256 dokumen. File historis tidak ditimpa saat revisi.',
+  'Gunakan dokumen tersebut sebagai evidence task, BAST milestone atau bukti DEBIT FlexGuard.',
+  'Unduh dokumen library proyek (misalnya RKS/KAK atau NDA) sebagai referensi scope bila diperlukan.'
+ ],'Evidence delivery tersimpan asli, berversi dan dapat ditelusuri.',
+  'PM tidak membuka paket komersial (proposal, negosiasi, PO/SPK), tidak mengatur retensi atau legal hold dan tidak membuka audit log.')],
 'viewer':[
  task('Membaca BoQ yang diizinkan','/boq',['Masuk dengan akun Viewer aktif lalu buka BoQ Management.','Pilih dokumen dari daftar yang disediakan aplikasi. Periksa nomor quotation, customer, proyek, layanan, status dan versi.','Baca item, jumlah, harga jual serta total yang ditampilkan. Bedakan draft, submitted, approved dan rejected.','Jika ada pertanyaan, sampaikan nomor dokumen dan versi kepada owner melalui kanal kerja yang disepakati.','Muat ulang untuk melihat status terbaru. Jika dokumen tidak tampil atau ditolak, minta Admin memeriksa cakupan akses.'],'Pengguna mengetahui status serta rincian BoQ yang boleh dibaca.','Viewer bersifat baca saja: tidak membuat/mengubah BoQ, mengisi HPP, mengajukan atau memutuskan approval, dan tidak mengelola pengguna.'),
  task('Memahami batas akses Viewer','/boq',['Gunakan hanya menu yang ditampilkan bagi akun Anda; daftar menu role ini terbatas pada BoQ Management.','Jangan menganggap halaman lain terbuka hanya karena menerima tautannya dari rekan kerja.','Jika membutuhkan fungsi operasional, ajukan perubahan role melalui penanggung jawab dan Admin sesuai kebutuhan pekerjaan.','Jika unduhan atau rincian tidak tersedia, gunakan informasi yang diberikan aplikasi dan minta pemilik data menyiapkan keluaran yang diizinkan.'],'Kebutuhan akses dapat disampaikan secara jelas tanpa meminjam akun.','HPP dan margin internal tidak diberikan kepada Viewer; jangan memakai akun orang lain untuk melihatnya.')]
@@ -338,6 +395,22 @@ DETAIL={
  '/sales/documents':('Arsip dokumen asli terenkripsi, retensi, legal hold dan audit akses.',
   ['Baca dan unduh dokumen, termasuk dokumen yang melewati masa retensi.','Unggah NDA atau dokumen supporting hukum (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB).','Pasang dan lepaskan legal hold dengan alasan minimal 15 karakter.','Buka audit log akses dokumen per Opportunity.'],
   'Pelepasan legal hold hanya oleh Legal. Penetapan retensi hanya oleh Admin dan tidak dapat diperpendek. Hold atau retensi dokumen yang Anda unggah sendiri diubah oleh orang lain.'),
+},
+# Project Manager: scope is the delivery project whose pm_email is the user
+# (src/app/api/sales/service-operations, psa/timesheets, sales/flexguard, sales/document-vault).
+'project_manager':{
+ '/sales/delivery':('Eksekusi proyek setelah Closed Won pada proyek yang menetapkan Anda sebagai PM: baseline, kickoff, deliverable, laporan bulanan, aktivasi, penyelesaian serta milestone dan BAST.',
+  ['Pemilih proyek hanya menampilkan proyek dengan PM = akun Anda; ringkasan PO, nilai kontrak, jadwal dan Scope baseline approved.','Perbarui task kickoff dan service deliverable: catatan minimal 12 karakter, parameter layanan, target selesai; selesaikan dengan dokumen supporting Vault dan prasyarat tahap sebelumnya.','Tambah laporan bulanan SOC/MDR (periode YYYY-MM di dalam jadwal proyek).','Aktifkan proyek setelah assignment, jadwal dan checklist kickoff lengkap; selesaikan proyek setelah seluruh task dan laporan SOC bulanan selesai.','Tambah dan ubah milestone draft (total tidak melebihi nilai PO); terima BAST milestone buatan orang lain dengan dokumen BAST Vault.'],
+  'Assignment PM, jadwal dan handover Won lama oleh Presales/Admin. Invoice, pembayaran, review keuangan, kontrak dan revenue bukan kewenangan PM. Budget HPP disembunyikan. Proyek lain ditolak (HTTP 403).'),
+ '/psa/timesheets':('Pencatatan jam kerja dan review timesheet tim proyek.',
+  ['Proyek yang Anda pimpin: lihat seluruh entri tim dan Setujui/Tolak entri submitted dengan catatan minimal 12 karakter.','Ajukan jam kerja sendiri pada alokasi aktif: menit kelipatan 15 (15-480), billable, keterangan minimal 12 karakter; tanggal tidak di masa depan.','Proyek lain tempat Anda dialokasikan: hanya entri milik sendiri yang tampil.'],
+  'Entri sendiri direview Finance/Approver atau PM lain. Snapshot biaya tidak ditampilkan. Tidak diposting otomatis ke GL atau payroll.'),
+ '/flexguard':('Wallet token layanan FlexGuard dari kontrak proyek yang Anda pimpin.',
+  ['Lihat saldo issued, available, reserved, consumed, expired dan riwayat event.','Posting RESERVE dan RELEASE untuk Opportunity Won milik customer wallet.','Posting DEBIT dengan dokumen supporting asli sebagai bukti delivery.','Setiap event memakai request key unik dan alasan minimal 12 karakter.'],
+  'Wallet dibuat Finance dan diaktifkan Approver/Admin. ISSUE, TOPUP, REFUND dan EXPIRY oleh Finance/Admin. Ledger immutable.'),
+ '/sales/documents':('Penyimpanan evidence delivery asli terenkripsi untuk proyek Anda.',
+  ['Unggah dokumen supporting setelah Closed Won (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB); versi dan SHA-256 tercatat.','Baca dan unduh dokumen library proyek (RKS/KAK, NDA, supporting).','Gunakan dokumen sebagai evidence task, BAST milestone atau bukti DEBIT FlexGuard.'],
+  'Paket komersial (proposal, negosiasi, PO/SPK) tidak tersedia. Retensi, legal hold dan audit log dikelola Admin/Legal.'),
 }}
 # Maker-checker summary: what the role makes, and who must check it.
 AUTHORITY={
@@ -366,6 +439,16 @@ AUTHORITY={
  ('Review klausul administrative dan checklist administratif','Klausul atau item dibuat oleh orang lain'),
  ('Memasang atau melepas legal hold','Bukan pengunggah dokumen; pelepasan hanya oleh Legal'),
  ('Mengunggah NDA atau supporting hukum','Hold dan retensi dokumen tersebut diubah oleh Legal/Admin lain'),
+],
+'project_manager':[
+ ('Ditugaskan sebagai PM dan jadwal proyek','Ditetapkan Presales/Admin; PM tidak menugaskan dirinya sendiri'),
+ ('Menyelesaikan task kickoff dan deliverable','Wajib dokumen supporting asli di Vault dan prasyarat tahap sebelumnya'),
+ ('Mengaktifkan dan menyelesaikan proyek','Gate sistem: checklist kickoff, seluruh task dan laporan SOC bulanan'),
+ ('Membuat milestone','BAST diterima Finance, Presales, Admin atau PM lain; bukan pembuat milestone'),
+ ('Menerima BAST milestone','Milestone harus dibuat orang lain; invoice kemudian dibuat Finance dan direview Approver/Admin'),
+ ('Mereview timesheet tim','Hanya proyek yang dipimpin; entri sendiri direview Finance/Approver atau PM lain'),
+ ('Posting RESERVE, RELEASE dan DEBIT FlexGuard','Wallet diaktifkan Approver/Admin; DEBIT wajib bukti delivery asli'),
+ ('Mengunggah evidence supporting','Retensi dan legal hold diatur Admin/Legal'),
 ]}
 
 styles=getSampleStyleSheet()
@@ -400,6 +483,8 @@ FLOWS={
               {2:'Bukti dari maker',5:'Approver independen'},'Tolak / kembalikan\ndengan alasan','Maker memperbaiki dan mengajukan ulang bila diizinkan. Jika Anda pembuat, gunakan reviewer lain. Margin BoQ di bawah 25% memerlukan Admin independen dan alasan pengecualian.'),
  'legal':(['Buka konteks Customer / Opportunity','Unduh dokumen asli dari Vault','Cocokkan pihak, scope dan ketentuan','Periksa PO/SPK terhadap penawaran','Dokumen legal sesuai?','Catat review Legal independen','Koordinasikan hasil ke Sales / Finance'],
            {5:'Legal',6:'Sales / Finance'},'Minta koreksi\nkepada Sales','Review Finance tetap dilakukan terpisah pada dokumen yang sama. Review Legal saja belum menyelesaikan seluruh gate menuju Won.'),
+ 'project_manager':(['Ditugaskan sebagai PM oleh Presales/Admin','Baca baseline scope, PO dan jadwal','Lengkapi kickoff dengan evidence Vault','Aktifkan proyek; kerjakan deliverable','Evidence dan prasyarat lengkap?','Usulkan milestone; BAST diterima pihak lain','Review timesheet tim; tutup proyek'],
+                    {0:'Presales / Admin',5:'Finance / reviewer lain'},'Lengkapi evidence\natau perbaiki task','Invoice, collection dan revenue dilanjutkan Finance setelah BAST accepted. PM hanya bekerja pada proyek yang menetapkannya sebagai PM.'),
  'viewer':(['Login sebagai Viewer aktif','Buka BoQ Management','Pilih dokumen dalam daftar akses','Baca nomor, versi dan status','Informasi dapat dibaca?','Tinjau rincian dan total yang tampil','Sampaikan pertanyaan ke owner'],
             {},'Minta Admin\nmemeriksa akses','Viewer hanya membaca BoQ yang diizinkan. Tidak membuat, mengubah, mengajukan atau menyetujui transaksi; tidak melihat HPP.')
 }
@@ -479,7 +564,7 @@ for role,name in ROLE.items():
         auth=Table(rows,colWidths=[250,251],repeatRows=1,hAlign='LEFT')
         auth.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#dceef2')),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f3f6fa')]),('BOTTOMPADDING',(0,0),(-1,-1),6),('TOPPADDING',(0,0),(-1,-1),6),('LINEBELOW',(0,0),(-1,0),.7,colors.HexColor('#83b5c2'))]))
         story.append(auth)
-    if role!='viewer': story+=section('Khusus menu ERP','Organization, General Ledger, Treasury, HR, Procurement/AP dan Cybersecurity memerlukan pengendalian tambahan. Penempatan staff dan capability grant pada legal-unit harus disetujui secara independen. Jika ditolak, minta Admin/Approver memeriksa grant; role umum tidak otomatis membuka operasi ERP.')
+    if role not in ('viewer','project_manager'): story+=section('Khusus menu ERP','Organization, General Ledger, Treasury, HR, Procurement/AP dan Cybersecurity memerlukan pengendalian tambahan. Penempatan staff dan capability grant pada legal-unit harus disetujui secara independen. Jika ditolak, minta Admin/Approver memeriksa grant; role umum tidak otomatis membuka operasi ERP.')
     story += [PageBreak(),p('Diagram alur / '+name,'HeadRT'),p('Baca dari atas ke bawah. Kotak biru menandai keterlibatan role lain; belah ketupat adalah keputusan. Cabang Tidak memerlukan koreksi sebelum pemeriksaan ulang.','SmallRT'),RoleFlow(role),p(FLOWS[role][3],'SmallRT')]
     for idx,(title,path,steps,result,check) in enumerate(WORK[role],1):
         story += [PageBreak(),p(f'03.{idx} / {title}','HeadRT'),p('Mulai dari: '+path,'SubRT'),p('Langkah penggunaan','SubRT')]
