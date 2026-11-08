@@ -2,6 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import {CommercialHeader,EntryForm,useOpportunityWorkspace,type FormField} from '@/components/sales/CommercialUI';
+import {FinanceWorkspaceGuide} from '@/components/sales/FinanceWorkspaceGuide';
 import {serviceLines,costTypes} from '@/lib/solution-feasibility';
 type Person={id:string;display_name:string;email:string;skills:string;capacity_pd_month:number;daily_cost_idr?:number;active:number};
 type Allocation={id:string;person_id:string;display_name:string;work_role:string;allocation_month:string;person_days:number;total_pd_month:number;capacity_pd_month:number;status:string};
@@ -61,6 +62,7 @@ export default function FeasibilityPage(){
     <p className="text-xs text-slate-500">Formula VAPT: aset × PD/aset × (1 + retest%) + PM/QA. SOC/Managed: jam coverage ÷ 8 × engineer/shift × hari/bulan × bulan + koordinasi. FortiSIEM/GRC: baseline PD + koordinasi. Kapasitas lintas Opportunity diperiksa per engineer per bulan.</p>
    </section>
    {locked&&!w.busy&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">Paket yang sudah mencapai Commercial Review terkunci. Gunakan workflow revisi resmi untuk mengganti scope atau sumber daya.</p>}
+   <FinanceWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Resource & Solution Feasibility"/>
    <section className="grid items-start gap-4 xl:grid-cols-2">
     <EntryForm key={'plan'+w.id+(p?.version||0)} title={p?'Revisi Feasibility Plan v'+p.version:'Buat Feasibility Plan'} fields={planFields(p??null)}
      disabled={locked||!canPlan} submit={p?'Simpan revisi plan (approval direset)':'Hitung PD & simpan plan'}

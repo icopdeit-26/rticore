@@ -30,7 +30,7 @@ export default function SalesActivities(){
   try{
    const url='/api/sales/activities'+(owner?'?owner='+encodeURIComponent(owner):'');
    const a=await call('GET',url);
-   const [l,d]=await Promise.all([call('GET','/api/marketing/leads'),call('GET','/api/sales?entity=deals')]);
+   const [l,d]=await Promise.all([['admin','sales'].includes((a as Snapshot).role)?call('GET','/api/marketing/leads'):Promise.resolve({leads:[]}),call('GET','/api/sales?entity=deals')]);
    setSnapshot(a as Snapshot);
    setTargets([
     ...(l.leads||[]).filter((x:{status:string})=>!['converted','disqualified'].includes(x.status)).map((x:{id:string;lead_number:string;account_name:string;assigned_sales_email:string})=>({id:x.id,kind:'lead' as const,name:x.lead_number+' · '+x.account_name,owner:x.assigned_sales_email})),
@@ -67,7 +67,7 @@ export default function SalesActivities(){
   <p className="mt-2 break-words text-sm font-bold text-slate-900">{t.subject}</p><p className="mt-1 break-words text-xs text-slate-600">{t.customer_name} · {t.target_name}</p>
   <p className="mt-1 break-all text-[11px] text-slate-500">Sales: {t.owner_email}</p>
   {t.detail&&<p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{t.detail}</p>}
-  {actions&&t.status==='planned'&&<div className="mt-3 space-y-2 border-t pt-3">
+  {actions&&['admin','sales'].includes(snapshot?.role||'')&&t.status==='planned'&&<div className="mt-3 space-y-2 border-t pt-3">
    <textarea rows={2} aria-label={'Hasil atau alasan '+t.subject} className={input} placeholder="Hasil kontak, tindak lanjut, atau alasan pembatalan" value={outcomes[t.id]||''} onChange={e=>setOutcomes(x=>({...x,[t.id]:e.target.value}))}/>
    <div className="flex flex-wrap gap-2"><button disabled={busy} onClick={()=>mutate(t,'complete')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Selesai</button>
     <button disabled={busy} onClick={()=>mutate(t,'reschedule')} className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50">Jadwalkan ulang ke waktu pada form</button>
@@ -88,7 +88,7 @@ export default function SalesActivities(){
   </div>
   <section className="rounded-xl border bg-white p-4">
    <div className="flex flex-wrap items-end gap-3"><div className="grow"><h2 className="text-sm font-bold">Jadwalkan Aktivitas</h2><p className="text-xs text-slate-500">Tanggal menggunakan zona perangkat; kalender tampil WIB (Asia/Jakarta).</p></div>
-   {snapshot?.role==='admin'&&<label className="text-xs font-semibold">Kalender per Sales
+   {['admin','finance','approver'].includes(snapshot?.role||'')&&<label className="text-xs font-semibold">Kalender per Sales
     <select className={input} value={owner} onChange={e=>setOwner(e.target.value)}><option value="">Semua Sales</option>{snapshot.owners.filter(x=>x.role==='sales').map(x=><option key={x.email} value={x.email}>{x.email}</option>)}</select>
    </label>}</div>
    <form onSubmit={create} className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">

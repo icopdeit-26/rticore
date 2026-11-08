@@ -1,36 +1,30 @@
 # Audit aplikasi lokal — 8 November 2026
 
-Lingkup: autentikasi lokal, sesi, role/ACL, navigasi, regresi bisnis otomatis, dependensi dan build. Ini bukan sertifikasi seluruh transaksi dengan data produksi.
+Lingkup pemeriksaan: autentikasi lokal, sesi dan origin, role/ACL, navigasi, regresi bisnis otomatis, dependensi, serta build Next.js dan OpenNext Cloudflare. Ini bukan sertifikasi transaksi dengan data produksi atau layanan cloud.
 
-## Temuan dan tindakan
+## Temuan dan perbaikan
 
-- P1 — Login browser dari 127.0.0.1 ditolak 403 Origin tidak diizinkan. Direproduksi melalui Microsoft Edge headless. Next menormalisasi request.url ke localhost, sehingga perbandingan origin langsung salah. Diperbaiki dengan memeriksa host browser dan protokol, tetap membatasi alamat loopback dan menolak origin asing/port berbeda.
-- P2 — Logout sidebar masih menuju Cloudflare. Diganti dengan komponen logout bersama yang menghapus sesi lokal.
-- P2 — DELETE sesi belum memeriksa mode lokal dan origin. Kini memeriksa keduanya sebelum menghapus cookie.
-- P2 — Audit npm seluruh dependensi melaporkan 5 paket berstatus moderate pada rantai alat build OpenNext/glob/minimatch. Audit dependency produksi: 0 kerentanan. Tidak dilakukan pembaruan paksa atau downgrade otomatis.
-- P2 — Suite penuh belum hijau: sebagian prasyarat lingkungan dan ekspektasi tes sudah tertinggal. Baseline navigasi mengharapkan 40 halaman tetapi aktual 41.
-- P3 — Next.js menandai konvensi middleware lama sebagai deprecated; konvensi Proxy baru berbasis Node.js belum didukung resmi oleh adapter Cloudflare. Peringatan import.meta dari unpdf dihilangkan dengan mengeksternalkan paket server-side.
+- **P1 — Login lokal dari `127.0.0.1` ditolak.** Next menormalisasi URL request, sehingga perbandingan origin langsung gagal. Pemeriksaan origin kini membandingkan host browser dan protokol, menerima loopback yang sama, serta menolak port berbeda, origin asing, dan request cross-site.
+- **P2 — Logout navigasi masih menuju Cloudflare.** Tombol logout bersama sekarang memakai penghapusan sesi lokal saat mode lokal aktif dan tetap memakai logout Cloudflare pada mode cloud.
+- **P2 — Penghapusan sesi lokal tidak dibatasi dengan mode dan origin.** Endpoint `DELETE /api/local-auth` sekarang memerlukan mode lokal dan pemeriksaan same-origin sebelum menghapus cookie.
+- **P2 — Dependensi transitif memiliki 5 temuan moderate.** Override dependensi build disesuaikan agar versi perbaikan tetap kompatibel dengan OpenNext. `npm audit` kini melaporkan 0 temuan pada semua tingkat keparahan.
+- **P2 — Suite regresi sebelumnya gagal karena prasyarat dan baseline usang.** Runner HTTP memakai port ephemeral; tes browser dapat memakai Microsoft Edge terpasang; tes Python memakai runtime embeddable lokal yang diabaikan Git; ekspektasi logout dan jumlah navigasi diperbarui. Suite penuh sekarang lulus tanpa skip.
+- **P3 — Konvensi `middleware` Next.js 16 deprecated.** Temuan ini belum bisa dihilangkan dengan aman: adapter OpenNext Cloudflare pada versi proyek ini memakai middleware Edge, sedangkan jalur `proxy` berbasis Node yang disarankan Next masih eksperimental/tidak didukung untuk adapter ini ([panduan OpenNext Cloudflare](https://opennext.js.org/cloudflare), [status dukungan Proxy](https://github.com/cloudflare/workers-sdk/issues/13937)). Konvensi yang kompatibel dipertahankan sampai adapter mendukung jalur baru secara resmi. Peringatan deprecation Next tetap muncul.
+- **Build Windows — OpenNext memperingatkan bahwa Windows belum sepenuhnya didukung dan merekomendasikan WSL.** Build adapter aktual tetap berhasil di Windows; peringatan lingkungan ini bukan kegagalan build.
 
-## Bukti pemeriksaan
-
-- Suite penuh sebelum perbaikan: 666 tes, 651 lulus, 15 gagal.
-- Rincian 15 kegagalan: 6 tes browser tidak menemukan executable Chromium; 1 HTTP UAT membutuhkan server port 3100; 4 tes membutuhkan Python; 3 tes source masih mengharuskan tautan logout Cloudflare langsung; 1 baseline jumlah menu berbeda.
-- Ketiga kegagalan source login/logout telah diperbarui untuk komponen bersama; seluruh 6 tes pada kedua file terkait lulus saat dijalankan ulang.
-- Tes sesi lokal sesudah perbaikan: 5/5 lulus, termasuk regresi origin browser 127.0.0.1, localhost, port berbeda, origin asing dan cross-site.
-- Pemeriksaan awal ACL/sesi/role/bisnis: 38/38 lulus.
-- Tampilan login lokal: tidak memuat tombol Cloudflare; akun lokal tersedia. Browser mobile lebar 390 tidak mengalami overflow horizontal pada pemeriksaan login.
-- Log suite penuh tersimpan di .local-data/audit-tests.log (lokal, tidak untuk commit).
-
-## Catatan kompatibilitas build
-
-Next.js 16 menyarankan konvensi Proxy, tetapi pada versi adapter Cloudflare proyek ini jalur tersebut dibundel sebagai Node.js middleware eksperimental. Preview lokal berhasil, namun OpenNext mendokumentasikan jalur Edge middleware sebagai yang didukung. Karena itu project tetap memakai middleware Edge; peringatan deprecation Next.js sengaja dipertahankan sampai adapter mendukung Proxy secara resmi.
-
-## Batas penggunaan lokal
-
-Pemilihan akun lokal tidak meminta password. Siapa pun yang dapat mengakses aplikasi pada komputer ini dapat memilih akun aktif, termasuk Admin. Ini adalah model kepercayaan komputer lokal, bukan autentikasi multiuser untuk jaringan bersama. Server tetap terikat pada 127.0.0.1; role dan status aktif dibaca server dari database.
-
-Tidak dilakukan pengiriman pesan, transaksi keuangan, penghapusan data bisnis, atau pengujian layanan cloud eksternal. Pemeriksaan browser memakai sesi terpisah.
+Peringatan bundling `unpdf` dihilangkan dengan mengeksternalkan paket pada server runtime.
 
 ## Verifikasi akhir
 
-Build production terbaru berhasil dan server lokal dimulai ulang. Microsoft Edge headless dengan konteks terpisah berhasil login melalui 127.0.0.1: identity HTTP 200 role admin. Setelah logout identity HTTP 401; tidak ada pageerror dan tidak ada tombol Cloudflare pada halaman lokal. Suite penuh setelah perbaikan: 676 tes terdeteksi, 672 lulus, 0 gagal, 4 dilewati karena Python 3 belum tersedia. Windows sedang menjalankan pemasang PostgreSQL sehingga pemasang Python bersamaan gagal dengan file lock. Tes browser memakai Microsoft Edge terpasang.
+- `npm run build` — berhasil; TypeScript dan 53 halaman selesai dibuat.
+- `npx opennextjs-cloudflare build` — berhasil; middleware, aset statis, cache, dan fungsi server berhasil dibundel.
+- `npm audit` — 0 critical, 0 high, 0 moderate, 0 low.
+- `npm run test:all` — **676 lulus, 0 gagal, 0 dilewati** (sekitar 49 detik).
+- Tes browser mencakup login lokal lewat loopback, logout dan invalidasi sesi, serta navigasi/role pada desktop dan mobile. Tidak ditemukan error halaman atau tautan Cloudflare pada alur lokal.
+- Runtime Python 3.12.10 untuk tes disimpan di `.local-data/python312-embed` (diabaikan Git); tidak mengubah instalasi Python sistem.
+
+## Batas penggunaan login lokal
+
+Mode lokal memungkinkan pemilihan akun terdaftar tanpa password dan hanya sesuai model kepercayaan satu komputer. Pengguna lokal lain yang dapat mengakses komputer juga dapat memilih akun Admin. Server lokal dibatasi ke loopback; role dan status akun tetap diverifikasi server dari database. Jangan mengekspos server ini ke jaringan bersama sebagai pengganti autentikasi multiuser.
+
+Tidak dilakukan deploy, pemanggilan layanan cloud eksternal, pengiriman pesan, transaksi keuangan, atau penghapusan data bisnis.

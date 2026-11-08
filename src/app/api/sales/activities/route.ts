@@ -20,7 +20,7 @@ const date=(v:unknown)=>{if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2
 export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  const {db,role,email}=a.identity;
- if(!['sales','admin'].includes(role))return error('Kalender hanya untuk Sales atau Admin/Sales Manager',403);
+ if(!['sales','admin','finance','approver'].includes(role))return error('Kalender hanya untuk Sales, Finance, Approver atau Admin',403);
  const u=new URL(req.url),owner=str(u.searchParams.get('owner'),200).toLowerCase();
  if(owner&&!emailPattern.test(owner))return error('Email filter tidak valid',422);
  if(role==='sales'&&owner&&owner!==email)return error('Tidak dapat melihat agenda Sales lain',403);
@@ -55,7 +55,7 @@ export async function GET(req:Request){
   const utc=(t:string)=>Date.parse(/^\d{4}-\d{2}-\d{2} /.test(t)?t.replace(' ','T')+'Z':t)||0;
   const timeline=[...events.results,...legacyLeads.results,...legacyDeals.results].sort((a,b)=>utc(String(b.at))-utc(String(a.at))).slice(0,250);
   return reply({success:true,role,identityEmail:email,tasks:tasks.results,events:timeline,alerts:alerts.results,
-   slas:slas.results,owners:role==='admin'?owners.results:[{email,role}],managers:role==='admin'?managers.results:managers.results.filter(m=>m.sales_email===email),
+   slas:slas.results,owners:['admin','finance','approver'].includes(role)?owners.results:[{email,role}],managers:['admin','finance','approver'].includes(role)?managers.results:managers.results.filter(m=>m.sales_email===email),
    serverNow:new Date().toISOString()});
  }catch{return error('Modul belum siap; verifikasi migrasi D1 0013',503);}
 }

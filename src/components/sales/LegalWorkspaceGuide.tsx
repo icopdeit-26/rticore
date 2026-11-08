@@ -101,8 +101,8 @@ export const LEGAL_ROLE_CATALOG: LegalMenuSection[] = [
         badge: 'Antrean Kerja Legal',
         functions: 'Meja kerja terpusat untuk memantau dan mengeksekusi seluruh antrean dokumen yang membutuhkan pengesahan Role Legal.',
         features: [
-          'Notifikasi real-time jumlah dokumen PO / SPK / Kontrak / Award Letter yang menunggu review Legal (badge header & antrean)',
-          'Filter stasiun kerja lintas modul yang relevan dengan kewenangan Legal beserta tautan langsung ke dokumen sumber',
+          'Antrean dokumen award (PO, SPK, Contract, Award Letter) yang belum direview Legal, bukan didaftarkan oleh akun sendiri dan bukan yang sudah Anda review sebagai Finance',
+          'Tautan "Periksa di sumber" ke PO / SPK Verification; klausul tender, checklist, kontrak layanan dan agreement diperiksa langsung di modul masing-masing',
           'Penegakan aturan Maker-Checker otomatis: item yang dibuat oleh akun sendiri tidak dapat disetujui sendiri',
         ],
       },
@@ -169,12 +169,13 @@ export const LEGAL_ROLE_CATALOG: LegalMenuSection[] = [
         label: 'Contracts & Renewal',
         href: '/sales/renewals',
         preserveOpportunity: true,
-        badge: 'Manajemen Masa Berlaku Kontrak',
-        functions: 'Pemantauan kontrak layanan aktif (Service Contracts), peringatan berakhirnya kontrak (30/60/90 hari), dan tindak lanjut perpanjangan.',
+        badge: 'Approval Kontrak & Masa Berlaku',
+        functions: 'Persetujuan independen kontrak layanan draft, pemantauan masa berlaku dan status renewal berdasarkan notice period tiap kontrak.',
         features: [
-          'Daftar seluruh Service Contract aktif (model Fixed, Retainer, Managed Service, maupun FlexGuard) beserta nomor PO dan periode kontrak',
-          'Pemantauan jadwal Renewal Alert (90/60/30 hari sebelum berakhir), alasan risiko churn, serta perubahan ruang lingkup kontrak',
-          'Pelacakan tautan Opportunity perpanjangan (Renewal Opportunity) untuk memastikan kesinambungan payung hukum layanan',
+          'Persetujuan kontrak layanan draft yang dikonfigurasi pengguna lain (Maker-Checker) dengan catatan review minimal 12 karakter',
+          'Daftar Service Contract (model OTC, MRC, Managed Service, License, Retainer, FlexGuard) beserta nomor PO, periode dan notice period',
+          'Status Renewal Due ketika sisa hari kontrak sudah sama atau kurang dari notice period kontrak, serta alasan risiko churn',
+          'Pelacakan Opportunity renewal/expansion yang dibuat Sales/Admin; konfigurasi kontrak dan risiko churn tetap milik Sales/Finance',
         ],
       },
     ],
@@ -202,7 +203,7 @@ export const LEGAL_ROLE_CATALOG: LegalMenuSection[] = [
         functions: 'Pencatatan dan pemeriksaan independen atas dokumen NDA, RKS, KAK, dan RFP pada pengadaan tender maupun non-tender.',
         features: [
           'Pendaftaran dokumen persyaratan hukum & pengadaan (khususnya NDA, RKS, KAK, RFP) dengan penguncian hash SHA-256 dari Document Vault',
-          'Review kepatuhan independen (Compliant / Partial / Non-Compliant) atas dokumen NDA dan persyaratan pengadaan yang diajukan tim Sales/Presales',
+          'Review kepatuhan independen (Compliant / Partial / Non-Compliant) atas requirement non-teknis seperti NDA, Commercial dan Clarification; RKS/KAK/RFP/RFQ/Technical direview Presales dan Vendor Quote oleh Finance',
           'Inspeksi keputusan Bid / No-Bid beserta alasan pengesahan dari Approver',
         ],
       },
@@ -219,9 +220,9 @@ export const LEGAL_ROLE_CATALOG: LegalMenuSection[] = [
         badge: 'Legal Hold & Audit Trail',
         functions: 'Pusat tata kelola bukti dokumen asli terenkripsi AES-GCM, kontrol pembekuan dokumen (Legal Hold), dan audit akses.',
         features: [
-          'Unggah dokumen hukum asli (NDA, Contract, PO, SPK, Award Letter, Supporting) dengan verifikasi magic-header (PDF/DOCX/XLSX/PNG/JPG)',
-          'Kewenangan eksklusif Legal/Admin untuk mengaktifkan Legal Hold (mencegah dokumen di-supersede atau diubah selama audit/sengketa)',
-          'Pelepasan Legal Hold (Release Hold) dengan pencatatan alasan hukum wajib minimal 15 karakter ke dalam log audit permanen',
+          'Unggah NDA atau dokumen supporting hukum asli dengan verifikasi isi file (PDF, DOCX, PNG, JPEG atau EML; maksimal 8 MB). Setelah Closed Won hanya dokumen supporting',
+          'Kewenangan Legal/Admin memasang Legal Hold dengan alasan minimal 15 karakter; dokumen ber-hold tetap dapat dibuka walau masa retensinya terlampaui',
+          'Pelepasan Legal Hold khusus role Legal dengan alasan minimal 15 karakter; hold atau retensi dokumen yang Anda unggah sendiri diubah oleh orang lain',
           'Inspeksi riwayat revisi per dokumen serta Audit Trail lengkap (siapa yang mengunggah, mengunduh, menahan, atau melepas hold beserta waktu tepat)',
         ],
       },
@@ -306,7 +307,7 @@ export function LegalWorkspaceGuide({
             2. Legal Hold & Audit Vault
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-600">
-            Unggah NDA/Kontrak asli, kunci dokumen dengan <b>Legal Hold</b>, lepas hold dengan alasan audit wajib (≥15 karakter), dan periksa jejak unduhan di <Link href={buildHref('/sales/documents', true)} className="font-bold text-indigo-700 underline">Secure Document Vault</Link>.
+            Unggah NDA/supporting hukum asli, kunci dokumen dengan <b>Legal Hold</b>, lepas hold dengan alasan audit wajib (≥15 karakter), dan periksa jejak unduhan di <Link href={buildHref('/sales/documents', true)} className="font-bold text-indigo-700 underline">Secure Document Vault</Link>.
           </p>
         </div>
         <div className="rounded-xl border border-indigo-100 bg-white p-3.5 shadow-2xs">
@@ -383,7 +384,7 @@ export function LegalWorkspaceGuide({
                 <b>Segregasi Maker-Checker Ketat:</b> Pengguna Legal tidak dapat mengesahkan dokumen PO/SPK, klausul tender, dokumen NDA, maupun <i>Partnership Agreement</i> yang diunggah atau dibuat oleh emailnya sendiri (`created_by != email`).
               </li>
               <li>
-                <b>Verifikasi Keaslian Kriptografis (SHA-256):</b> Setiap persetujuan kontrak, PO/SPK, perjanjian kemitraan, dan klausul RKS wajib merujuk pada dokumen asli terenkripsi di <i>Secure Document Vault</i> dengan kecocokan hash SHA-256 64 karakter.
+                <b>Verifikasi Keaslian Kriptografis (SHA-256):</b> Review PO/SPK, persetujuan perjanjian kemitraan, dan review requirement tender wajib merujuk pada dokumen asli di <i>Secure Document Vault</i> dengan kecocokan hash SHA-256 64 karakter. Untuk kontrak layanan, cocokkan sendiri konfigurasi kontrak dengan dokumen asli sebelum menyetujui.
               </li>
               <li>
                 <b>Redaksi Rahasia Komersial & HPP (Least Privilege):</b> Harga beli supplier, daftar transaksi pembelian vendor, skor evaluasi vendor, tarif harian engineer (`daily_cost_idr`), serta HPP/margin internal pada BoQ dan Feasibility otomatis disensor oleh API untuk role Legal.

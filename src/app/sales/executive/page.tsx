@@ -3,6 +3,7 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
 import {Activity,ArrowUpRight,BarChart3,CalendarDays,Download,RefreshCcw,Target,TrendingUp} from 'lucide-react';
+import {FinanceWorkspaceGuide} from '@/components/sales/FinanceWorkspaceGuide';
 
 type Owner={owner:string;target_idr:number|null;target_version:number;target_rationale:string;booked_idr:number;attainment_pct:number|null;pipeline_idr:number;weighted_idr:number;revenue_idr:number;won:number;lost:number;win_rate_pct:number|null;completed_tasks:number;calls:number;meetings:number;visits:number;follow_ups:number};
 type Series={label:string;count:number;pipeline:number;weighted:number};
@@ -85,6 +86,7 @@ export default function ExecutiveSalesPage(){
   </div>
   {error&&<p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{error}</p>}
   {notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</p>}
+  {data&&<FinanceWorkspaceGuide role={data.role} currentStation="Executive Dashboard" defaultOpen={data.role==='finance'}/>}
   {loading&&<p role="status" className="rounded-xl border bg-white p-6 text-sm text-slate-600">Mengambil laporan dari database…</p>}
   {data&&t&&!loading&&<>
    <section aria-label="Ringkasan eksekutif">
