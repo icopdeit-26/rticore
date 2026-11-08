@@ -1,16 +1,16 @@
-name: INDIA Sales Multirole UAT
+name: RTICORE Sales Multirole UAT
 
 on:
   push:
     branches:
-      - feat/india-sales-pipeline-workflow-20261020
-      - feat/india-marketing-sales-consolidation-20261022
-      - feat/india-presales-po-transactions-20261022
+      - feat/rticore-sales-pipeline-workflow-20261020
+      - feat/rticore-marketing-sales-consolidation-20261022
+      - feat/rticore-presales-po-transactions-20261022
       - test/pr12-negative-44-integration-20261021
   pull_request:
     branches:
-      - feat/india-sales-pipeline-workflow-20261020
-      - feat/india-marketing-sales-consolidation-20261022
+      - feat/rticore-sales-pipeline-workflow-20261020
+      - feat/rticore-marketing-sales-consolidation-20261022
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Seven-role UAT domain and document simulations
-        run: npm run test:sales && npm run test:marketing && npm run test:india-negative
+        run: npm run test:sales && npm run test:marketing && npm run test:rticore-negative
       - name: Consolidated Marketing Sales schema and PR18 preservation tests
         run: npm run test:consolidation
       - name: BoQ maker checker and quotation tests
@@ -47,19 +47,19 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Browser and localhost HTTP UAT across fixture roles
         run: |
-          npm run start -- -p 3100 > /tmp/india-uat-local.log 2>&1 &
+          npm run start -- -p 3100 > /tmp/rticore-uat-local.log 2>&1 &
           for i in $(seq 1 80); do
             if curl -fsS http://127.0.0.1:3100/sales/pipeline > /dev/null; then break; fi
             sleep 2
           done
           if ! curl -fsS http://127.0.0.1:3100/sales/pipeline > /dev/null; then
-            cat /tmp/india-uat-local.log
+            cat /tmp/rticore-uat-local.log
             exit 1
           fi
           npm run test:browser-http-uat
         env:
           NEXT_TELEMETRY_DISABLED: '1'
-          INDIA_UAT_URL: http://127.0.0.1:3100
+          RTICORE_UAT_URL: http://127.0.0.1:3100
       - name: Cloudflare adapter bundle
         run: npx opennextjs-cloudflare build
         env:
@@ -68,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: india-role-browser-fixtures
+          name: rticore-role-browser-fixtures
           path: artifacts/browser-uat/
           if-no-files-found: ignore
           retention-days: 7

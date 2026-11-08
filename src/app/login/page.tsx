@@ -1,105 +1,102 @@
 import type {Metadata} from 'next';
-import {ArrowRight, BadgeCheck, Building2, KeyRound, LockKeyhole, LogOut, ShieldCheck} from 'lucide-react';
+import {ArrowRight, ArrowUpRight, BadgeCheck, Building2, ChartNoAxesCombined, Check, KeyRound, Layers3, LockKeyhole, LogOut, ShieldCheck} from 'lucide-react';
 import {LoginSessionStatus} from '@/components/auth/LoginSessionStatus';
+import {LocalLoginPanel} from '@/components/auth/LocalLoginPanel';
 
 export const metadata: Metadata = {
   title: 'Login RTICORE | RTI',
   description: 'Masuk ke RTICORE Enterprise ERP & PSA melalui Cloudflare Access dan hak akses sesuai role.',
 };
 
-/**
- * Human-facing login entry only. Cloudflare Access owns authentication/OTP;
- * authorizeBoQ on the server verifies JWT, active D1 membership and resource policy.
- * Never accept passwords, OTPs or client-asserted roles in this page.
- */
-export default function IndiaLoginPage() {
+export default function RTICoreLoginPage() {
   return (
-    <main className="relative isolate min-h-[100dvh] overflow-x-hidden bg-[#080f23] text-white">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_10%_15%,rgba(78,45,142,0.38),transparent_52%),radial-gradient(ellipse_at_90%_90%,rgba(6,182,212,0.09),transparent_46%)]" />
-      <div className="relative mx-auto grid min-h-[100dvh] w-full max-w-6xl items-center gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16 lg:py-12">
-        <section className="mx-auto hidden w-full max-w-xl flex-col gap-12 py-8 lg:flex" aria-label="Tentang platform RTICORE">
-          <header className="flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10">
-              <ShieldCheck className="h-7 w-7 text-cyan-300" aria-hidden="true" />
+    <main className="relative isolate min-h-[100dvh] overflow-x-hidden bg-[#f5f7fa] text-slate-900">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_100%_0%,rgba(45,212,191,0.12),transparent_45%)]" />
+      <div className="relative mx-auto flex min-h-[100dvh] max-w-[1440px] flex-col px-5 py-6 sm:px-10 lg:px-14 lg:py-8">
+        <header className="flex items-center justify-between gap-4">
+          <a href="/login" aria-label="RTICORE beranda login" className="flex items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-teal-600">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-slate-200/70">
+              <img src="/logo-rti-light.png" alt="Logo RTI - RiseT Indonesia" className="h-full w-full object-contain" />
             </span>
             <div>
-              <p className="text-2xl font-extrabold tracking-tight">RTICORE</p>
-              <p className="text-xs font-semibold tracking-wide text-slate-300">RTI · ENTERPRISE PLATFORM</p>
+              <p className="text-xl font-extrabold tracking-tight">RTI<span className="text-teal-700">CORE</span></p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Enterprise platform</p>
             </div>
-          </header>
+          </a>
+          <span className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-medium text-slate-600 sm:inline-flex">
+            <ShieldCheck className="h-4 w-4 text-teal-700" aria-hidden="true" /> Akses workspace perusahaan
+          </span>
+        </header>
 
-          <div className="space-y-6">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">Cybersecurity Enterprise ERP + PSA</p>
-            <h2 className="max-w-lg text-4xl font-bold leading-[1.15] tracking-tight xl:text-5xl">
-              Satu platform untuk operasional bisnis dan layanan keamanan siber.
-            </h2>
-            <p className="max-w-lg text-base leading-7 text-slate-300">
-              Kelola alur Marketing, Sales, Presales, Project Delivery, Finance, Procurement, dan Cybersecurity Operations dalam satu workspace berbasis peran.
-            </p>
-          </div>
+        <div className="grid flex-1 items-center gap-9 py-8 lg:grid-cols-[1.12fr_1fr] lg:gap-12 xl:gap-20">
+          <section className="relative hidden h-full min-h-[650px] flex-col justify-between overflow-hidden rounded-[32px] bg-[#102c36] p-9 text-white lg:flex xl:p-12" aria-label="Tentang platform RTICORE">
+            <div aria-hidden="true" className="pointer-events-none absolute -right-24 top-20 h-96 w-96 rounded-full border-[60px] border-teal-300/[0.04]" />
+            <div className="relative">
+              <p className="inline-flex items-center gap-2 rounded-full border border-teal-200/20 bg-teal-200/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-200"><span className="h-1.5 w-1.5 rounded-full bg-teal-300" /> Cybersecurity Enterprise ERP + PSA</p>
+              <h2 className="mt-7 max-w-lg text-[42px] font-semibold leading-[1.12] tracking-[-0.045em] xl:text-[54px]">Bisnis terhubung.<br /><span className="text-[#8ee6ce]">Langkah lebih maju.</span></h2>
+              <p className="mt-5 max-w-sm text-sm leading-7 text-slate-300">Satu workspace untuk menyatukan tim, mengelola operasional, dan menghadirkan layanan keamanan siber.</p>
+            </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-              <Building2 className="mb-3 h-5 w-5 text-cyan-300" aria-hidden="true" />
-              <p className="text-sm font-bold">Terintegrasi</p>
-              <p className="mt-1 text-xs leading-5 text-slate-300">ERP, CRM dan PSA</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-              <KeyRound className="mb-3 h-5 w-5 text-cyan-300" aria-hidden="true" />
-              <p className="text-sm font-bold">Berbasis role</p>
-              <p className="mt-1 text-xs leading-5 text-slate-300">Menu sesuai izin</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-              <BadgeCheck className="mb-3 h-5 w-5 text-cyan-300" aria-hidden="true" />
-              <p className="text-sm font-bold">Terverifikasi</p>
-              <p className="mt-1 text-xs leading-5 text-slate-300">Audit & identitas</p>
-            </div>
-          </div>
-          <p className="text-xs text-slate-400">© 2026 RTI · Internal Business Platform</p>
-        </section>
-
-        <section aria-labelledby="login-heading" className="mx-auto w-full max-w-md">
-          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 text-slate-900 shadow-[0_32px_90px_rgba(0,0,0,0.32)] sm:p-9">
-            <div className="mb-7 flex items-center gap-3 lg:hidden">
-              <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#2B124C] to-indigo-900">
-                <ShieldCheck className="h-6 w-6 text-cyan-300" />
-              </span>
-              <div>
-                <p className="text-xl font-extrabold tracking-tight">RTICORE</p>
-                <p className="text-xs text-slate-500">RTI Enterprise Platform</p>
+            <div className="relative my-8 rounded-2xl border border-white/15 bg-white/[0.06] p-5 shadow-2xl shadow-black/10" aria-label="Ilustrasi alur kerja terintegrasi">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <span className="flex items-center gap-2 text-xs font-medium text-teal-100"><Layers3 className="h-4 w-4" aria-hidden="true" /> RTICORE Workspace</span>
+                <span className="text-[10px] text-slate-400">Alur terintegrasi</span>
+              </div>
+              <div className="my-5 flex items-center gap-2">
+                {['Marketing', 'Sales', 'Delivery'].map((label, index) => <div key={label} className="flex min-w-0 flex-1 items-center gap-2">
+                  <div className="flex-1 rounded-xl border border-white/10 bg-[#1d3d46] px-2 py-3 text-center">
+                    <span className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-teal-200/10 text-[10px] font-semibold text-teal-200">0{index + 1}</span>
+                    <p className="text-[11px] font-medium text-slate-200">{label}</p>
+                  </div>
+                  {index < 2 && <ArrowRight className="h-3 w-3 shrink-0 text-teal-300/60" aria-hidden="true" />}
+                </div>)}
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-teal-200/10 px-3 py-3">
+                <span className="flex items-center gap-2 text-xs text-teal-100"><ChartNoAxesCombined className="h-4 w-4" aria-hidden="true" /> Visibilitas di setiap tahap</span>
+                <ArrowUpRight className="h-4 w-4 text-teal-200" aria-hidden="true" />
               </div>
             </div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-[#522b86]">
-              <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" /> Akses perusahaan
-            </span>
-            <h1 id="login-heading" className="mt-5 text-3xl font-bold tracking-tight text-slate-950">Login RTICORE</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Masuk dengan email perusahaan yang terdaftar. Jika diminta, selesaikan verifikasi identitas di halaman resmi Cloudflare Access.
-            </p>
 
-            <LoginSessionStatus />
-
-            <a href="/" className="mt-6 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#2B124C] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#43206e] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
-              <LockKeyhole className="h-5 w-5 shrink-0" aria-hidden="true" />
-              <span className="flex-1 text-center">Masuk dengan Cloudflare Access</span>
-              <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-            </a>
-            <a href="/cdn-cgi/access/logout" className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600">
-              <LogOut className="h-4 w-4" aria-hidden="true" /> Logout / Ganti akun
-            </a>
-
-            <div className="mt-7 space-y-3 border-t border-slate-200 pt-5">
-              <p className="flex items-start gap-2 text-xs leading-5 text-slate-600">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
-                Akses dilindungi Cloudflare Access. RTICORE tidak menyimpan password atau kode OTP pengguna.
-              </p>
-              <p className="text-xs leading-5 text-slate-500">
-                Belum terdaftar atau role tidak sesuai? Hubungi Administrator RTICORE untuk aktivasi akun, unit kerja dan izin akses.
-              </p>
+            <div className="relative grid grid-cols-3 gap-4 border-t border-white/10 pt-6">
+              {[{icon:Building2, title:'Terintegrasi', detail:'ERP, CRM & PSA'}, {icon:KeyRound, title:'Berbasis role', detail:'Akses sesuai peran'}, {icon:BadgeCheck, title:'Terverifikasi', detail:'Identitas & audit'}].map(({icon:Icon,title,detail}) => <div key={title}>
+                <Icon className="mb-3 h-5 w-5 text-[#8ee6ce]" aria-hidden="true" />
+                <p className="text-xs font-semibold">{title}</p><p className="mt-1 text-[10px] leading-5 text-slate-400">{detail}</p>
+              </div>)}
             </div>
-          </div>
-          <p className="mt-5 text-center text-xs leading-5 text-slate-400 lg:hidden">© 2026 RTI · Secure Enterprise Access</p>
-        </section>
+          </section>
+
+          <section aria-labelledby="login-heading" className="mx-auto w-full max-w-[440px]">
+            <div className="mb-7">
+              <span className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-teal-100 bg-white text-teal-700 shadow-sm"><LockKeyhole className="h-5 w-5" aria-hidden="true" /></span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-teal-700">Selamat datang kembali</p>
+              <h1 id="login-heading" className="mt-3 text-[34px] font-semibold leading-tight tracking-[-0.04em] text-slate-950">Login RTICORE</h1>
+              <p className="mt-3 max-w-sm text-sm leading-6 text-slate-500">Masuk ke workspace Anda dan lanjutkan hal-hal hebat bersama tim.</p>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-[0_12px_48px_-16px_rgba(15,44,54,0.12)] sm:p-7">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-800">Akses perusahaan</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-1 text-[10px] font-semibold text-teal-700"><ShieldCheck className="h-3 w-3" aria-hidden="true" /> Secure access</span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500">Gunakan email perusahaan yang terdaftar. Verifikasi identitas dilakukan melalui Cloudflare Access.</p>
+
+              <LoginSessionStatus />
+              <LocalLoginPanel />
+
+              <a href="/" className="group mt-6 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#115e59] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
+                <LockKeyhole className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 text-center">Masuk dengan Cloudflare Access</span>
+                <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden="true" />
+              </a>
+              <a href="/cdn-cgi/access/logout" className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600">
+                <LogOut className="h-3.5 w-3.5" aria-hidden="true" /> Logout / Ganti akun
+              </a>
+              <p className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-4 text-[11px] leading-5 text-slate-500"><Check className="mt-1 h-3.5 w-3.5 shrink-0 text-teal-600" aria-hidden="true" />RTICORE tidak menyimpan password atau kode OTP pengguna.</p>
+            </div>
+            <p className="mx-auto mt-5 max-w-sm text-center text-xs leading-5 text-slate-500">Belum terdaftar atau role tidak sesuai? Hubungi Administrator RTICORE untuk aktivasi akun dan izin akses.</p>
+          </section>
+        </div>
+        <footer className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-slate-500"><p>© 2026 RTI · Internal Business Platform</p><p className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> Dirancang untuk kolaborasi. Dilindungi di setiap langkah.</p></footer>
       </div>
     </main>
   );

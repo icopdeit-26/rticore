@@ -145,6 +145,10 @@ export const DEAL_FIELDS=[
  ['quotation_sender_name','Penandatangan quotation'],['quotation_sender_title','Jabatan penandatangan quotation'],
  ['methodology','Metodologi / Rule of Engagement'],['exclusions','Pengecualian lingkup'],
  ['team_composition','Komposisi tim yang disepakati'],
+ ['scoping_product','Produk scoping (kategori BoQ)'],['scoping_params','Parameter estimator scoping (JSON)'],
+ ['scoping_estimate_md','Estimasi effort scoping (MD)'],['scoping_estimate_base','Indikasi harga ICOP sebelum kalibrasi'],
+ ['scoping_estimate_price','Indikasi harga ICOP terkalibrasi'],['scoping_client_tier','Client tier ICOP'],
+ ['scoping_model_version','Versi model kalibrasi'],
  ['next_action','Rencana follow-up'],['next_action_at','Tanggal follow-up'],
  ['negotiation_notes','Hasil negosiasi'],['customer_decision','Keputusan pelanggan (approved/pending/rejected)'],
  ['payment_terms','Termin pembayaran'],['payment_va','Rekening VA disetujui Finance'],
@@ -179,7 +183,13 @@ export function cleanFields(input:unknown,keys:Set<string>):SalesFields{
  if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Data form wajib berupa object');
  const fields:SalesFields={};
  for(const [key,value] of Object.entries(input)){
-  if(!keys.has(key)||typeof value!=='string'||value.length>3500)throw Error('Field tidak dikenal atau terlalu panjang: '+key);
+  // The scoping estimator stores multi-asset parameters as JSON and needs more room.
+  const limit=key==='scoping_params'?12000:3500;
+  if(!keys.has(key)||typeof value!=='string'||value.length>limit)throw Error('Field tidak dikenal atau terlalu panjang: '+key);
+  if(key==='scoping_params'&&value.trim()){
+   let parsed:unknown;try{parsed=JSON.parse(value);}catch{throw Error('Parameter estimator scoping tidak valid');}
+   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Parameter estimator scoping tidak valid');
+  }
   fields[key]=value.trim();
  }
  return fields;

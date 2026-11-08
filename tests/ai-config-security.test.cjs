@@ -23,17 +23,17 @@ test('only server stores ciphertext; GET response cannot leak key, admin JWT pro
  assert.match(route,/authorizeBoQ\(req\)/);
  assert.match(route,/auth\.identity\.role!=='admin'/);
  assert.match(auth,/jwtVerify/);
- assert.match(auth,/india_members/);
+ assert.match(auth,/rticore_members/);
  assert.match(route,/listProviders/);
  assert.doesNotMatch(route,/config:\s*updated|configs:\s*appStore\.getAIConfigs/);
  assert.match(vault,/AES-GCM/);
  assert.match(vault,/crypto\.getRandomValues/);
- assert.match(vault,/INDIA_AI_ENCRYPTION_KEY/);
+ assert.match(vault,/RTICORE_AI_ENCRYPTION_KEY/);
  assert.match(vault,/additionalData:utf8\.encode/);
- assert.match(vault,/INDIA-AI:/);
+ assert.match(vault,/RTICORE-AI:/);
  const sql=text('migrations/0002_ai_connections.sql');
  assert.match(sql,/key_ciphertext TEXT/);
- assert.match(sql,/india_ai_config_audit/);
+ assert.match(sql,/rticore_ai_config_audit/);
  assert.doesNotMatch(sql,/api_key_plaintext/);
 });
 test('AI generation is admin-gated and demo API stays blocked',()=>{
@@ -55,7 +55,7 @@ test('mobile link is reachable, browser does not show saved key values',()=>{
  assert.match(ui,/type="password"/);
  assert.match(ui,/p\.hasKey/);
  assert.doesNotMatch(ui,/type={showKey/);
- assert.match(ui,/x-india-ai-admin/);
+ assert.match(ui,/x-rticore-ai-admin/);
  assert.match(menu,/item\('API Key','\/settings\/ai',\['admin'\]\)/);
  assert.match(nav,/navigationForRole/);
  assert.match(sidebar,/navigationForRole/);
@@ -71,7 +71,7 @@ test('Admin sees encryption readiness without seeing secrets and gets actionable
  assert.match(ui,/encryptionReady===false/);
  assert.match(ui,/noticeScope===p\.id/);
  assert.match(ui,/autoCapitalize="off"/);
- assert.doesNotMatch(route,/INDIA_AI_ENCRYPTION_KEY.*:\s*configured/);
+ assert.doesNotMatch(route,/RTICORE_AI_ENCRYPTION_KEY.*:\s*configured/);
 });
 test('AI action does not overlay Admin API key controls on mobile',()=>{
  const component=text('src/components/ai/AIWorkbench.tsx');

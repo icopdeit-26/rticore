@@ -4,13 +4,15 @@ import Link from 'next/link';
 import VaultPicker from '@/components/sales/VaultPicker';
 import {vaultDownload} from '@/lib/document-vault-links';
 import {ArrowLeft,CheckCircle2,Send,ShieldCheck} from 'lucide-react';
+import {OpportunityPicker} from '@/components/sales/OpportunityPicker';
+import {errorText,readApiJSON} from '@/lib/client-api';
 type Submission={id:string;quotation_number:string;boq_version:number;recipient_email:string;channel:string;
  status:string;created_by:string;verified_by:string|null;sent_at:string;evidence_reference:string;review_notes:string};
 const cls='w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-blue-600';
 async function api(method:'GET'|'POST'|'PATCH',url:string,body?:Record<string,unknown>){
  const r=await fetch(url,{method,cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},
   ...(body?{body:JSON.stringify(body)}:{})});
- const j=await r.json();
+ const j=await readApiJSON(r);
  if(!r.ok||!j.success)throw Error(j.message||'Transaksi gagal');
  return j;
 }
@@ -30,15 +32,19 @@ export default function SubmissionPage(){
  const refresh=useCallback(async(id:string)=>{
   try{const x=await api('GET','/api/sales/submission?opportunity_id='+encodeURIComponent(id));
    setItems(x.submissions||[]);setRole(x.role||'');setQuote(x.quotation_number||'');
-  }catch(e){setMessage(e instanceof Error?e.message:String(e));}
+  }catch(e){setMessage(errorText(e));}
  },[]);
- useEffect(()=>{const id=new URLSearchParams(window.location.search).get('opportunity_id')||'';setOpp(id);
+ const select=useCallback((id:string)=>{
+  setOpp(id);setItems([]);setQuote('');setReference('');setDigest('');setMessage('');
+  if(id)void refresh(id);else setMessage('Pilih Opportunity untuk melanjutkan.');
+ },[refresh]);
+ useEffect(()=>{
   const local=new Date();local.setMinutes(local.getMinutes()-local.getTimezoneOffset());setDate(local.toISOString().slice(0,19));
-  if(id)void refresh(id);else setMessage('Halaman ini harus dibuka dari Opportunity RTICORE.');},[refresh]);
+  select(new URLSearchParams(window.location.search).get('opportunity_id')||'');},[select]);
  const run=async(job:()=>Promise<unknown>,done:string)=>{
   setBusy(true);setMessage('');
   try{await job();await refresh(opp);setMessage(done);}
-  catch(e){setMessage(e instanceof Error?e.message:String(e));}
+  catch(e){setMessage(errorText(e));}
   finally{setBusy(false);}
  };
  const submit=()=>{if(!window.confirm('Anda menyatakan telah mengirim quotation final kepada penerima. Rekam sebagai Reported, bukan Verified?'))return;
@@ -56,7 +62,8 @@ export default function SubmissionPage(){
   <header className="rounded-xl border bg-white p-4 sm:p-5">
    <Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(opp)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><ArrowLeft size={15}/> Kembali ke Opportunity</Link>
    <h1 className="mt-3 flex items-center gap-2 text-xl font-extrabold"><Send size={20}/> Quotation Submission & Evidence</h1>
-   <p className="mt-2 text-xs text-slate-500">Opportunity {opp} · Quotation {quote||'belum dicantumkan'}</p>
+   <OpportunityPicker value={opp} onChange={select} disabled={busy}/>
+   <p className="mt-2 text-xs text-slate-500">Quotation {quote||'belum dicantumkan'}</p>
    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
     Simpan bukti pengiriman asli di Document Vault, lalu ajukan pemeriksaan Finance/Approver. Setiap dokumen terhubung ke versi penawaran yang dikirim.</p>
   </header>

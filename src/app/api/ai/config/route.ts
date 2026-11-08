@@ -8,7 +8,7 @@ import { encryptionKey, encryptProviderKey, decryptProviderKey, readProvider, li
 const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:privateHeaders});
 function isSameOrigin(req:Request):boolean{
  const origin=req.headers.get('origin');
- return (!origin||origin===new URL(req.url).origin) && req.headers.get('x-india-ai-admin')==='1';
+ return (!origin||origin===new URL(req.url).origin) && req.headers.get('x-rticore-ai-admin')==='1';
 }
 export async function GET(req:Request){
  const auth=await authorizeBoQ(req);
@@ -16,7 +16,7 @@ export async function GET(req:Request){
  if(auth.identity.role!=='admin')return json({success:false,message:'Hanya Admin dapat mengelola AI API Keys.'},403);
  try {
   const configs=await listProviders(auth.identity.db);
-  // Report readiness only to an authenticated INDIA Admin; never return secret material.
+  // Report readiness only to an authenticated RTICORE Admin; never return secret material.
   const encryptionReady=await encryptionKey().then(()=>true,()=>false);
   return json({success:true,configs,encryptionReady});
  }
@@ -38,7 +38,7 @@ export async function POST(req:Request){
   if(!Array.isArray(ids)||ids.length!==AI_PROVIDERS.length||new Set(ids).size!==ids.length||
     !ids.every(isProviderId))return json({success:false,message:'Urutan provider harus lengkap dan unik.'},400);
   try{
-   const query='INSERT INTO india_ai_providers(provider_id,model,priority,enabled,updated_by) '+
+   const query='INSERT INTO rticore_ai_providers(provider_id,model,priority,enabled,updated_by) '+
      'VALUES(?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET priority=excluded.priority,'+
      'updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP';
    const statements=ids.map((id,i)=>db.prepare(query)
@@ -56,14 +56,14 @@ export async function POST(req:Request){
    if(!existing?.key_ciphertext)return json({success:false,message:'Simpan API key terlebih dahulu.'},400);
    const plain=await decryptProviderKey(existing);
    const result=await probeProvider(id,existing.model,plain);
-   await db.prepare('UPDATE india_ai_providers SET tested_at=CURRENT_TIMESTAMP,tested_ok=?,updated_at=CURRENT_TIMESTAMP WHERE provider_id=?')
+   await db.prepare('UPDATE rticore_ai_providers SET tested_at=CURRENT_TIMESTAMP,tested_ok=?,updated_at=CURRENT_TIMESTAMP WHERE provider_id=?')
      .bind(result.ok?1:0,id).run();
    await auditConfig(db,email,id,'test_connection');
    return json({success:result.ok,message:result.message,latencyMs:result.latencyMs,configs:await listProviders(db)},result.ok?200:422);
   }
   if(action==='deleteKey'){
    if(!existing)return json({success:true,configs:await listProviders(db)});
-   await db.prepare('UPDATE india_ai_providers SET key_iv=NULL,key_ciphertext=NULL,enabled=0,tested_at=NULL,tested_ok=NULL,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE provider_id=?').bind(email,id).run();
+   await db.prepare('UPDATE rticore_ai_providers SET key_iv=NULL,key_ciphertext=NULL,enabled=0,tested_at=NULL,tested_ok=NULL,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE provider_id=?').bind(email,id).run();
    await auditConfig(db,email,id,'delete_key');
    return json({success:true,configs:await listProviders(db)});
   }
@@ -79,15 +79,15 @@ export async function POST(req:Request){
   const priority=existing?.priority||(AI_PROVIDERS.findIndex(x=>x.id===id)+1);
   const enabled=body.enabled===undefined?existing?.enabled===1:body.enabled;
   if(enabled&&!encrypted&&!existing?.key_ciphertext)return json({success:false,message:'Isi API key sebelum mengaktifkan provider.'},400);
-  const query='INSERT INTO india_ai_providers '+
+  const query='INSERT INTO rticore_ai_providers '+
     '(provider_id,model,priority,enabled,key_iv,key_ciphertext,tested_at,tested_ok,updated_at,updated_by) '+
     'VALUES(?,?,?,?,?,?,NULL,NULL,CURRENT_TIMESTAMP,?) '+
     'ON CONFLICT(provider_id) DO UPDATE SET '+
     'model=excluded.model,priority=excluded.priority,enabled=excluded.enabled,'+
-    'key_iv=COALESCE(excluded.key_iv,india_ai_providers.key_iv),'+
-    'key_ciphertext=COALESCE(excluded.key_ciphertext,india_ai_providers.key_ciphertext),'+
-    'tested_at=CASE WHEN excluded.key_ciphertext IS NOT NULL OR excluded.model<>india_ai_providers.model THEN NULL ELSE india_ai_providers.tested_at END,'+
-    'tested_ok=CASE WHEN excluded.key_ciphertext IS NOT NULL OR excluded.model<>india_ai_providers.model THEN NULL ELSE india_ai_providers.tested_ok END,'+
+    'key_iv=COALESCE(excluded.key_iv,rticore_ai_providers.key_iv),'+
+    'key_ciphertext=COALESCE(excluded.key_ciphertext,rticore_ai_providers.key_ciphertext),'+
+    'tested_at=CASE WHEN excluded.key_ciphertext IS NOT NULL OR excluded.model<>rticore_ai_providers.model THEN NULL ELSE rticore_ai_providers.tested_at END,'+
+    'tested_ok=CASE WHEN excluded.key_ciphertext IS NOT NULL OR excluded.model<>rticore_ai_providers.model THEN NULL ELSE rticore_ai_providers.tested_ok END,'+
     'updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by';
   await db.prepare(query).bind(id,model,priority,enabled?1:0,encrypted?.iv||null,encrypted?.ciphertext||null,email).run();
   await auditConfig(db,email,id,key?'rotate_key':'update_settings');
@@ -95,9 +95,9 @@ export async function POST(req:Request){
  }catch(error){
   // Categorise safe configuration errors without exposing secrets or provider responses.
   const detail=error instanceof Error?error.message:'';
-  if(/INDIA_AI_ENCRYPTION_KEY|Secret enkripsi|Konfigurasi enkripsi/i.test(detail))
+  if(/RTICORE_AI_ENCRYPTION_KEY|Secret enkripsi|Konfigurasi enkripsi/i.test(detail))
    return json({success:false,code:'AI_ENCRYPTION_NOT_READY',
-    message:'Secret enkripsi AI belum siap pada Worker. Administrator Cloudflare perlu memasang INDIA_AI_ENCRYPTION_KEY (32 byte base64).'},503);
+    message:'Secret enkripsi AI belum siap pada Worker. Administrator Cloudflare perlu memasang RTICORE_AI_ENCRYPTION_KEY (32 byte base64).'},503);
   return json({success:false,code:'AI_CONFIG_WRITE_FAILED',
    message:'Gagal menyimpan konfigurasi AI. Periksa skema/migrasi D1 dan kesehatan Worker UAT.'},503);
  }

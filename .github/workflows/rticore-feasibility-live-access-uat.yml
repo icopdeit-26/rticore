@@ -1,0 +1,95 @@
+name: RTICORE Real Access Feasibility UAT
+on:
+  push:
+    branches:
+      - feat/rticore-modules-13-15-completion-20261022
+    paths:
+      - scripts/rticore-feasibility-live-access-uat.mjs
+      - scripts/rticore-feasibility-uat-guards.mjs
+      - tests/rticore-feasibility-live-access-guard.test.cjs
+      - .github/workflows/rticore-feasibility-live-access-uat.yml
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Use READ_ONLY for safe real-Access preflight; TRANSACTIONS writes only synthetic UAT records'
+        required: true
+        type: choice
+        options: [READ_ONLY, TRANSACTIONS]
+      write_confirmation:
+        description: 'For TRANSACTIONS only, type YES_ISOLATED_UAT'
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: rticore-feasibility-live-uat
+  cancel-in-progress: false
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Offline UAT isolation and human-session guards (zero network transactions)
+        run: node --test tests/rticore-feasibility-live-access-guard.test.cjs
+  preflight:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: safety
+    runs-on: ubuntu-latest
+    environment: rticore-uat
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Dependencies
+        run: npm ci --no-audit --no-fund
+      - name: UAT script syntax
+        run: node --check scripts/rticore-feasibility-live-access-uat.mjs
+      - name: Cloudflare Access deny challenge and D1 preflight (never touches production)
+        env:
+          RTICORE_UAT_WORKER_NAME: ${{ vars.RTICORE_FEASIBILITY_UAT_WORKER_NAME || 'uat-rticore' }}
+          RTICORE_UAT_BASE_URL: ${{ vars.RTICORE_FEASIBILITY_UAT_BASE_URL || 'https://uat-rticore.elang-haqeem.workers.dev' }}
+          RTICORE_UAT_D1_ID: ${{ vars.RTICORE_FEASIBILITY_UAT_D1_ID || 'eaed652e-7322-4950-a304-dd50baa5de02' }}
+          RTICORE_UAT_EXPECT_SHA: ${{ github.sha }}
+          RTICORE_UAT_CF_READ_TOKEN: ${{ secrets.RTICORE_UAT_CF_READ_TOKEN }}
+        run: node scripts/rticore-feasibility-live-access-uat.mjs --preflight
+  transactions:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'TRANSACTIONS' && inputs.write_confirmation == 'YES_ISOLATED_UAT' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: rticore-uat
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - name: Six human Access roles, isolated live transactions and immutable release gates
+        env:
+          RTICORE_UAT_WORKER_NAME: ${{ vars.RTICORE_FEASIBILITY_UAT_WORKER_NAME || 'uat-rticore' }}
+          RTICORE_UAT_BASE_URL: ${{ vars.RTICORE_FEASIBILITY_UAT_BASE_URL || 'https://uat-rticore.elang-haqeem.workers.dev' }}
+          RTICORE_UAT_D1_ID: ${{ vars.RTICORE_FEASIBILITY_UAT_D1_ID || 'eaed652e-7322-4950-a304-dd50baa5de02' }}
+          RTICORE_UAT_EXPECT_SHA: ${{ github.sha }}
+          RTICORE_UAT_CF_READ_TOKEN: ${{ secrets.RTICORE_UAT_CF_READ_TOKEN }}
+          RTICORE_UAT_ACCESS_TEAM_DOMAIN: ${{ vars.RTICORE_UAT_ACCESS_TEAM_DOMAIN }}
+          RTICORE_UAT_ACCESS_AUD: ${{ secrets.RTICORE_UAT_ACCESS_AUD }}
+          RTICORE_UAT_ALLOW_WRITE: YES_ISOLATED_UAT
+          RTICORE_UAT_EMAIL_SALES_A: ${{ vars.RTICORE_UAT_EMAIL_SALES_A }}
+          RTICORE_UAT_EMAIL_SALES_B: ${{ vars.RTICORE_UAT_EMAIL_SALES_B }}
+          RTICORE_UAT_EMAIL_PRESALES: ${{ vars.RTICORE_UAT_EMAIL_PRESALES }}
+          RTICORE_UAT_EMAIL_FINANCE: ${{ vars.RTICORE_UAT_EMAIL_FINANCE }}
+          RTICORE_UAT_EMAIL_APPROVER: ${{ vars.RTICORE_UAT_EMAIL_APPROVER }}
+          RTICORE_UAT_EMAIL_ADMIN: ${{ vars.RTICORE_UAT_EMAIL_ADMIN }}
+          RTICORE_UAT_JWT_SALES_A: ${{ secrets.RTICORE_UAT_JWT_SALES_A }}
+          RTICORE_UAT_JWT_SALES_B: ${{ secrets.RTICORE_UAT_JWT_SALES_B }}
+          RTICORE_UAT_JWT_PRESALES: ${{ secrets.RTICORE_UAT_JWT_PRESALES }}
+          RTICORE_UAT_JWT_FINANCE: ${{ secrets.RTICORE_UAT_JWT_FINANCE }}
+          RTICORE_UAT_JWT_APPROVER: ${{ secrets.RTICORE_UAT_JWT_APPROVER }}
+          RTICORE_UAT_JWT_ADMIN: ${{ secrets.RTICORE_UAT_JWT_ADMIN }}
+        run: node scripts/rticore-feasibility-live-access-uat.mjs --transactions

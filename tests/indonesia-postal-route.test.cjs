@@ -42,7 +42,7 @@ function route(role='sales',options={}){
  },mod,mod.exports);
  return {GET:mod.exports.GET,calls};
 }
-const request=postal=>new Request('https://india-uat.invalid/api/reference/postal?postal='+postal);
+const request=postal=>new Request('https://rticore-uat.invalid/api/reference/postal?postal='+postal);
 test('middleware allows only the authenticated reference endpoint',()=>{
  assert.ok(middleware.includes("'/api/reference/postal'"));
 });
@@ -79,7 +79,7 @@ test('over-limit postcode is not returned',async()=>{
  const r=route('sales',{overLimit:true}),out=await r.GET(request('40111'));assert.equal(out.status,409);
 });
 
-const suggest=q=>new Request('https://india-uat.invalid/api/reference/postal?q='+encodeURIComponent(q));
+const suggest=q=>new Request('https://rticore-uat.invalid/api/reference/postal?q='+encodeURIComponent(q));
 test('postcode search is authenticated and restricted to permitted roles',async()=>{
  const unauth=route('sales',{unauthenticated:true});
  assert.equal((await unauth.GET(suggest('Braga'))).status,401);assert.deepEqual(unauth.calls,[]);

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate batched D1 SQL from a pinned, public Indonesian postal reference dataset.
-No customer data leaves INDIA. The generated files are NOT automatically applied.
+No customer data leaves RTICORE. The generated files are NOT automatically applied.
 """
 import argparse
 import csv
@@ -77,16 +77,16 @@ def main():
         statements = ["-- Source commit: " + DATA_SHA]
         for k in range(0, len(block), ROWS_PER_STATEMENT):
             values = ",".join("(" + ",".join(sql_value(v) for v in record) + ")" for record in block[k:k+ROWS_PER_STATEMENT])
-            statements.append(f"INSERT OR REPLACE INTO india_postal_areas({cols}) VALUES {values};")
+            statements.append(f"INSERT OR REPLACE INTO rticore_postal_areas({cols}) VALUES {values};")
         (out / f"{i//ROWS_PER_FILE + 1:03d}.sql").write_text("\n".join(statements) + "\n", encoding="utf-8")
     # This last file is applied ONLY after every data batch has completed.
     # Guard against partial imports and ensure all 38 provinces exist in D1.
     final_sql = (
-        "INSERT OR REPLACE INTO india_postal_import_state("
+        "INSERT OR REPLACE INTO rticore_postal_import_state("
         "singleton,status,source_version,row_count,province_count,postal_count,verified_at"
         ") SELECT 1,'ready'," + sql_value(DATA_SHA) +
         ",COUNT(*),COUNT(DISTINCT province_code),COUNT(DISTINCT postal_code),CURRENT_TIMESTAMP"
-        " FROM india_postal_areas HAVING COUNT(*)=" + str(len(entries)) +
+        " FROM rticore_postal_areas HAVING COUNT(*)=" + str(len(entries)) +
         " AND COUNT(DISTINCT province_code)=" + str(len({r[2] for r in entries})) +
         " AND COUNT(DISTINCT postal_code)=" + str(len({r[1] for r in entries})) + ";"
     )

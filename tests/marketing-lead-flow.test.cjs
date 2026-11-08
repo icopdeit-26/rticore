@@ -29,6 +29,9 @@ test('01 Marketing Lead accepts source, campaign, owner, qualified fields with n
  assert.equal(validated.source,'Webinar');
  assert.equal(validated.qualification.need,'Annual VAPT');
  assert.equal(validated.estimated_value_idr,200000000);
+ assert.equal(validated.qualification.contact_phone,'081234567890');
+ assert.equal(lead.validateLead({...input,qualification:{contact_phone:'+62 812-3456-7890'}}).qualification.contact_phone,'+62 812-3456-7890');
+ assert.throws(()=>lead.validateLead({...input,qualification:{contact_phone:'bukan nomor'}}),/telepon/);
 });
 test('02 lead validation rejects missing company, malformed value and bad owner identity',()=>{
  for(const [key,v] of [['account_name',''],['assigned_sales_email','not-an-email'],['service_family','firewall unknown'],['estimated_value_idr',-1]])
@@ -71,7 +74,7 @@ test('05 BoQ and Sales must match Opportunity ID, company, project, service fami
 });
 test('06 Lead conversion is atomic D1 batch with dedupe, immutable link and Cloudflare Access role checks',()=>{
  const route=fs.readFileSync(path.join(__dirname,'../src/app/api/marketing/leads/route.ts'),'utf8');
- for(const str of ['authorizeBoQ(req)','india_sales_accounts','india_sales_opportunities','india_sales_lead_links','db.batch(statements)','role===\'sales\'','row.status===\'converted\'']){
+ for(const str of ['authorizeBoQ(req)','rticore_sales_accounts','rticore_sales_opportunities','rticore_sales_lead_links','db.batch(statements)','role===\'sales\'','row.status===\'converted\'']){
   assert.ok(route.includes(str),'Missing conversion gate '+str);
  }
  const sql=fs.readFileSync(path.join(__dirname,'../migrations/0005_marketing_lead_flow.sql'),'utf8');

@@ -1,6 +1,6 @@
--- INDIA 0008: Original award/PO/contract evidence register with independent Finance and Legal reviews.
+-- RTICORE 0008: Original award/PO/contract evidence register with independent Finance and Legal reviews.
 -- SHA and external reference do not store original file bytes. Archival must be separately governed.
-CREATE TABLE IF NOT EXISTS india_sales_award_documents (
+CREATE TABLE IF NOT EXISTS rticore_sales_award_documents (
  id TEXT PRIMARY KEY NOT NULL,
  tenant_id TEXT NOT NULL,
  opportunity_id TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS india_sales_award_documents (
  legal_reviewed_at TEXT,
  legal_review_notes TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- FOREIGN KEY(tenant_id,opportunity_id) REFERENCES india_sales_opportunities(tenant_id,id)
+ FOREIGN KEY(tenant_id,opportunity_id) REFERENCES rticore_sales_opportunities(tenant_id,id)
 );
-CREATE INDEX IF NOT EXISTS idx_india_award_gate ON india_sales_award_documents(tenant_id,opportunity_id,document_kind,created_at DESC);
-INSERT OR IGNORE INTO india_schema_migrations(version) VALUES(8);
+CREATE INDEX IF NOT EXISTS idx_rticore_award_gate ON rticore_sales_award_documents(tenant_id,opportunity_id,document_kind,created_at DESC);
+INSERT OR IGNORE INTO rticore_schema_migrations(version) VALUES(8);

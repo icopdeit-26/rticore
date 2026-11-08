@@ -33,7 +33,7 @@ export async function POST(req:Request){
   const previous=rolePreviewFromCookie(req.headers.get('cookie'),actor.email,'admin')||'admin';
   try{
     // Auditable role transition; refuse to change mode if audit cannot persist.
-    await actor.db.prepare('INSERT INTO india_audit_log(id,tenant_id,action,actor_email,summary) VALUES(?,?,?,?,?)')
+    await actor.db.prepare('INSERT INTO rticore_audit_log(id,tenant_id,action,actor_email,summary) VALUES(?,?,?,?,?)')
       .bind(crypto.randomUUID(),TENANT,'ROLE_PREVIEW_SWITCH',actor.email,previous+' -> '+role).run();
   }catch{
     return reply({success:false,message:'Audit perubahan role gagal disimpan. Mode uji tidak diubah.'},503);

@@ -9,9 +9,9 @@ function loadTS(file,mocks={}){
  new Function('require','module','exports',js)(name=>name in mocks?mocks[name]:require(name),mod,mod.exports);
  return mod.exports;
 }
-test('all five administration links are visible only to Admin, including mobile navigation source',()=>{
+test('all administration links (incl. scoping model) are visible only to Admin, including mobile navigation source',()=>{
  const nav=loadTS('src/lib/enterprise-navigation.ts');
- const urls=['/boq/users','/settings/system','/settings/options','/settings/option-registry','/settings/ai'];
+ const urls=['/boq/users','/settings/system','/settings/options','/settings/option-registry','/settings/ai','/settings/scoping-model'];
  assert.deepEqual(nav.navigationForRole('admin').find(g=>g.id==='administration').items.map(x=>x.href),urls);
  for(const role of [...nonAdmins,null,'forged']){
   const groups=nav.navigationForRole(role);
@@ -44,16 +44,16 @@ test('users, system settings and keys APIs reject anonymous and every non-Admin 
  const h=new Harness().seed();
  try{
   for(const route of ['boq/members','admin/system','ai/config'])for(const role of [...nonAdmins,'unknown'])for(const method of ['GET','POST']){
-   const before=h.sql.prepare('SELECT count(*) AS n FROM india_operations_events').get().n;
-   await expect(h.call(route,method,role,method==='POST'?{action:'catalog',role:'admin',email:users.sales,active:true}:null,'',{'x-role':'admin','x-india-ai-admin':'1'}),role==='unknown'?401:403);
-   assert.equal(h.sql.prepare('SELECT count(*) AS n FROM india_operations_events').get().n,before);
+   const before=h.sql.prepare('SELECT count(*) AS n FROM rticore_operations_events').get().n;
+   await expect(h.call(route,method,role,method==='POST'?{action:'catalog',role:'admin',email:users.sales,active:true}:null,'',{'x-role':'admin','x-rticore-ai-admin':'1'}),role==='unknown'?401:403);
+   assert.equal(h.sql.prepare('SELECT count(*) AS n FROM rticore_operations_events').get().n,before);
   }
  }finally{h.close();}
 });
 test('Admin registers, edits and disables a member; audit is retained and self-demotion is blocked',async()=>{
  const h=new Harness().seed();
  try{
-  h.sql.prepare('INSERT OR IGNORE INTO india_members(email,role,active) VALUES(?,?,1)').run(users.admin,'admin');
+  h.sql.prepare('INSERT OR IGNORE INTO rticore_members(email,role,active) VALUES(?,?,1)').run(users.admin,'admin');
   const email='new.user@flow.invalid';
   await expect(h.call('boq/members','POST','admin',{email,role:'sales',active:true,unit_key:''}),200);
   let list=await expect(h.call('boq/members','GET','admin'),200);
@@ -62,7 +62,7 @@ test('Admin registers, edits and disables a member; audit is retained and self-d
   list=await expect(h.call('boq/members','GET','admin'),200);
   assert.equal(list.body.users.find(m=>m.email===email).active,0);
   assert.equal(list.body.users.find(m=>m.email===email).role,'finance');
-  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM india_operations_events WHERE area='member' AND entity_id=?").get(email).n,2);
+  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_operations_events WHERE area='member' AND entity_id=?").get(email).n,2);
   await expect(h.call('boq/members','POST','admin',{email:users.admin,role:'viewer',active:false}),409);
   await expect(h.call('boq/members','POST','admin',{email:'bad',role:'superadmin',active:true}),422);
   await expect(h.call('boq/members','POST','admin',{email,role:'admin',active:true},'',{Origin:'https://forged.invalid'}),403);

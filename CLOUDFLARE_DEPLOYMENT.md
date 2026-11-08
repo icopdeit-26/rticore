@@ -1,17 +1,17 @@
-# India: ChatGPT - GitHub - Cloudflare
+# RTICore: ChatGPT - GitHub - Cloudflare
 
 ## Confirmed connections on 20 October 2026
 
-- GitHub: elanghaqeem-hash/India, main, ChatGPT GitHub connector has write permission.
+- GitHub: elanghaqeem-hash/RTICore, main, ChatGPT GitHub connector has write permission.
 - Cloudflare account: 208155f241d4da84e1a6a9b44b7a8d28.
-- Cloudflare Worker: india.
-- Cloudflare Workers Builds repository integration: connected to GitHub India, main, auto-build enabled.
+- Cloudflare Worker: rticore.
+- Cloudflare Workers Builds repository integration: connected to GitHub RTICore, main, auto-build enabled.
 - Investigated build: 9851d076-3636-4f81-a7db-da39e8ca508f — FAILED.
 - Failure: Next.js 14.2.35 incompatible with auto-configured OpenNext Cloudflare 1.20.12.
 - Production app deployment status: NOT VERIFIED; Worker still reports dashboard-template deployment.
 
 Dashboard:
-https://dash.cloudflare.com/208155f241d4da84e1a6a9b44b7a8d28/workers/services/view/india/production
+https://dash.cloudflare.com/208155f241d4da84e1a6a9b44b7a8d28/workers/services/view/rticore/production
 
 ## Auto push and deploy
 
@@ -26,7 +26,7 @@ https://dash.cloudflare.com/208155f241d4da84e1a6a9b44b7a8d28/workers/services/vi
 - Fix the filesystem-backed persistence in src/lib/store.ts. Local fs writes are not durable Cloudflare Workers storage; use a real persistent database, with tenant-aware authorization.
 - Secure src/app/api/ai/config/route.ts: GET currently includes provider config properties that can include raw API keys. Mutations currently lack admin authentication. Keep actual provider credentials only in server-side secrets.
 - Confirm that seed CRM and tender data are sample records rather than live records.
-- Add proper Wrangler configuration targeting Worker india, plus CI typecheck/test gates and smoke testing in previews. Avoid automatic migration during production deploy.
+- Add proper Wrangler configuration targeting Worker rticore, plus CI typecheck/test gates and smoke testing in previews. Avoid automatic migration during production deploy.
 - Do not bypass unsupported Next.js version checks or publish live API keys to fix a CI build.
 
 ## Verification checklist

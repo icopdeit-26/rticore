@@ -10,6 +10,11 @@ import {StandardCustomerChoice} from '@/components/sales/StandardCustomerChoice'
 import {ManagedOptionSelect} from '@/components/sales/ManagedOptionSelect';
 import {CompactSelect} from '@/components/ui/CompactSelect';
 import type {JourneyGate} from '@/lib/sales-journey';
+import {errorText,readApiJSON,rupiah} from '@/lib/client-api';
+import ProductScopingEstimator from '@/components/sales/ProductScopingEstimator';
+import {deliveryProfile,productsForFamily,SCOPING_ESTIMATE_KEYS,ALWAYS_VISIBLE} from '@/lib/product-delivery-profile';
+import {SCOPING_DEFINITIONS,type ScopingService} from '@/lib/scoping-service-options';
+import type {ModelFactors} from '@/lib/scoping-calibration';
 import { SALES_STAGES, ACCOUNT_FIELDS, DEAL_FIELDS, SERVICE_FAMILIES, stageProbability,
  type SalesAccount,type SalesDeal,type SalesFields,type SalesStage,synchronizeBillingAddress,updateCustomerAddressFields } from '@/lib/sales-workflow';
 
@@ -18,7 +23,9 @@ type Detail={deal:SalesDeal;account:SalesAccount;boqs:{id:string;quotation_numbe
  originLead:{lead_id:string;lead_number:string;source:string;campaign:string}|null;
  history:{action:string;from_stage:string|null;to_stage:string|null;actor_email:string;created_at:string}[];
  activities:{kind:string;subject:string;detail:string;created_at:string}[];journey:JourneyGate[];role:string;identityEmail:string};
-const money=(v:number)=>'Rp '+Number(v||0).toLocaleString('id-ID');
+const money=(v:number)=>rupiah(v);
+const ACTIVITY_KINDS:[string,string][]=[['call','Telepon'],['email','Email'],['meeting','Meeting'],['follow_up','Follow-up'],['tender','Tender'],['note','Catatan']];
+const DOCUMENT_KINDS:[string,string][]=[['boq','BoQ'],['quotation','Quotation'],['customer_registration','Registrasi Customer'],['project_form','Form Project'],['sales_handover','Sales Handover'],['loss_analysis','Analisis Lost']];
 const inputClass='mt-1.5 min-h-11 w-full min-w-0 scroll-mt-28 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base font-normal text-slate-900 outline-none transition-shadow placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-500 sm:text-sm';
 const billingAddressKeys=new Set(['billing_address','billing_province','billing_postal']);
 const headquartersKeys=new Set(['hq_province','hq_postal','hq_province_code','hq_regency','hq_regency_code','hq_district','hq_district_code','hq_village','hq_village_code','hq_village_kind']);
@@ -33,22 +40,27 @@ const listSelect:Record<string,string[]>={
 };
 const stageLabel=(s:string)=>SALES_STAGES.find(x=>x[0]===s)?.[1]||s;
 const stages:SalesStage[]=SALES_STAGES.map(x=>x[0]);
-function FormFields({fields,values,onUpdate,onPatch,readOnly,compactLabels=false}:{
- fields:readonly (readonly [string,string])[];values:SalesFields;onUpdate:(k:string,v:string)=>void;onPatch?:(patch:SalesFields)=>void;readOnly?:(k:string)=>boolean;compactLabels?:boolean;
+function FormFields({fields,values,onUpdate,onPatch,readOnly,compactLabels=false,highlightEmpty=false,placeholders}:{
+ fields:readonly (readonly [string,string])[];values:SalesFields;onUpdate:(k:string,v:string)=>void;onPatch?:(patch:SalesFields)=>void;readOnly?:(k:string)=>boolean;compactLabels?:boolean;highlightEmpty?:boolean;
+ placeholders?:Partial<Record<string,string>>;
 }){
  return <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
- {fields.filter(([key])=>!headquartersKeys.has(key)&&!(values.billing_same_as_hq==='ya'&&billingAddressKeys.has(key))).map(([key,label])=>(
+ {fields.filter(([key])=>!headquartersKeys.has(key)&&!(values.billing_same_as_hq==='ya'&&billingAddressKeys.has(key))).map(([key,label])=>{
+  const isEmpty=highlightEmpty&&!values[key]?.trim();
+  const fieldClass=inputClass+(isEmpty?' !border-red-300 !bg-red-50 focus:!border-red-500 focus:!ring-red-100':'');
+  return (
   key==='client_tier'||key==='industry'||key==='business_type'
    ? <StandardCustomerChoice key={key} field={key} label={label} value={values[key]||''}
       industry={values.industry||''} disabled={readOnly?.(key)} onChange={v=>onUpdate(key,v)}/>
    : <React.Fragment key={key}><label className={'block min-w-0 text-xs font-semibold text-slate-700 '+(areaKeys.has(key)||compactLabels&&key.endsWith('_name')?'sm:col-span-2':'')}>
   {compactLabels?(key.endsWith('_name')?'Nama lengkap':key.endsWith('_phone')?'Nomor telepon':key.endsWith('_email')?'Email':key.endsWith('_title')?'Jabatan':'Nama lengkap'):label}
-  {(key==='lead_source'||key==='procurement_process')?<ManagedOptionSelect group={key} label={label} className={inputClass} disabled={readOnly?.(key)} value={values[key]||''} onChange={value=>onUpdate(key,value)}/>:listSelect[key]?<CompactSelect label={label} className={inputClass} disabled={readOnly?.(key)}
+  {(key==='lead_source'||key==='procurement_process')?<ManagedOptionSelect group={key} label={label} className={fieldClass} disabled={readOnly?.(key)} value={values[key]||''} onChange={value=>onUpdate(key,value)}/>:listSelect[key]?<CompactSelect label={label} className={fieldClass} disabled={readOnly?.(key)}
    value={values[key]||''} onChange={value=>onUpdate(key,value)}
    options={[{value:'',label:'— Pilih —'},...listSelect[key].map(v=>({value:v,label:v}))]}
    searchable={listSelect[key].length>=10}/>:
-  areaKeys.has(key)?<textarea rows={2} className={inputClass+' resize-y'} disabled={readOnly?.(key)} value={values[key]||''} onChange={e=>onUpdate(key,e.target.value)}/>:
-  <input aria-label={label} className={inputClass} disabled={readOnly?.(key)} type={key.endsWith('_date')||['expected_closing_date','next_action_at','quotation_sent_at','quotation_valid_until'].includes(key)?'date':key.endsWith('_email')?'email':key.includes('phone')?'tel':key.includes('amount')||key==='quotation_valid_days'?'number':'text'} value={values[key]||''} placeholder={key.endsWith('_phone')?'Contoh: +62 812 3456 7890':key.endsWith('_email')?'nama@perusahaan.co.id':undefined} onChange={e=>onUpdate(key,e.target.value)}/>}
+  areaKeys.has(key)?<textarea rows={2} className={fieldClass+' resize-y'} disabled={readOnly?.(key)} placeholder={placeholders?.[key]} value={values[key]||''} onChange={e=>onUpdate(key,e.target.value)}/>:
+  <input aria-label={label} className={fieldClass} disabled={readOnly?.(key)} type={key.endsWith('_date')||['expected_closing_date','next_action_at','quotation_sent_at','quotation_valid_until'].includes(key)?'date':key.endsWith('_email')?'email':key.includes('phone')?'tel':key.includes('amount')||key==='quotation_valid_days'?'number':'text'} value={values[key]||''} placeholder={placeholders?.[key]||(key.endsWith('_phone')?'Contoh: +62 812 3456 7890':key.endsWith('_email')?'nama@perusahaan.co.id':undefined)} onChange={e=>onUpdate(key,e.target.value)}/>}
+ {isEmpty&&<span className="mt-1 block text-[11px] font-normal text-red-600">Belum diisi</span>}
  </label>{key==='billing_same_as_hq'&&values.billing_same_as_hq==='ya'&&
   <div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3" role="status" aria-live="polite">
    <p className="text-xs font-semibold text-emerald-900">Alamat penagihan otomatis mengikuti kantor pusat.</p>
@@ -58,7 +70,7 @@ function FormFields({fields,values,onUpdate,onPatch,readOnly,compactLabels=false
    <p className="mt-1 text-xs text-emerald-700">Alamat, provinsi, dan kode pos penagihan tidak perlu diisi kembali.</p>
   </div>}
   {key==='hq_address'&&<PostalAddressFields values={values} onChange={patch=>{if(onPatch)onPatch(patch);else for(const [k,v] of Object.entries(patch))onUpdate(k,v);}} disabled={readOnly?.('hq_address')}/>}</React.Fragment>
- ))}
+ );})}
  </div>;
 }
 const CUSTOMER_SECTIONS=[
@@ -101,7 +113,7 @@ const SALES_FIELD_GROUPS: Array<{title:string;description:string;keys:readonly s
  {title:'01 · Pipeline & Qualification',description:'Sumber lead, owner, target closing, kebutuhan, budget, PIC keputusan dan procurement',
   keys:['lead_source','sales_owner','expected_closing_date','service_family','contract_model','client_need','budget_status','decision_maker','procurement_process','discovery_notes']},
  {title:'02 · Technical Scoping & Delivery',description:'Parameter teknis, aset, metodologi, SLA, resource, deliverables dan timeline',
-  keys:['technical_scope','technical_specifications','scope_quantity','service_level','delivery_model','resourcing_model','deliverables','project_site','project_province','project_postal','project_pic_name','project_pic_phone','project_pic_email','implementation_timeline','contract_duration','license_or_sku','asset_profile','methodology','exclusions','team_composition']},
+  keys:['technical_scope','technical_specifications','scope_quantity','service_level','delivery_model','resourcing_model','deliverables','project_site','project_province','project_postal','project_pic_name','project_pic_phone','project_pic_email','implementation_timeline','contract_duration','license_or_sku','asset_profile','methodology','exclusions','team_composition',...SCOPING_ESTIMATE_KEYS]},
  {title:'03 · BoQ, Costing & Commercial',description:'Referensi BoQ approved, komersial, termin dan rekening VA',
   keys:['boq_id','costing_notes','payment_terms','payment_va','payment_milestones']},
  {title:'04 · Quotation & Dokumen',description:'Nomor surat, masa berlaku, penerima, penandatangan dan ketentuan',
@@ -111,28 +123,51 @@ const SALES_FIELD_GROUPS: Array<{title:string;description:string;keys:readonly s
  {title:'06 · PO & Closing / Loss Analysis',description:'Nomor, tanggal, nilai dan bukti pemeriksaan PO atau alasan deal tidak dimenangkan',
   keys:['scope_reconciliation','po_number','po_date','po_reference','po_amount_before_vat','lost_reason','lost_notes','competitor','opportunity_notes']},
 ];
-function DealFieldSections({values,onUpdate,readOnly}:{
- values:SalesFields;onUpdate:(key:string,value:string)=>void;readOnly?:(key:string)=>boolean;
+type ScopingContext={clientSegment?:string;factors:ModelFactors|null;modelVersion:number|null;
+ onPatch:(patch:SalesFields)=>void;onUseAsPipelineValue?:(value:number)=>void};
+const estimateKeys=new Set<string>(SCOPING_ESTIMATE_KEYS);
+function DealFieldSections({values,onUpdate,readOnly,scoping}:{
+ values:SalesFields;onUpdate:(key:string,value:string)=>void;readOnly?:(key:string)=>boolean;scoping?:ScopingContext;
 }){
  const used=new Set(SALES_FIELD_GROUPS.flatMap(g=>g.keys));
  const groups=[...SALES_FIELD_GROUPS,{title:'Parameter Lain',description:'Field tambahan yang diperlukan oleh format dokumen',keys:DEAL_FIELDS.map(x=>x[0]).filter(k=>!used.has(k))}];
+ // Section 02 follows the BoQ product type allowed by the chosen service family.
+ const products=productsForFamily(values.service_family);
+ const product:ScopingService=products.includes(values.scoping_product as ScopingService)?values.scoping_product as ScopingService:products[0];
+ const profile=deliveryProfile(product);
  return <div className="space-y-3">{groups.filter(g=>g.keys.length>0).map((g,i)=>{
-  const fields=DEAL_FIELDS.filter(([key])=>g.keys.includes(key));
+  const technical=g.title.startsWith('02');
+  const fields=DEAL_FIELDS.filter(([key])=>g.keys.includes(key)&&!estimateKeys.has(key)&&
+    !(technical&&profile.notApplicable.includes(key)&&!ALWAYS_VISIBLE.has(key)))
+   .map(([key,label])=>[key,technical?profile.hints[key]?.label||label:label] as const);
+  const placeholders=technical?Object.fromEntries(Object.entries(profile.hints).map(([k,h])=>[k,h?.placeholder||''])):undefined;
   const count=fields.filter(([k])=>!!values[k]?.trim()).length;
   return <details key={g.title} open={i===0?true:undefined} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-left">
-    <span><span className="block text-sm font-bold text-slate-900">{g.title}</span>
-     <span className="mt-1 block text-xs font-normal text-slate-500">{g.description}</span></span>
+    <span><span className="block text-sm font-bold text-slate-900">{g.title}{technical?' · '+SCOPING_DEFINITIONS[product].label:''}</span>
+     <span className="mt-1 block text-xs font-normal text-slate-500">{technical?'Form menyesuaikan produk '+SCOPING_DEFINITIONS[product].label+'; estimasi MD & harga dari ICOP Pricing Engine':g.description}</span></span>
     <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">{count}/{fields.length}</span>
    </summary>
-   <div className="mt-4 border-t pt-4"><FormFields fields={fields} values={values} readOnly={readOnly} onUpdate={onUpdate}/></div>
+   <div className="mt-4 space-y-4 border-t pt-4">
+    {technical&&<>
+     {!values.service_family&&<p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Pilih Jenis layanan RTI di section 01 agar form menampilkan produk yang relevan.</p>}
+     <label className="block max-w-sm text-xs font-semibold text-slate-700">Jenis produk scoping (kategori BoQ)
+      <CompactSelect label="Jenis produk scoping" className={inputClass} disabled={readOnly?.('scoping_product')} value={product}
+       onChange={v=>onUpdate('scoping_product',v)} options={products.map(p=>({value:p,label:SCOPING_DEFINITIONS[p].label}))}/>
+     </label>
+     {scoping&&<ProductScopingEstimator key={product} product={product} fields={values} clientSegment={scoping.clientSegment}
+       factors={scoping.factors} modelVersion={scoping.modelVersion} disabled={readOnly?.('scoping_params')}
+       onApply={scoping.onPatch} onUseAsPipelineValue={scoping.onUseAsPipelineValue}/>}
+    </>}
+    <FormFields fields={fields} values={values} readOnly={readOnly} onUpdate={onUpdate} highlightEmpty placeholders={placeholders}/>
+   </div>
   </details>;
  })}</div>;
 }
 async function request(method:'GET'|'POST'|'PATCH',url:string,body?:Record<string,unknown>){
  const response=await fetch(url,{method,cache:'no-store',headers:{'Content-Type':'application/json'},
   credentials:'same-origin',...(body?{body:JSON.stringify(body)}:{})});
- const result=await response.json();
+ const result=await readApiJSON(response);
  if(!response.ok||!result.success){
   const missing=(result.missing||[]) as string[];
   throw Error((result.message||'Transaksi gagal')+(missing.length?'\nParameter belum lengkap: '+missing.join(', '):''));
@@ -160,11 +195,14 @@ export default function SalesPipelinePage(){
  const [activityKind,setActivityKind]=useState('meeting');
  const [docKind,setDocKind]=useState('customer_registration');
  const [docRef,setDocRef]=useState('');
+ // Active calibration model (Admin → Model Scoping & Harga). Missing model = factor 1.
+ const [scopingModel,setScopingModel]=useState<{version:number;factors:ModelFactors}|null>(null);
+ useEffect(()=>{void fetch('/api/scoping/model',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j?.success&&j.model)setScopingModel(j.model);}).catch(()=>{});},[]);
  const refresh=useCallback(async()=>{
   try{
    const [a,d]=await Promise.all([request('GET','/api/sales?entity=accounts'),request('GET','/api/sales?entity=deals')]);
    setAccounts(a.accounts||[]);setDeals(d.deals||[]);setRole(d.role||'');
-  }catch(e){setMessage(String(e instanceof Error?e.message:e));}
+  }catch(e){setMessage(errorText(e));}
  },[]);
  const loadDetail=useCallback(async(id:string)=>{
   if(!id)return;
@@ -173,22 +211,22 @@ export default function SalesPipelinePage(){
    setDetail(v as Detail);setDealTitle(v.deal.title);setAmount(String(v.deal.estimated_value));
    setDealFields(v.deal.fields);setAccountName(v.account.legal_name);setAccountFields(v.account.fields);
    setSelectedId(id);setTab('details');
-  }catch(e){setMessage(String(e));}
+  }catch(e){setMessage(errorText(e,'Detail Opportunity gagal dimuat.'));}
  },[]);
  useEffect(()=>{void refresh();},[refresh]);
  useEffect(()=>{
   const id=new URLSearchParams(window.location.search).get('opportunity_id');
   if(id)void loadDetail(id);
  },[loadDetail]);
- const run=async(job:()=>Promise<unknown>,done:string,selected?:string)=>{
+ const run=async(job:()=>Promise<unknown>,done:string,selected?:string,openDetail=true)=>{
   setBusy(true);setMessage('');
-  try{const v=await job() as {id?:string};setMessage(done);await refresh();if(selected||v?.id)await loadDetail(selected||v?.id||'');}
+  try{const v=await job() as {id?:string};setMessage(done);await refresh();if(openDetail&&(selected||v?.id))await loadDetail(selected||v?.id||'');}
   catch(e){setMessage(e instanceof Error?e.message:String(e));}
   finally{setBusy(false);}
  };
  const newAccount=()=>{setAccountName('');setAccountFields({});setTab('account');};
  const newDeal=()=>{setCustomerId(accounts[0]?.id||'');setDealTitle('');setAmount('');setDealFields({});setTab('newdeal');};
- const saveAccount=()=>void run(()=>request('POST','/api/sales',{entity:'account',legal_name:accountName,fields:synchronizeBillingAddress(accountFields)}),'Customer Account tersimpan di D1.');
+ const saveAccount=()=>{if(busy)return;void run(()=>request('POST','/api/sales',{entity:'account',legal_name:accountName,fields:synchronizeBillingAddress(accountFields)}),'Customer Account tersimpan di database. Pilih Customer ini pada Opportunity Baru untuk melanjutkan.',undefined,false);};
  const saveDeal=()=>void run(()=>request('POST','/api/sales',{entity:'deal',company_id:customerId,title:dealTitle,estimated_value:Number(amount),fields:dealFields}),'Opportunity terdaftar pada pipeline.');
  const updateAccount=()=>detail&&void run(()=>request('PATCH','/api/sales',{entity:'account',id:detail.account.id,legal_name:accountName,fields:synchronizeBillingAddress(accountFields)}),'Registrasi pelanggan diperbarui.',selectedId);
  const updateDeal=()=>{if(!detail)return;
@@ -219,7 +257,7 @@ export default function SalesPipelinePage(){
  <header className="flex flex-wrap items-center justify-between gap-3">
   <div><p className="text-xs font-bold uppercase tracking-[.2em] text-blue-700">RTICORE • RTI</p>
    <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">Sales Pipeline & Opportunity 360</h1>
-   <p className="mt-1 max-w-3xl text-xs text-slate-500">Registrasi → Qualification → Scoping → BoQ → Approval → Quotation → Negotiation → Won / Lost. Setiap perubahan tersimpan di Cloudflare D1 dan dicatat audit trail.</p></div>
+   <p className="mt-1 max-w-3xl text-xs text-slate-500">Registrasi → Qualification → Scoping → BoQ → Approval → Quotation → Negotiation → Won / Lost. Setiap perubahan tersimpan di database PostgreSQL dan dicatat audit trail.</p></div>
   <div className="flex flex-wrap gap-2">
    <button disabled={busy||!isMaker} onClick={newAccount} className="rounded-lg border px-3 py-2 text-xs font-bold">+ Customer</button>
    <button disabled={busy||!isMaker||!accounts.length} onClick={newDeal} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white">+ Opportunity</button>
@@ -240,7 +278,7 @@ export default function SalesPipelinePage(){
    <StageFilter deals={deals} value={filter} onChange={setFilter}/>
   </div>
   <p role="status" className="text-xs text-slate-500">Menampilkan <strong className="text-slate-800">{filteredDeals.length}</strong> dari <strong className="text-slate-800">{deals.length}</strong> Opportunity{filter!=='all'?' · '+stageLabel(filter):' · Semua Tahap'}.</p>
-  {filteredDeals.length===0?<p className="rounded-lg border bg-white p-5 text-sm text-slate-500">{deals.length===0?'Belum ada transaksi D1. Daftarkan Customer lalu buat Opportunity tanpa data dummy.':'Tidak ada Opportunity pada tahap ini. Pilih tahap lain atau gunakan Semua Tahap.'}</p>:
+  {filteredDeals.length===0?<p className="rounded-lg border bg-white p-5 text-sm text-slate-500">{deals.length===0?'Belum ada transaksi di database. Daftarkan Customer lalu buat Opportunity tanpa data dummy.':'Tidak ada Opportunity pada tahap ini. Pilih tahap lain atau gunakan Semua Tahap.'}</p>:
   <div className="grid gap-3 sm:grid-cols-2">{filteredDeals.map(d=>
    <button key={d.id} type="button" onClick={()=>void loadDetail(d.id)} className="min-w-0 rounded-xl border bg-white p-4 text-left hover:border-blue-300">
     <div className="flex flex-wrap items-center justify-between gap-2"><span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800">{stageLabel(d.stage)}</span><span className="text-xs font-bold tabular-nums">{money(d.estimated_value)}</span></div>
@@ -261,12 +299,14 @@ export default function SalesPipelinePage(){
    <option value="">Pilih pelanggan</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.legal_name} · {a.customer_number}</option>)}</select></label>
   <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Nama Proyek *<input className={inputClass} value={dealTitle} onChange={e=>setDealTitle(e.target.value)}/></label>
   <label className="text-xs font-bold">Estimasi Nilai (IDR) *<input type="number" min="1" className={inputClass} value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
-  <DealFieldSections values={dealFields} onUpdate={(k,v)=>setDealFields(f=>({...f,[k]:v}))}/>
+  <DealFieldSections values={dealFields} onUpdate={(k,v)=>setDealFields(f=>({...f,[k]:v}))}
+   scoping={{clientSegment:accounts.find(a=>a.id===customerId)?.fields.client_tier,factors:scopingModel?.factors||null,modelVersion:scopingModel?.version||null,
+    onPatch:patch=>setDealFields(f=>({...f,...patch})),onUseAsPipelineValue:v=>setAmount(String(v))}}/>
   <button disabled={busy||!isMaker} onClick={saveDeal} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white">Simpan ke Pipeline</button>
  </section>}
  {tab==='details'&&detail&&<div className="space-y-4">
   <section className="rounded-xl border bg-white p-4">
-   <div className="flex flex-wrap justify-between gap-2"><h2 className="font-bold">Opportunity Detail • {stageLabel(detail.deal.stage)}</h2><span className="break-all text-[10px] text-slate-500">ID {detail.deal.id}</span></div>
+   <div className="flex flex-wrap justify-between gap-2"><h2 className="font-bold">Opportunity Detail • {stageLabel(detail.deal.stage)}</h2></div>
    <p className="mt-2 text-sm text-slate-600">{detail.account.legal_name} · {detail.account.customer_number}</p>
    <div className="mt-3 flex flex-wrap gap-2">
     {mayMove&&detail.deal.stage!=='closed_won'&&detail.deal.stage!=='closed_lost'&&idx>=0&&idx<ordered.length-1&&
@@ -284,7 +324,7 @@ export default function SalesPipelinePage(){
     <Link href={'/proposals?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-800">Presales / Proposal / Negotiation →</Link>
     <Link href={'/sales/submission?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800">Submission & Evidence →</Link>
     <Link href={'/sales/award?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-800">PO/SPK & Legal Review →</Link>
-    {detail.boqs.some(b=>b.status==='approved'&&b.id===dealFields.boq_id)&&<a href={'/api/sales/quotation?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg border border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-800">Generate Quotation Word (BoQ approved)</a>}
+    {detail.boqs.some(b=>b.status==='approved'&&b.id===detail.deal.fields.boq_id)&&<a href={'/api/sales/quotation?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg border border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-800">Generate Quotation Word (BoQ approved)</a>}
     {detail.deal.stage==='closed_won'&&<Link href={'/post-po?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">Isi Form Post-PO →</Link>}
     {detail.deal.stage==='closed_lost'&&<a href={'/api/sales/loss-report?opportunity_id='+encodeURIComponent(selectedId)} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">Unduh Lost Analysis (.docx)</a>}
    </div>
@@ -296,7 +336,7 @@ export default function SalesPipelinePage(){
   </section>
   <section className="space-y-3 rounded-xl border bg-white p-4">
    <div><h3 className="text-sm font-bold">Journey 360 — Marketing hingga Closed Won</h3>
-    <p className="mt-1 text-xs text-slate-500">Indikator bersumber dari D1 dan validasi dokumen. Biru = siap secara data, kuning = perlu review manual, merah = belum memenuhi gate.</p></div>
+    <p className="mt-1 text-xs text-slate-500">Indikator bersumber dari database dan validasi dokumen. Biru = siap secara data, kuning = perlu review manual, merah = belum memenuhi gate.</p></div>
    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
     {(detail.journey||[]).map(step=><details key={step.key} className="min-w-0 rounded-lg border border-slate-200 p-3">
      <summary className="cursor-pointer list-none">
@@ -321,7 +361,9 @@ export default function SalesPipelinePage(){
    <h3 className="text-sm font-bold">Sales Form • Discovery, Technical, Commercial, Negotiation & PO</h3>
    <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">Nama proyek<input className={inputClass} disabled={!mayMove} value={dealTitle} onChange={e=>setDealTitle(e.target.value)}/></label>
    <label className="text-xs font-semibold">Nilai pipeline (IDR)<input type="number" className={inputClass} disabled={!mayMove} value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
-   <DealFieldSections values={dealFields} readOnly={k=>!mayMove&&(role!=='presales'||!PRESALES_FIELDS.has(k))} onUpdate={(k,v)=>setDealFields(f=>({...f,[k]:v}))}/>
+   <DealFieldSections values={dealFields} readOnly={k=>!mayMove&&(role!=='presales'||!PRESALES_FIELDS.has(k))} onUpdate={(k,v)=>setDealFields(f=>({...f,[k]:v}))}
+    scoping={{clientSegment:accountFields.client_tier,factors:scopingModel?.factors||null,modelVersion:scopingModel?.version||null,
+     onPatch:patch=>setDealFields(f=>({...f,...patch})),onUseAsPipelineValue:mayMove?v=>setAmount(String(v)):undefined}}/>
    <div className="flex flex-wrap items-center gap-3">
     <button disabled={busy||!['admin','sales','presales'].includes(role)||['closed_won','closed_lost'].includes(detail.deal.stage)} onClick={updateDeal} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white">{role==='presales'?'Simpan Parameter Teknis':'Simpan Semua Perubahan'}</button>
     <p className="text-xs text-amber-700">Simpan sebelum pindah tahap. Perubahan material membuka ulang paket penawaran; perubahan data PO memerlukan pemeriksaan ulang.</p>
@@ -330,7 +372,7 @@ export default function SalesPipelinePage(){
   <div className="grid gap-4 lg:grid-cols-2">
    <section className="space-y-3 rounded-xl border bg-white p-4"><h3 className="text-sm font-bold">BoQ & Persetujuan Terkait</h3>
     {detail.boqs.length?detail.boqs.map(b=><button disabled={!mayMove} key={b.id} className={'block w-full rounded-lg border p-3 text-left text-xs '+(dealFields.boq_id===b.id?'border-blue-500 bg-blue-50':'')} onClick={()=>setDealFields(f=>({...f,boq_id:b.id,quotation_number:b.quotation_number}))}><b>{b.quotation_number}</b> · {b.status}<span className="mt-1 block text-slate-500">{b.project_name}</span><span className="text-blue-700">Pilih (lalu simpan form)</span></button>):
-    <p className="text-xs text-slate-500">Belum ada BoQ D1 terhubung. Buat di menu BoQ dan cantumkan Opportunity ID.</p>}
+    <p className="text-xs text-slate-500">Belum ada BoQ terhubung di database. Buat di menu BoQ dan cantumkan Opportunity ID.</p>}
    </section>
    <section className="space-y-2 rounded-xl border bg-white p-4"><h3 className="text-sm font-bold">Kelengkapan Form Post-PO</h3>
     <p className="text-xs text-slate-600">Registrasi: {detail.checklist.registration.length} gap · Project: {detail.checklist.project.length} gap</p>
@@ -340,16 +382,16 @@ export default function SalesPipelinePage(){
   </div>
   <section className="grid gap-4 lg:grid-cols-2">
    <div className="rounded-xl border bg-white p-4"><h3 className="text-sm font-bold">Sales Activities</h3>
-    <div className="mt-3 grid gap-2"><select className={inputClass} value={activityKind} onChange={e=>setActivityKind(e.target.value)}>{['call','email','meeting','follow_up','tender','note'].map(x=><option key={x}>{x}</option>)}</select>
+    <div className="mt-3 grid gap-2"><select className={inputClass} value={activityKind} onChange={e=>setActivityKind(e.target.value)}>{ACTIVITY_KINDS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
     <input className={inputClass} placeholder="Topik kegiatan" value={activitySubject} onChange={e=>setActivitySubject(e.target.value)}/>
     <textarea className={inputClass} placeholder="Notulen, tindak lanjut dan hasil" value={activityDetail} onChange={e=>setActivityDetail(e.target.value)}/>
     <button disabled={busy} onClick={logActivity} className="rounded-lg border px-3 py-2 text-xs font-bold">Catat Aktivitas</button></div>
-    <div className="mt-3 space-y-2">{detail.activities.map((x,i)=><p key={i} className="border-t pt-2 text-xs"><b>{x.kind}: {x.subject}</b><span className="block text-slate-500">{x.created_at} · {x.detail}</span></p>)}</div>
+    <div className="mt-3 space-y-2">{detail.activities.map((x,i)=><p key={i} className="border-t pt-2 text-xs"><b>{ACTIVITY_KINDS.find(([value])=>value===x.kind)?.[1]||x.kind}: {x.subject}</b><span className="block text-slate-500">{x.created_at} · {x.detail}</span></p>)}</div>
    </div>
    <div className="rounded-xl border bg-white p-4"><h3 className="text-sm font-bold">Register Dokumen / Evidence</h3>
     <p className="mt-1 text-xs text-slate-500">Metadata dokumen saja. Nomor referensi bukan bukti bahwa file telah diunggah atau ditandatangani.</p>
     <div className="mt-3 grid gap-2"><select className={inputClass} value={docKind} onChange={e=>setDocKind(e.target.value)}>
-     {['boq','quotation','customer_registration','project_form','sales_handover','loss_analysis'].map(x=><option key={x} value={x}>{x}</option>)}</select>
+     {DOCUMENT_KINDS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
      <input className={inputClass} value={docRef} onChange={e=>setDocRef(e.target.value)} placeholder="Nomor dokumen / repository reference"/>
      <button disabled={busy} onClick={registerDoc} className="rounded-lg border px-3 py-2 text-xs font-bold">Catat Dokumen & Checklist</button></div>
     <h4 className="mt-4 text-xs font-bold">Audit trail</h4>

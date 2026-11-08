@@ -8,7 +8,7 @@ import type { AIProviderPublic, ProviderId } from '@/lib/ai-provider-registry';
 
 type ApiResponse={success:boolean;message?:string;code?:string;encryptionReady?:boolean;configs?:AIProviderPublic[];
   content?:string;providerUsed?:string;modelUsed?:string;latencyMs?:number;isFallback?:boolean};
-const secureHeaders={'Content-Type':'application/json','x-india-ai-admin':'1'};
+const secureHeaders={'Content-Type':'application/json','x-rticore-ai-admin':'1'};
 const smallInput='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100';
 
 export default function AISettingsPage(){
@@ -57,7 +57,7 @@ export default function AISettingsPage(){
   const model=(models[p.id]??p.model).trim();
   if(pending&&encryptionReady===false){
    setNoticeScope(p.id);setNoticeError(true);
-   setNotice('Secret enkripsi AI belum siap pada Worker. Hubungi Admin Cloudflare sebelum menyimpan API key.');
+   setNotice('Secret enkripsi AI belum siap pada server. Hubungi Administrator sistem sebelum menyimpan API key.');
    return;
   }
   void action('save-'+p.id,{action:'save',id:p.id,model,enabled,
@@ -70,7 +70,7 @@ export default function AISettingsPage(){
  };
  const check=(id:ProviderId)=>void action('test-'+id,{action:'test',id},'Koneksi diuji.');
  const clear=(id:ProviderId)=>{
-  if(!window.confirm('Hapus API key '+id+' dari D1? Koneksi akan dinonaktifkan.'))return;
+  if(!window.confirm('Hapus API key '+id+' dari database? Koneksi akan dinonaktifkan.'))return;
   void action('delete-'+id,{action:'deleteKey',id},'API key dihapus.');
  };
  const runTest=async()=>{
@@ -101,20 +101,20 @@ export default function AISettingsPage(){
   </header>
   <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs leading-relaxed text-slate-600">
     <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-700"/>
-    <p><strong className="text-slate-900">Khusus Admin terverifikasi.</strong> API key dikirim hanya ke backend melalui HTTPS, dienkripsi AES-GCM di D1 dan tidak pernah ditampilkan ulang.
+    <p><strong className="text-slate-900">Khusus Admin terverifikasi.</strong> API key dikirim hanya ke backend, dienkripsi AES-GCM di database dan tidak pernah ditampilkan ulang.
     Akun tanpa izin Admin akan ditolak oleh server. Penggunaan AI eksternal mengirimkan isi prompt ke penyedia yang dipilih; jangan memasukkan data rahasia klien tanpa otorisasi.</p>
   </div>
   {notice&&noticeScope==='global'&&<div role={noticeError?'alert':'status'} className={'rounded-lg border px-4 py-3 text-xs font-semibold '+(noticeError?
     'border-rose-200 bg-rose-50 text-rose-900':'border-emerald-200 bg-emerald-50 text-emerald-800')}>{notice}</div>}
   {!loading&&!blocked&&encryptionReady===false&&<div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-950">
-    <strong>Enkripsi Worker belum siap.</strong> Pengaturan model dapat dibaca, tetapi API key baru tidak dapat disimpan sampai Admin Cloudflare memasang secret <code>INDIA_AI_ENCRYPTION_KEY</code> yang valid. Jangan masukkan API key ke chat.
+    <strong>Enkripsi server belum siap.</strong> Pengaturan model dapat dibaca, tetapi API key baru tidak dapat disimpan sampai Administrator memasang secret <code>RTICORE_AI_ENCRYPTION_KEY</code> yang valid. Jangan masukkan API key ke chat.
   </div>}
   {loading&&<div className="flex items-center gap-2 rounded-lg bg-white p-5 text-sm text-slate-600">
-    <LoaderCircle className="h-4 w-4 animate-spin"/> Memverifikasi sesi Administrator dan konfigurasi D1...</div>}
+    <LoaderCircle className="h-4 w-4 animate-spin"/> Memverifikasi sesi Administrator dan konfigurasi database...</div>}
   {!loading&&blocked&&<div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
     <div className="flex items-center gap-2 font-bold"><AlertTriangle className="h-4 w-4"/> Pengaturan AI belum dapat diakses</div>
     <p className="mt-2 text-xs leading-relaxed">{blocked}</p>
-    <p className="mt-2 text-xs">Pastikan login Cloudflare Access, peran Admin pada RTICORE, D1 migration dan konfigurasi Worker tersedia.</p>
+    <p className="mt-2 text-xs">Pastikan sesi login terverifikasi, peran Admin pada RTICORE, migrasi database dan konfigurasi server tersedia.</p>
     <button type="button" onClick={()=>{setLoading(true);void refresh();}} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold"><RefreshCcw className="h-3.5 w-3.5"/>Coba lagi</button>
   </div>}
   {!loading&&!blocked&&<>

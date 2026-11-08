@@ -34,22 +34,22 @@ export async function GET(req:Request){
    loadSalesForecastRows(db,period,selected),
    db.prepare(
     "SELECT d.id,date(d.created_at,'+7 hours') AS created_at,"+
-    " (SELECT count(*) FROM india_sales_releases r WHERE r.tenant_id=d.tenant_id AND r.opportunity_id=d.id AND r.proposal_snapshot IS NOT NULL) AS proposal_count,"+
-    " (SELECT date(max(au.created_at),'+7 hours') FROM india_sales_audit au WHERE au.tenant_id=d.tenant_id AND au.entity_type='deal' AND au.entity_id=d.id AND au.to_stage='closed_lost') AS lost_closed_date,"+
+    " (SELECT count(*) FROM rticore_sales_releases r WHERE r.tenant_id=d.tenant_id AND r.opportunity_id=d.id AND r.proposal_snapshot IS NOT NULL) AS proposal_count,"+
+    " (SELECT date(max(au.created_at),'+7 hours') FROM rticore_sales_audit au WHERE au.tenant_id=d.tenant_id AND au.entity_type='deal' AND au.entity_id=d.id AND au.to_stage='closed_lost') AS lost_closed_date,"+
     " json_extract(d.data_json,'$.service_family') AS service_family,json_extract(d.data_json,'$.lost_reason') AS lost_reason,"+
-    " (SELECT count(*) FROM india_sales_submissions s WHERE s.tenant_id=d.tenant_id AND s.opportunity_id=d.id AND s.status='verified' AND substr(date(s.sent_at,'+7 hours'),1,7)=?) AS verified_submitted_period"+
-    " FROM india_sales_opportunities d WHERE d.tenant_id=?"+restriction
+    " (SELECT count(*) FROM rticore_sales_submissions s WHERE s.tenant_id=d.tenant_id AND s.opportunity_id=d.id AND s.status='verified' AND substr(date(s.sent_at,'+7 hours'),1,7)=?) AS verified_submitted_period"+
+    " FROM rticore_sales_opportunities d WHERE d.tenant_id=?"+restriction
    ).bind(period,TENANT,...(selected?[selected]:[])).all<ExecutiveMeta>(),
-   db.prepare('SELECT owner_email,period,amount_idr,version,rationale FROM india_sales_targets WHERE tenant_id=? AND period=?'+targetRestriction)
+   db.prepare('SELECT owner_email,period,amount_idr,version,rationale FROM rticore_sales_targets WHERE tenant_id=? AND period=?'+targetRestriction)
     .bind(TENANT,period,...(selected?[selected]:[])).all<SalesTarget>(),
-   db.prepare("SELECT owner_email,kind,count(*) AS count FROM india_sales_activity_tasks WHERE tenant_id=? AND status='completed' AND substr(date(completed_at,'+7 hours'),1,7)=?"+taskRestriction+" GROUP BY owner_email,kind")
+   db.prepare("SELECT owner_email,kind,count(*) AS count FROM rticore_sales_activity_tasks WHERE tenant_id=? AND status='completed' AND substr(date(completed_at,'+7 hours'),1,7)=?"+taskRestriction+" GROUP BY owner_email,kind")
     .bind(TENANT,period,...(selected?[selected]:[])).all<SalesActivity>(),
-   db.prepare("SELECT email FROM india_members WHERE active=1 AND role='sales'"+rosterRestriction)
+   db.prepare("SELECT email FROM rticore_members WHERE active=1 AND role='sales'"+rosterRestriction)
     .bind(...(selected?[selected]:[])).all<SalesMember>()
   ]);
   const forecast=buildSalesForecast(rows,period,jakartaDate());
   const data=buildExecutiveSalesDashboard(forecast,metaResult.results,targetsResult.results,activityResult.results,membersResult.results,jakartaDate());
-  if(url.searchParams.get('format')==='csv')return new Response(csv(data.by_owner),{headers:{...privateHeaders,'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="INDIA_Executive_Sales_'+period+'.csv"'}});
+  if(url.searchParams.get('format')==='csv')return new Response(csv(data.by_owner),{headers:{...privateHeaders,'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="RTICORE_Executive_Sales_'+period+'.csv"'}});
   return reply({success:true,role,identityEmail:email,generated_at:new Date().toISOString(),...data});
  }catch(e){
   return fail(String(e).includes('presisi')?'Agregasi melampaui presisi finansial; gunakan periode/filter Sales lebih kecil.':'Executive Dashboard belum tersedia. Verifikasi migrasi 0013/0018/0019/0024 dan keterhubungan D1.',503);
@@ -68,19 +68,19 @@ export async function POST(req:Request){
  !Number.isSafeInteger(version)||Number(version)<0||typeof rationale!=='string'||rationale.trim().length<12||rationale.length>1000)
   return fail('Periode, akun Sales, nilai target rupiah positif, version dan alasan 12–1000 karakter wajib',422);
  try{
-  const member=await db.prepare("SELECT email FROM india_members WHERE email=? AND role='sales' AND active=1").bind(owner).first();
+  const member=await db.prepare("SELECT email FROM rticore_members WHERE email=? AND role='sales' AND active=1").bind(owner).first();
   if(!member)return fail('Target hanya boleh diberikan kepada user Sales aktif di D1',422);
-  const old=await db.prepare('SELECT version FROM india_sales_targets WHERE tenant_id=? AND period=? AND owner_email=?').bind(TENANT,period,owner).first<{version:number}>();
+  const old=await db.prepare('SELECT version FROM rticore_sales_targets WHERE tenant_id=? AND period=? AND owner_email=?').bind(TENANT,period,owner).first<{version:number}>();
   if((old?.version||0)!==version)return fail('Target telah diperbarui oleh pengguna lain. Muat ulang sebelum menyimpan.',409);
   const nextVersion=Number(version)+1;
   const guard=old?
-   "EXISTS(SELECT 1 FROM india_sales_targets WHERE tenant_id=? AND period=? AND owner_email=? AND version=?)":
-   "NOT EXISTS(SELECT 1 FROM india_sales_targets WHERE tenant_id=? AND period=? AND owner_email=?)";
+   "EXISTS(SELECT 1 FROM rticore_sales_targets WHERE tenant_id=? AND period=? AND owner_email=? AND version=?)":
+   "NOT EXISTS(SELECT 1 FROM rticore_sales_targets WHERE tenant_id=? AND period=? AND owner_email=?)";
   const args:[string,string,string,...number[]]=[TENANT,period,owner,...(old?[Number(version)]:[])];
   await atomicSales(db,guard,args,[
-   db.prepare('INSERT INTO india_sales_targets(tenant_id,period,owner_email,amount_idr,version,rationale,updated_by) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tenant_id,period,owner_email) DO UPDATE SET amount_idr=excluded.amount_idr,version=excluded.version,rationale=excluded.rationale,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP')
+   db.prepare('INSERT INTO rticore_sales_targets(tenant_id,period,owner_email,amount_idr,version,rationale,updated_by) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tenant_id,period,owner_email) DO UPDATE SET amount_idr=excluded.amount_idr,version=excluded.version,rationale=excluded.rationale,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP')
     .bind(TENANT,period,owner,Number(target),nextVersion,rationale.trim(),email),
-   db.prepare('INSERT INTO india_sales_target_events(id,tenant_id,period,owner_email,version,amount_idr,rationale,actor_email) VALUES(?,?,?,?,?,?,?,?)')
+   db.prepare('INSERT INTO rticore_sales_target_events(id,tenant_id,period,owner_email,version,amount_idr,rationale,actor_email) VALUES(?,?,?,?,?,?,?,?)')
     .bind(crypto.randomUUID(),TENANT,period,owner,nextVersion,Number(target),rationale.trim(),email),
    salesAudit(db,period+':'+owner,'TARGET_UPDATED',email,'Target Sales bulanan ditetapkan/revisi untuk '+period)
   ]);

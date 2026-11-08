@@ -17,7 +17,7 @@ export const fieldPatch=(area:PostalArea)=>({
  hq_village:area.village_name,hq_village_code:area.region_code,hq_village_kind:area.village_kind
 });
 export async function assertPostalReferenceReady(db:D1DB){
- const meta=await db.prepare("SELECT source_version FROM india_postal_import_state WHERE singleton=1 AND status='ready' AND row_count>=80000 AND province_count=38 AND postal_count>0").first<{source_version:string}>();
+ const meta=await db.prepare("SELECT source_version FROM rticore_postal_import_state WHERE singleton=1 AND status='ready' AND row_count>=80000 AND province_count=38 AND postal_count>0").first<{source_version:string}>();
  if(!meta)throw new Error('Referensi wilayah nasional belum siap. Hubungi Administrator.');
  return meta.source_version;
 }
@@ -29,12 +29,12 @@ export async function assertPostalReferenceReady(db:D1DB){
 export async function findPostalAreasByCode(db:D1DB,postal:string):Promise<PostalArea[]>{
  if(!postalRegex.test(postal))throw new Error('Kode pos harus terdiri dari 5 angka.');
  await assertPostalReferenceReady(db);
- const table=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='india_postal_lookup'")
+ const table=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='rticore_postal_lookup'")
   .first<{name:string}>();
  if(table){
-  const populated=await db.prepare('SELECT 1 AS present FROM india_postal_lookup LIMIT 1').first<{present:number}>();
+  const populated=await db.prepare('SELECT 1 AS present FROM rticore_postal_lookup LIMIT 1').first<{present:number}>();
   if(populated){
-   const row=await db.prepare('SELECT areas_json,village_count FROM india_postal_lookup WHERE postal_code=?')
+   const row=await db.prepare('SELECT areas_json,village_count FROM rticore_postal_lookup WHERE postal_code=?')
     .bind(postal).first<{areas_json:string;village_count:number}>();
    if(!row)return [];
    const parsed:unknown=JSON.parse(row.areas_json);
@@ -50,7 +50,7 @@ export async function findPostalAreasByCode(db:D1DB,postal:string):Promise<Posta
   }
  }
  const rows=await db.prepare(
-  'SELECT region_code,postal_code,province_code,province_name,regency_code,regency_name,district_code,district_name,village_name,village_kind FROM india_postal_areas WHERE postal_code=? ORDER BY province_name,regency_name,district_name,village_name LIMIT 501'
+  'SELECT region_code,postal_code,province_code,province_name,regency_code,regency_name,district_code,district_name,village_name,village_kind FROM rticore_postal_areas WHERE postal_code=? ORDER BY province_name,regency_name,district_name,village_name LIMIT 501'
  ).bind(postal).all<PostalArea>();
  if(rows.results.length>500)throw new Error('Terlalu banyak wilayah untuk satu kode pos.');
  return rows.results;
@@ -81,17 +81,17 @@ export async function searchPostalSuggestions(db:D1DB,raw:string):Promise<Postal
  if(!validPostalSearchQuery(query))throw new Error('Cari minimal 2 angka atau 3 huruf wilayah (maksimal 50 karakter).');
  await assertPostalReferenceReady(db);
  const digits=/^[0-9]+$/.test(query);
- const table=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='india_postal_lookup'")
+ const table=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='rticore_postal_lookup'")
   .first<{name:string}>();
- const compact=!!table && !!(await db.prepare('SELECT 1 AS present FROM india_postal_lookup LIMIT 1').first<{present:number}>());
+ const compact=!!table && !!(await db.prepare('SELECT 1 AS present FROM rticore_postal_lookup LIMIT 1').first<{present:number}>());
  const suggestions=new Map<string,PostalSuggestion>();
  const matches=(area:PostalArea)=>[area.village_name,area.district_name,area.regency_name,area.province_name]
   .some(value=>value.toLocaleLowerCase('id-ID').includes(query.toLocaleLowerCase('id-ID')));
  const description=(area:PostalArea)=>[area.village_kind+' '+area.village_name,area.district_name,area.regency_name,area.province_name].join(' · ');
  if(compact){
   const sql=digits
-   ?'SELECT postal_code,areas_json FROM india_postal_lookup WHERE postal_code LIKE ? ORDER BY postal_code LIMIT 60'
-   :'SELECT postal_code,areas_json FROM india_postal_lookup WHERE areas_json LIKE ? ORDER BY postal_code LIMIT 60';
+   ?'SELECT postal_code,areas_json FROM rticore_postal_lookup WHERE postal_code LIKE ? ORDER BY postal_code LIMIT 60'
+   :'SELECT postal_code,areas_json FROM rticore_postal_lookup WHERE areas_json LIKE ? ORDER BY postal_code LIMIT 60';
   const rows=await db.prepare(sql).bind(digits?query+'%':'%'+query+'%')
    .all<{postal_code:string;areas_json:string}>();
   for(const row of rows.results){
@@ -105,8 +105,8 @@ export async function searchPostalSuggestions(db:D1DB,raw:string):Promise<Postal
   }
  }else{
   const sql=digits
-   ?'SELECT postal_code,province_name,regency_name,district_name,village_name,village_kind FROM india_postal_areas WHERE postal_code LIKE ? ORDER BY postal_code LIMIT 150'
-   :'SELECT postal_code,province_name,regency_name,district_name,village_name,village_kind FROM india_postal_areas WHERE province_name LIKE ? OR regency_name LIKE ? OR district_name LIKE ? OR village_name LIKE ? ORDER BY postal_code LIMIT 150';
+   ?'SELECT postal_code,province_name,regency_name,district_name,village_name,village_kind FROM rticore_postal_areas WHERE postal_code LIKE ? ORDER BY postal_code LIMIT 150'
+   :'SELECT postal_code,province_name,regency_name,district_name,village_name,village_kind FROM rticore_postal_areas WHERE province_name LIKE ? OR regency_name LIKE ? OR district_name LIKE ? OR village_name LIKE ? ORDER BY postal_code LIMIT 150';
   const args=digits?[query+'%']:Array(4).fill('%'+query+'%');
   const rows=await db.prepare(sql).bind(...args).all<Pick<PostalArea,'postal_code'|'province_name'|'regency_name'|'district_name'|'village_name'|'village_kind'>>();
   for(const row of rows.results){

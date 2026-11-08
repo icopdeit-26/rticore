@@ -1,4 +1,4 @@
-// Browser verification of the existing INDIA stage-filter fix (PR #29).
+// Browser verification of the existing RTICORE stage-filter fix (PR #29).
 // The Sales API response is a test fixture; this does not exercise remote D1 or real Access.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const base = process.env.INDIA_UAT_URL || 'http://127.0.0.1:3100';
+const base = process.env.RTICORE_UAT_URL || 'http://127.0.0.1:3100';
 const artifacts = path.join(process.cwd(), 'artifacts', 'browser-uat');
 fs.mkdirSync(artifacts, { recursive: true });
 const stages = [

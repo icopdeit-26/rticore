@@ -34,7 +34,7 @@ jobs:
       - name: Start local server and test fixture roles in real Chromium
         shell: bash
         run: |
-          npm run start -- --port 3100 > /tmp/india-campaign-uat.log 2>&1 &
+          npm run start -- --port 3100 > /tmp/rticore-campaign-uat.log 2>&1 &
           node -e "const u='http://127.0.0.1:3100/sales/campaigns';(async()=>{for(let i=0;i<90;i++){try{const r=await fetch(u);if(r.ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)})()"
           node --test tests/campaign-responsive-browser-uat.cjs
       - name: Upload browser screenshots

@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 
-const baseUrl = process.env.INDIA_UAT_BASE || 'http://127.0.0.1:3125';
+const baseUrl = process.env.RTICORE_UAT_BASE || 'http://127.0.0.1:3125';
 
 async function check(browser, name, viewport, mobile) {
   const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile });
@@ -25,7 +25,7 @@ async function check(browser, name, viewport, mobile) {
 
     if (mobile) {
       assert.equal(await nav.isVisible(), false, name + ': underlying navigation hidden');
-      assert.equal(await page.evaluate(() => document.body.classList.contains('india-ai-chat-open')), true);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('rticore-ai-chat-open')), true);
     }
 
     const bounds = await input.boundingBox();

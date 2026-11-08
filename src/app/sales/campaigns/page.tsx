@@ -4,12 +4,12 @@ import Link from 'next/link';
 import {ArrowLeft,BarChart3,CheckCircle2,Plus,RefreshCw,Trash2} from 'lucide-react';
 import {campaignChannels,campaignStatuses,generateCampaignCode} from '@/lib/marketing-campaign';
 type Campaign={
- id:string;code:string;name:string;channel:string;status:string;owner_email:string;
+ id:string;code:string;name:string;channel:string;status:string;owner_email:string;owner_emails?:string[];
  budget_idr?:number;start_date:string;end_date:string;notes?:string;revision:number;
  total:number;qualified:number;converted:number;conversionRate:number;
 };
 type CampaignOwner={email:string;role:string};
-const empty=()=>({code:'',name:'',channel:'webinar',status:'planned',owner_email:'',
+const empty=()=>({code:'',name:'',channel:'webinar',status:'planned',owner_email:'',owner_emails:[] as string[],
  budget_idr:'0',start_date:'',end_date:'',notes:''});
 const input='mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 disabled:bg-slate-100';
 const money=(n:number)=>'Rp'+Number(n||0).toLocaleString('id-ID');
@@ -18,9 +18,9 @@ async function request(method:'GET'|'POST'|'PATCH'|'DELETE',body?:Record<string,
   headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const json=await res.json().catch(()=>null);
  if(!res.ok||!json?.success){
-  const fallback=res.status===401?'Sesi Cloudflare Access berakhir. Masuk kembali dan ulangi penyimpanan.'
+  const fallback=res.status===401?'Sesi login berakhir. Masuk kembali dan ulangi penyimpanan.'
    :res.status===403?'Akses ditolak. Pastikan akun memiliki role Marketing/Admin dan Access Policy mengizinkan Campaign.'
-   :res.status===503?'Layanan Campaign belum siap. Periksa koneksi D1 atau migrasi.'
+   :res.status===503?'Layanan Campaign belum siap. Periksa koneksi database atau migrasi.'
    :`Proses Campaign gagal (HTTP ${res.status}).`;
   throw Error(typeof json?.message==='string'?json.message:fallback);
  }
@@ -31,6 +31,7 @@ export default function MarketingCampaigns(){
  const [role,setRole]=useState('');
  const [identityEmail,setIdentityEmail]=useState('');
  const [owners,setOwners]=useState<CampaignOwner[]>([]);
+ const [ownerDirectory,setOwnerDirectory]=useState<'loading'|'ready'|'restricted'|'error'>('loading');
  const [error,setError]=useState('');
  const [editing,setEditing]=useState<Campaign|null>(null);
  const [form,setForm]=useState(empty());
@@ -38,13 +39,16 @@ export default function MarketingCampaigns(){
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('');
  const reload=useCallback(async()=>{
+  setOwnerDirectory('loading');
   try{
    const d=await request('GET');
    setCampaigns(d.campaigns||[]);setRole(d.role||'');
    setIdentityEmail(d.email||'');setOwners(Array.isArray(d.owners)?d.owners:[]);
+   setOwnerDirectory(d.role!=='admin'&&d.role!=='marketing'?'restricted':Array.isArray(d.owners)?'ready':'error');
    setError('');
   }catch(e){
    setRole('');setOwners([]);
+   setOwnerDirectory('error');
    setError(e instanceof Error?e.message:String(e));
   }
  },[]);
@@ -52,18 +56,18 @@ export default function MarketingCampaigns(){
  const editable=role==='admin'||role==='marketing';
  const select=(c:Campaign)=>{
   setEditing(c);setNewMode(false);setMessage('');setError('');
-  setForm({code:c.code,name:c.name,channel:c.channel,status:c.status,owner_email:c.owner_email,
+  setForm({code:c.code,name:c.name,channel:c.channel,status:c.status,owner_email:c.owner_email,owner_emails:c.owner_emails||[c.owner_email],
    budget_idr:String(c.budget_idr??0),start_date:c.start_date,end_date:c.end_date,notes:c.notes||''});
  };
  const create=()=>{
   const selectedOwner=owners.find(x=>x.email===identityEmail)?.email
    ||owners.find(x=>x.role==='marketing')?.email||owners[0]?.email||'';
   setEditing(null);setNewMode(true);
-  setForm({...empty(),code:generateCampaignCode(),owner_email:selectedOwner});
+  setForm({...empty(),code:generateCampaignCode(),owner_email:selectedOwner,owner_emails:selectedOwner?[selectedOwner]:[]});
   setMessage('');setError('');
  };
  const submit=async()=>{
-  if(!owners.some(x=>x.email===form.owner_email)){
+  if(!form.owner_emails.length||!form.owner_emails.every(email=>owners.some(x=>x.email===email))){
    setError('Pilih Owner dari anggota aktif yang tersedia sebelum menyimpan Campaign.');return;
   }
   setBusy(true);setMessage('');setError('');
@@ -77,7 +81,7 @@ export default function MarketingCampaigns(){
     ?'Campaign aktif dan sudah dapat dipilih di registrasi Lead.'
     :'Campaign tersimpan dengan status '+result.status+'. Campaign baru tersedia untuk Lead setelah status diubah menjadi Active.';
    setMessage(editing?'Revisi campaign tersimpan dan tercatat di audit. '+feedback
-    :`Campaign berhasil diregistrasi di D1. Kode: ${result.code}. ${feedback}`);
+    :`Campaign berhasil diregistrasi di database. Kode: ${result.code}. ${feedback}`);
    setEditing(null);setNewMode(false);setForm(empty());
   }catch(e){setError(e instanceof Error?e.message:String(e));}
   finally{setBusy(false);}
@@ -104,13 +108,13 @@ export default function MarketingCampaigns(){
  const active=campaigns.filter(x=>x.status==='active').length;
  const leads=campaigns.reduce((s,x)=>s+x.total,0);
  const converted=campaigns.reduce((s,x)=>s+x.converted,0);
- const ownerValid=owners.some(x=>x.email===form.owner_email);
+ const ownerValid=ownerDirectory==='ready'&&form.owner_emails.length>0&&form.owner_emails.every(email=>owners.some(x=>x.email===email));
  return <main className="min-w-0 space-y-5 pb-24">
   <header className="flex flex-wrap items-start justify-between gap-3">
    <div>
     <Link href="/sales/leads" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><ArrowLeft size={14}/> Marketing Leads</Link>
     <h1 className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">Marketing Campaign Center</h1>
-    <p className="mt-1 max-w-2xl text-xs text-slate-600">Campaign → Lead → Qualified → Converted Opportunity. Angka diambil dari transaksi D1, bukan estimasi atau data contoh.</p>
+    <p className="mt-1 max-w-2xl text-xs text-slate-600">Campaign → Lead → Qualified → Converted Opportunity. Angka diambil dari transaksi database aktual, bukan estimasi atau data contoh.</p>
    </div>
    {editable&&<button type="button" disabled={busy} onClick={create} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-semibold text-white"><Plus size={15}/> Campaign Baru</button>}
   </header>
@@ -134,7 +138,7 @@ export default function MarketingCampaigns(){
       <button type="button" disabled={busy} onClick={()=>select(c)} className="block w-full p-3 text-left disabled:opacity-60"
        aria-label={`Buka Campaign ${c.name}`}>
        <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs">{c.name}</strong><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase">{c.status}</span></div>
-       <div className="mt-1 break-words text-[11px] text-slate-500">{c.code} · {c.channel} · {c.owner_email}</div>
+       <div className="mt-1 break-words text-[11px] text-slate-500">{c.code} · {c.channel} · {(c.owner_emails||[c.owner_email]).join(', ')}</div>
        <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-700">
         <span>Lead <b>{c.total}</b></span><span>Qualified <b>{c.qualified}</b></span>
         <span>Converted <b>{c.converted}</b></span><span>Conversion <b>{c.conversionRate}%</b></span>
@@ -171,16 +175,22 @@ export default function MarketingCampaigns(){
        Dibuat otomatis saat registrasi, unik per campaign, dan tetap saat revisi.
       </span>}
       </label>)}
-     <label className="min-w-0 text-xs font-semibold text-slate-700">Owner Campaign (anggota aktif)
-      <select className={input} required disabled={!editable||busy||owners.length===0} value={form.owner_email}
-       onChange={e=>setForm(x=>({...x,owner_email:e.target.value}))}>
-       <option value="">Pilih anggota aktif</option>
-       {owners.map(x=><option key={x.email} value={x.email}>{x.email} ({x.role})</option>)}
-      </select>
-      {owners.length===0?<span className="mt-1 block text-[11px] font-normal text-red-700">Belum ada Owner aktif atau daftar gagal dimuat. Minta Admin mengaktifkan anggota dengan role Marketing, Sales, atau Admin.</span>
-       :!ownerValid&&form.owner_email?<span className="mt-1 block text-[11px] font-normal text-red-700">Owner sebelumnya sudah tidak aktif. Pilih Owner baru dari daftar.</span>
-       :<span className="mt-1 block text-[11px] font-normal text-slate-500">Hanya email anggota aktif yang dapat dipilih, sesuai validasi server.</span>}
-     </label>
+     {ownerDirectory==='restricted'?<div className="min-w-0 text-xs text-slate-700"><p className="font-semibold">Owner Campaign</p><div className="mt-2 space-y-2">{form.owner_emails.map(email=><p key={email} className="break-all rounded-lg border bg-slate-50 p-2">{email}</p>)}</div><p className="mt-2 text-[11px] text-slate-500">Hanya Marketing/Admin yang dapat mengubah Owner. Status keaktifan anggota tidak diperiksa untuk role Sales.</p></div>:<fieldset className="min-w-0 text-xs font-semibold text-slate-700" disabled={!editable||busy||ownerDirectory!=='ready'}>
+      <legend>Owner Campaign (anggota aktif)</legend>
+      <div className="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+       {owners.map(member=><label key={member.email} className="flex cursor-pointer items-start gap-2 rounded-md p-2 hover:bg-teal-50">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-teal-700" checked={form.owner_emails.includes(member.email)}
+         onChange={e=>{const checked=e.target.checked;setForm(x=>({...x,owner_emails:checked?[...x.owner_emails,member.email]:x.owner_emails.filter(email=>email!==member.email)}));}}/>
+        <span className="min-w-0 break-all font-normal">{member.email} <span className="text-slate-500">({member.role})</span></span>
+       </label>)}
+      </div>
+      {ownerDirectory==='loading'?<span role="status" className="mt-1 block text-[11px] font-normal text-slate-500">Memuat daftar anggota aktif…</span>
+       :ownerDirectory==='error'?<span role="alert" className="mt-1 block text-[11px] font-normal text-red-700">Daftar anggota gagal dimuat. Status Owner belum dapat diperiksa. Gunakan Refresh untuk mencoba kembali.</span>
+       :owners.length===0?<span className="mt-1 block text-[11px] font-normal text-red-700">Tidak ada anggota aktif dengan role Marketing, Sales, atau Admin dalam daftar yang diterima.</span>
+       :!ownerValid&&form.owner_emails.length>0?<span className="mt-1 block text-[11px] font-normal text-red-700">Sebagian Owner tidak tersedia dalam daftar anggota yang memenuhi syarat. Periksa pilihan di bawah.</span>
+       :<span className="mt-1 block text-[11px] font-normal text-slate-500">{form.owner_emails.length} Owner dipilih. Pilih 1–20 anggota; dapat memilih lebih dari satu.</span>}
+      {ownerDirectory==='ready'&&form.owner_emails.filter(email=>!owners.some(x=>x.email===email)).map(email=><label key={email} className="mt-2 flex items-center gap-2 break-all font-normal text-red-700"><input type="checkbox" checked onChange={()=>setForm(x=>({...x,owner_emails:x.owner_emails.filter(value=>value!==email)}))}/>{email} (tidak tersedia dalam daftar Owner yang memenuhi syarat; hapus pilihan)</label>)}
+     </fieldset>}
      <label className="text-xs font-semibold text-slate-700">Channel
       <select className={input} disabled={!editable||busy} value={form.channel} onChange={e=>setForm(x=>({...x,channel:e.target.value}))}>
        {campaignChannels.map(x=><option value={x} key={x}>{x}</option>)}
@@ -206,3 +216,5 @@ export default function MarketingCampaigns(){
   </div>
  </main>;
 }
+
+

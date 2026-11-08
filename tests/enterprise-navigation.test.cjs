@@ -8,12 +8,12 @@ const file='src/lib/enterprise-navigation.ts';
 const transpiled=ts.transpileModule(read(file),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const exportsObject={};
 vm.runInNewContext(transpiled,{exports:exportsObject,require:n=>{throw Error('Unexpected runtime dependency '+n)}},{filename:file});
-const {INDIA_NAVIGATION,navigationForRole}=exportsObject;
+const {RTICORE_NAVIGATION,navigationForRole}=exportsObject;
 
 test('twelve business and administration menu groups, no duplicate or demo routes',()=>{
- assert.equal(INDIA_NAVIGATION.length,12);
- assert.equal(new Set(INDIA_NAVIGATION.map(x=>x.id)).size,12);
- const all=INDIA_NAVIGATION.flatMap(x=>x.items.map(i=>i.href));
+ assert.equal(RTICORE_NAVIGATION.length,12);
+ assert.equal(new Set(RTICORE_NAVIGATION.map(x=>x.id)).size,12);
+ const all=RTICORE_NAVIGATION.flatMap(x=>x.items.map(i=>i.href));
  assert.equal(new Set(all).size,all.length);
  for(const href of all){
   assert.match(href,/^\/(?:sales\/|psa\/timesheets$|erp\/|customers$|partners$|reports$|settings\/|boq(?:\/users)?$|flexguard$|post-po$|approvals$|scoping$)/);
@@ -38,7 +38,7 @@ test('user roles are filtered; Admin alone gets secret-management menu',()=>{
 });
 
 test('Smart Scoping is discoverable in Presales for Admin, Sales and Presales only',()=>{
- const presales=INDIA_NAVIGATION.find(group=>group.id==='presales');
+ const presales=RTICORE_NAVIGATION.find(group=>group.id==='presales');
  assert.ok(presales);
  assert.ok(presales.items.some(item=>item.href==='/scoping'&&item.label==='Smart Scoping & Sizing'));
  for(const role of ['admin','sales','presales']){

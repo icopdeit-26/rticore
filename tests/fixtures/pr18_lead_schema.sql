@@ -1,5 +1,5 @@
 -- Phase 2: real D1 lead lifecycle; do not touch legacy in-memory opportunity API.
-CREATE TABLE IF NOT EXISTS india_marketing_leads (
+CREATE TABLE IF NOT EXISTS rticore_marketing_leads (
  id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
  company_name TEXT NOT NULL,
@@ -24,9 +24,9 @@ CREATE TABLE IF NOT EXISTS india_marketing_leads (
  version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
  CHECK(status!='converted' OR (converted_account_id IS NOT NULL AND converted_opportunity_id IS NOT NULL))
 );
-CREATE INDEX IF NOT EXISTS idx_india_leads_owner ON india_marketing_leads(tenant_id,owner_email,status,created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_india_leads_active_dedupe ON india_marketing_leads(tenant_id,lower(trim(contact_email)),lower(trim(company_name))) WHERE status NOT IN ('disqualified');
-CREATE TABLE IF NOT EXISTS india_marketing_lead_events (
+CREATE INDEX IF NOT EXISTS idx_rticore_leads_owner ON rticore_marketing_leads(tenant_id,owner_email,status,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rticore_leads_active_dedupe ON rticore_marketing_leads(tenant_id,lower(trim(contact_email)),lower(trim(company_name))) WHERE status NOT IN ('disqualified');
+CREATE TABLE IF NOT EXISTS rticore_marketing_lead_events (
  id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
  lead_id TEXT NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS india_marketing_lead_events (
  to_status TEXT,
  detail TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- FOREIGN KEY(lead_id) REFERENCES india_marketing_leads(id)
+ FOREIGN KEY(lead_id) REFERENCES rticore_marketing_leads(id)
 );
-CREATE INDEX IF NOT EXISTS idx_india_lead_events ON india_marketing_lead_events(tenant_id,lead_id,created_at);
-INSERT OR IGNORE INTO india_schema_migrations(version) VALUES(5);
+CREATE INDEX IF NOT EXISTS idx_rticore_lead_events ON rticore_marketing_lead_events(tenant_id,lead_id,created_at);
+INSERT OR IGNORE INTO rticore_schema_migrations(version) VALUES(5);

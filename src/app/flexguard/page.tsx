@@ -14,20 +14,20 @@ export default function FlexGuardPage(){
   const requestedWallet=new URLSearchParams(window.location.search).get('wallet_id')||'';
   const scopedQuery=/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(requestedWallet)?'?wallet_id='+encodeURIComponent(requestedWallet):'';
   void fetch('/api/sales/flexguard'+scopedQuery,{credentials:'same-origin',cache:'no-store',signal:controller.signal})
-   .then(async res=>{const j=await res.json();if(!res.ok||j.success!==true)throw Error(j.message||'Ledger D1 belum siap');if(!controller.signal.aborted){setWallets(j.wallets);setRole(j.role);setSelected(old=>j.wallets.some((w:Wallet)=>w.id===old)?old:j.wallets[0]?.id||'');}})
-   .catch(e=>{if(!controller.signal.aborted){setWallets([]);setError(e instanceof Error?e.message:'Ledger D1 tidak tersedia');}});
+   .then(async res=>{const j=await res.json();if(!res.ok||j.success!==true)throw Error(j.message||'Ledger database belum siap');if(!controller.signal.aborted){setWallets(j.wallets);setRole(j.role);setSelected(old=>j.wallets.some((w:Wallet)=>w.id===old)?old:j.wallets[0]?.id||'');}})
+   .catch(e=>{if(!controller.signal.aborted){setWallets([]);setError(e instanceof Error?e.message:'Ledger database tidak tersedia');}});
   return ()=>controller.abort();
  },[refresh]);
  const active=wallets.find(w=>w.id===selected);
  const post=async(payload:Record<string,unknown>)=>{
   setBusy(true);setError('');setNotice('');
   try{const res=await fetch('/api/sales/flexguard',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await res.json();if(!res.ok||data.success!==true)throw Error(data.message||'Transaksi ditolak');
-   setNotice(data.message||'Transaksi tersimpan di D1');setRefresh(x=>x+1);setNotes('');setUnits('');
+   setNotice(data.message||'Transaksi tersimpan di database');setRefresh(x=>x+1);setNotes('');setUnits('');
   }catch(e){setError(e instanceof Error?e.message:'Transaksi gagal');}finally{setBusy(false);}
  };
  return <main className="mx-auto max-w-6xl space-y-5 pb-24">
-  <header className="rounded-xl border bg-white p-5"><h1 className="text-xl font-bold">FlexGuard · D1 Immutable Token Ledger</h1>
-   <p className="mt-2 text-sm text-slate-600">Kuota dan saldo dihitung dari event D1 immutable. Reservasi, konsumsi dan refund memerlukan saldo serta referensi sah. Semua transaksi ditolak bila migrasi 0030 belum diterapkan.</p>
+  <header className="rounded-xl border bg-white p-5"><h1 className="text-xl font-bold">FlexGuard · Immutable Token Ledger</h1>
+   <p className="mt-2 text-sm text-slate-600">Kuota dan saldo dihitung dari event ledger immutable. Reservasi, konsumsi dan refund memerlukan saldo serta referensi sah. Semua transaksi ditolak bila migrasi 0030 belum diterapkan.</p>
    <Link href="/flexguard" className="mt-3 mr-4 inline-block text-sm font-semibold text-indigo-700 underline">Semua wallet →</Link>
    <Link href="/sales/renewals" className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">Kontrak & Renewal →</Link></header>
   {error&&<p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">BLOCKED — {error}</p>}
@@ -53,7 +53,7 @@ export default function FlexGuardPage(){
      <label className="text-xs">Event sumber (RELEASE/DEBIT/REFUND)<input className={input} value={source} onChange={e=>setSource(e.target.value)}/></label>
      <label className="text-xs">Original supporting Vault ID (DEBIT)<input className={input} value={document} onChange={e=>setDocument(e.target.value)}/></label>
      <label className="text-xs sm:col-span-2">Justifikasi minimal 12 karakter<textarea className={input} rows={2} value={notes} onChange={e=>setNotes(e.target.value)} required minLength={12}/></label>
-     <button type="submit" className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2" disabled={busy||active.status!=='active'}>Simpan event D1 (audit immutable)</button>
+     <button type="submit" className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2" disabled={busy||active.status!=='active'}>Simpan event ledger (audit immutable)</button>
     </form>
     {active.events?.length?<div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Event</th><th>Unit</th><th>Tanggal</th><th>Alasan</th></tr></thead><tbody>{active.events.map(e=><tr key={e.id} className="border-t"><td>{e.kind}</td><td>{e.units}</td><td>{e.created_at}</td><td>{e.explanation}</td></tr>)}</tbody></table></div>:null}
    </>}

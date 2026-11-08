@@ -1,0 +1,44 @@
+name: RTICORE positive all-role isolated simulation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/rticore-positive-role-simulation.mjs'
+      - '.github/workflows/rticore-positive-all-roles-ci.yml'
+      - 'tests/**'
+      - 'src/**'
+      - 'migrations/**'
+      - 'docs/RTICORE_ERP_UAT_210_CATALOG.json'
+      - 'docs/RTICORE_UAT_210_CATALOG.json'
+permissions:
+  contents: read
+jobs:
+  positive-synthetic-role-journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install headless Chromium for localhost-only UI tests
+        run: npx playwright install --with-deps chromium
+      - name: Verify orchestrator syntax
+        run: node --check scripts/rticore-positive-role-simulation.mjs
+      - name: Run role and function technical simulations
+        run: node scripts/rticore-positive-role-simulation.mjs --ci
+      - name: Publish non-sensitive technical test artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rticore-positive-uat-synthetic
+          path: |
+            artifacts/rticore-positive-uat/result.json
+            artifacts/rticore-automated-gate/result.json
+            artifacts/browser-uat/*.png
+          if-no-files-found: warn
+          retention-days: 14
+# This CI does not deploy, contact external providers, access remote D1,
+# impersonate real users, sign operational approvals or assert 420 business PASS.

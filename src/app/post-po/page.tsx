@@ -80,8 +80,8 @@ export default function PostPoPage(){
    const original=prefillFromSales(j.account,j.deal,dual,Number(j.poCheck?.quotation_amount_before_vat||0));
    setData(original);setSourcePacket(original);setAwardValid(dual);
    setLinkedOpportunity(id);setStep('sales');
-   setMessage(dual?'Data D1 dibaca. Isi field yang belum tersedia tanpa memodifikasi data Customer/PO kanonis.':'PO/SPK belum mendapat review Finance–Legal independen: export BLOCKED.');
-  }catch(e){setMessage(e instanceof Error?e.message:'Gagal memuat sumber transaksi D1');}
+   setMessage(dual?'Data database dibaca. Isi field yang belum tersedia tanpa memodifikasi data Customer/PO kanonis.':'PO/SPK belum mendapat review Finance–Legal independen: export BLOCKED.');
+  }catch(e){setMessage(e instanceof Error?e.message:'Gagal memuat sumber transaksi database');}
   finally{setSourceLoading(false);}
  };
  useEffect(()=>{
@@ -115,7 +115,7 @@ export default function PostPoPage(){
    setExportLoading(kind);
    try{
      await downloadOfficialPostPoDocx(data,kind,template);
-     setMessage('DOCX asli diisi dari sumber D1; dokumen final masih harus ditandatangani dan disimpan ke Document Vault.');
+     setMessage('DOCX asli diisi dari sumber database; dokumen final masih harus ditandatangani dan disimpan ke Document Vault.');
    }catch(err){
      setMessage(err instanceof Error?err.message:'Gagal membuat DOCX menggunakan template resmi.');
    }finally{setExportLoading(null);}
@@ -138,17 +138,17 @@ export default function PostPoPage(){
     </span>
    </div>
    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-    <strong>Kontrol data:</strong> Data Sales terverifikasi diambil dari D1 dengan Cloudflare Access. Edit formulir dan KTP di layar ini tidak disimpan ke CRM. Verifikasi bukti NPWP, KTP dan PO sebelum finalisasi dokumen.
+    <strong>Kontrol data:</strong> Data Sales terverifikasi diambil dari database melalui sesi autentikasi. Edit formulir dan KTP di layar ini tidak disimpan ke CRM. Verifikasi bukti NPWP, KTP dan PO sebelum finalisasi dokumen.
    </div>
   </header>
 
-  {sourceLoading&&<p role="status" className="rounded-lg bg-blue-50 p-3 text-xs">Mengambil data opportunity D1...</p>}
+  {sourceLoading&&<p role="status" className="rounded-lg bg-blue-50 p-3 text-xs">Mengambil data opportunity dari database...</p>}
   {linkedOpportunity&&<p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">Terhubung dengan Opportunity {linkedOpportunity}. Bukti pribadi diisi langsung pada form ini.</p>}
   {!linkedOpportunity&&<form className="rounded-2xl border border-slate-200 bg-white p-4" onSubmit={e=>{e.preventDefault();void load(lookupId);}}>
-    <label className="block text-xs font-semibold">Opportunity D1 yang sudah Closed Won
+    <label className="block text-xs font-semibold">Opportunity yang sudah Closed Won
       <input className="mt-2 block w-full rounded-lg border p-2" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="Opportunity ID" required/>
     </label>
-    <button type="submit" disabled={sourceLoading} className="mt-3 rounded-lg bg-indigo-700 px-4 py-2 text-xs font-semibold text-white">Muat data Customer dan PO/SPK dari D1</button>
+    <button type="submit" disabled={sourceLoading} className="mt-3 rounded-lg bg-indigo-700 px-4 py-2 text-xs font-semibold text-white">Muat data Customer dan PO/SPK dari database</button>
     <p className="mt-2 text-xs text-slate-600">Tidak tersedia input customer dummy. Pilih Opportunity berizin dari Sales Pipeline.</p>
   </form>}
 
@@ -316,7 +316,7 @@ export default function PostPoPage(){
     <Section title="Readiness Check Sebelum Kick Off" description="Setiap isian wajib ditandai jelas. Form final hanya bisa diunduh jika semua parameter terpenuhi.">
      <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-4">
       {ready?<CheckCircle2 className="h-8 w-8 text-emerald-600"/>:<AlertCircle className="h-8 w-8 text-amber-600"/>}
-      <div><div className="text-sm font-bold text-slate-900">{ready?'Sumber D1 dan field konsisten — dokumen unsigned':'Belum memenuhi gate Post-PO'}</div>
+      <div><div className="text-sm font-bold text-slate-900">{ready?'Sumber database dan field konsisten — dokumen unsigned':'Belum memenuhi gate Post-PO'}</div>
        <p className="text-xs text-slate-500">Registrasi: {regIssues.length} temuan · Proyek: {prjIssues.length} temuan</p></div>
      </div>
      {findings.length>0&&<div className="mt-3 max-h-[440px] overflow-y-auto rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -324,7 +324,7 @@ export default function PostPoPage(){
        {findings.map((f,i)=><li key={f.field+'-'+i} className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0"/><span>{f.category==='registration'?'Registrasi':'Project'} — {f.message}</span></li>)}
       </ul>
      </div>}
-     {ready&&<p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">Field dokumen dan sumber D1 valid. Penandatanganan asli, Vault dan UAT belum dianggap PASS.</p>}
+     {ready&&<p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">Field dokumen dan sumber database valid. Penandatanganan asli, Vault dan UAT belum dianggap PASS.</p>}
     </Section>
     <Section title="Kontrol Operasional" description="Urutan tanggung jawab sesudah PO dan sebelum Kick Off.">
      <ol className="list-decimal space-y-2 pl-4 text-xs leading-relaxed text-slate-700">

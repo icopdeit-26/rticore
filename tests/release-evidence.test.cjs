@@ -4,21 +4,21 @@ const {mkdtempSync,writeFileSync,rmSync}=require('node:fs');
 const {tmpdir}=require('node:os');
 const {join}=require('node:path');
 const {generateKeyPairSync,sign,createHash}=require('node:crypto');
-const api=import('../scripts/india-release-evidence.mjs');
-const catalog=require('../docs/INDIA_UAT_210_CATALOG.json').cases;
-const erpCatalog=require('../docs/INDIA_ERP_UAT_210_CATALOG.json').cases;
+const api=import('../scripts/rticore-release-evidence.mjs');
+const catalog=require('../docs/RTICORE_UAT_210_CATALOG.json').cases;
+const erpCatalog=require('../docs/RTICORE_ERP_UAT_210_CATALOG.json').cases;
 
 // Synthetic receipts exercise rejection controls only; never count these as real UAT.
 async function fixture(){
  const {GATES,verifyReleaseEvidence}=await api;
- const dir=mkdtempSync(join(tmpdir(),'india-signed-evidence-'));
+ const dir=mkdtempSync(join(tmpdir(),'rticore-signed-evidence-'));
  const {privateKey,publicKey}=generateKeyPairSync('ed25519');
  const proof=Buffer.from('synthetic proof bytes for unit-test signature validation');
  writeFileSync(join(dir,'proof.txt'),proof);
  const ref={path:'proof.txt',sha256:createHash('sha256').update(proof).digest('hex')};
  const identities=['admin','marketing','sales','sales','presales','finance','approver','legal','viewer'].map((role,i)=>({subject:'subject-'+i,role,auth_method:'cloudflare_access',jwt_signature_verified:true,audience:'test-audience',issuer:'https://test.cloudflareaccess.com'}));
  const now=Date.now(),sha='a'.repeat(40);
- const payload={schema_version:1,release_sha:sha,environment:'production',worker:'india',database_id:'8395dd84-1b7d-4eaf-9990-1d8e75a42cb5',issued_at:new Date(now).toISOString(),expires_at:new Date(now+60000).toISOString(),gates:GATES.map(id=>({id,status:'PASS',evidence:[ref]})),identities,uat:catalog.map(c=>({id:c.id,priority:c.priority,status:'PASS',release_sha:sha,execution_kind:'real_cloudflare_access',actual_result:'test assertion',tester_subject:identities[0].subject,executed_at:new Date(now).toISOString(),evidence:[ref]})),erp_uat:erpCatalog.map(c=>({id:c.id,priority:c.priority,status:'PASS',release_sha:sha,execution_kind:'real_cloudflare_access',actual_result:'synthetic test assertion',tester_subject:identities[0].subject,executed_at:new Date(now).toISOString(),evidence:[ref],actor:c.actor,role_scope_verified:true,segregation_of_duties_checked:true,actor_proofs:c.actor.split(',').map((label,i)=>({role_label:label.trim(),subject:identities[i].subject,jwt_signature_verified:true}))})),signoffs:['security','finance','operations','release','legal','hr','procurement','cyber_operations'].map(kind=>({kind,decision:'APPROVED',release_sha:sha,subject:'authority',reference:'synthetic-unit-test'})),open_critical:0,open_high:0};
+ const payload={schema_version:1,release_sha:sha,environment:'production',worker:'rticore',database_id:'8395dd84-1b7d-4eaf-9990-1d8e75a42cb5',issued_at:new Date(now).toISOString(),expires_at:new Date(now+60000).toISOString(),gates:GATES.map(id=>({id,status:'PASS',evidence:[ref]})),identities,uat:catalog.map(c=>({id:c.id,priority:c.priority,status:'PASS',release_sha:sha,execution_kind:'real_cloudflare_access',actual_result:'test assertion',tester_subject:identities[0].subject,executed_at:new Date(now).toISOString(),evidence:[ref]})),erp_uat:erpCatalog.map(c=>({id:c.id,priority:c.priority,status:'PASS',release_sha:sha,execution_kind:'real_cloudflare_access',actual_result:'synthetic test assertion',tester_subject:identities[0].subject,executed_at:new Date(now).toISOString(),evidence:[ref],actor:c.actor,role_scope_verified:true,segregation_of_duties_checked:true,actor_proofs:c.actor.split(',').map((label,i)=>({role_label:label.trim(),subject:identities[i].subject,jwt_signature_verified:true}))})),signoffs:['security','finance','operations','release','legal','hr','procurement','cyber_operations'].map(kind=>({kind,decision:'APPROVED',release_sha:sha,subject:'authority',reference:'synthetic-unit-test'})),open_critical:0,open_high:0};
  const receiptPath=join(dir,'receipt.json');
  const save=()=>writeFileSync(receiptPath,JSON.stringify({payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),privateKey).toString('base64')}));
  const check=()=>verifyReleaseEvidence({receiptPath,publicKey:publicKey.export({format:'pem',type:'spki'}),sha,now});

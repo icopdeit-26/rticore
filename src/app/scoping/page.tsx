@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { calibrationFactor, type ModelFactors } from '@/lib/scoping-calibration';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -25,6 +26,11 @@ import {SCOPING_SERVICE_TYPES, SCOPING_DEFINITIONS,validateServiceScope,summariz
 import { formatIDR } from '@/lib/formatters';
 import {CompactSelect} from '@/components/ui/CompactSelect';
 import { isSupportedScopingFileName } from '@/lib/scoping-file-types';
+import IcopPricingPanel from '@/components/scoping/IcopPricingPanel';
+import {
+  defaultCommercialContext, estimateScopingPrice, hppSuggestion, validateCommercialContext,
+  CLIENT_TIERS, LOCATION_OPTIONS, URGENCY_OPTIONS, type CommercialContext,
+} from '@/lib/scoping-pricing';
 
 export default function SmartScopingPage() {
   const router = useRouter();
@@ -63,7 +69,17 @@ export default function SmartScopingPage() {
   const [serviceLevel, setServiceLevel] = useState<'8x5' | '12x5' | '24x7'>('24x7');
   const [hasThreatHunting, setHasThreatHunting] = useState<boolean>(true);
   const [hasIR, setHasIR] = useState<boolean>(false);
+  const [nWebApps, setNWebApps] = useState<number>(0);
+  const [socMonths, setSocMonths] = useState<number>(12);
+  const [scopingModel, setScopingModel] = useState<{version:number;factors:ModelFactors}|null>(null);
+  useEffect(()=>{void fetch('/api/scoping/model',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j?.success&&j.model)setScopingModel(j.model);}).catch(()=>{});},[]);
   const [sessionDraftMessage,setSessionDraftMessage]=useState('');
+
+  // ICOP commercial context (pricing_sessions) kept per product type.
+  const [commercial,setCommercial]=useState<Partial<Record<ScopingService,CommercialContext>>>({});
+  const ctx=commercial[activeTab]||defaultCommercialContext();
+  const setCtx=(next:CommercialContext)=>setCommercial(p=>({...p,[activeTab]:next}));
+  const commercialIssues=validateCommercialContext(ctx);
 
   // The portfolio is calculated from the same single-asset VAPT rule engine.
   const vaptPortfolio = calculateVaptPortfolio(vaptAssets);
@@ -74,6 +90,7 @@ export default function SmartScopingPage() {
     n_network_devices: nNetwork,
     n_endpoints: nEndpoints,
     n_cloud_services: nCloud,
+    n_web_apps: nWebApps,
     has_active_directory: hasAD,
     traffic_intensity: trafficIntensity,
     service_level: serviceLevel,
@@ -81,17 +98,28 @@ export default function SmartScopingPage() {
     has_ir_retainer: hasIR,
   });
 
+  const estimate = estimateScopingPrice({
+    service: activeTab, ctx, vaptTotalMd: vaptPortfolio.total_md,
+    socBaseMrc: socResult.recommended_mrc, socMonths, serviceValues,
+    calibrationFactor: calibrationFactor(scopingModel?.factors, activeTab),
+  });
+  const socInvalid = activeTab === 'SOC' &&
+    (![nServers,nNetwork,nEndpoints,nCloud,nWebApps].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=1000000) ||
+     !Number.isSafeInteger(socMonths) || socMonths < 1 || socMonths > 60);
+  const transferBlocked = missingScope.length>0 || commercialIssues.length>0 || socInvalid ||
+    (activeTab==='VAPT' && vaptIssues.length>0);
+
   // Deliberate, session-only draft recovery. Never save document bytes,
   // extracted RKS/TOR content, provider responses, or AI consent to storage.
-  const scopingSessionKey='india_scoping_form_draft_v1';
+  const scopingSessionKey='rticore_scoping_form_draft_v1';
   const saveSessionDraft=()=>{
     try{
-      const draft={version:1,at:Date.now(),activeTab,scopeInputs,vaptAssets,
-        soc:{nServers,nNetwork,nEndpoints,nCloud,hasAD,trafficIntensity,serviceLevel,hasThreatHunting,hasIR}};
+      const draft={version:1,at:Date.now(),activeTab,scopeInputs,vaptAssets,commercial,
+        soc:{nServers,nNetwork,nEndpoints,nCloud,hasAD,trafficIntensity,serviceLevel,hasThreatHunting,hasIR,nWebApps,socMonths}};
       const raw=JSON.stringify(draft);
       if(raw.length>70000)throw Error('Draft terlalu besar untuk sesi browser.');
       sessionStorage.setItem(scopingSessionKey,raw);
-      setSessionDraftMessage('Draft scoping tersimpan di tab browser ini selama maksimal 30 menit. Belum tersimpan ke D1.');
+      setSessionDraftMessage('Draft scoping tersimpan di tab browser ini selama maksimal 30 menit. Belum tersimpan ke database.');
     }catch(e){setSessionDraftMessage(e instanceof Error?e.message:'Penyimpanan draft sesi gagal.');}
   };
   const restoreSessionDraft=()=>{
@@ -100,8 +128,10 @@ export default function SmartScopingPage() {
       if(!raw||raw.length>70000)throw Error('Draft sesi tidak tersedia atau terlalu besar.');
       const d=JSON.parse(raw) as {version?:number;at?:number;activeTab?:string;
         scopeInputs?:Partial<Record<ScopingService,Record<string,string>>>;vaptAssets?:VaptAsset[];
+        commercial?:Partial<Record<ScopingService,CommercialContext>>;
         soc?:{nServers:number;nNetwork:number;nEndpoints:number;nCloud:number;hasAD:boolean;
-        trafficIntensity:'low'|'medium'|'high';serviceLevel:'8x5'|'12x5'|'24x7';hasThreatHunting:boolean;hasIR:boolean}};
+        trafficIntensity:'low'|'medium'|'high';serviceLevel:'8x5'|'12x5'|'24x7';hasThreatHunting:boolean;hasIR:boolean;
+        nWebApps?:number;socMonths?:number}};
       if(d.version!==1||!Number.isFinite(d.at)||!d.at||d.at>Date.now()+60000||
          Date.now()-d.at>30*60*1000||!SCOPING_SERVICE_TYPES.includes(d.activeTab as ScopingService))
         throw Error('Draft sesi tidak valid atau lebih dari 30 menit.');
@@ -117,12 +147,33 @@ export default function SmartScopingPage() {
         !['low','medium','high'].includes(soc.trafficIntensity)||!['8x5','12x5','24x7'].includes(soc.serviceLevel)||
         [soc.hasAD,soc.hasThreatHunting,soc.hasIR].some(x=>typeof x!=='boolean'))
         throw Error('Parameter SOC pada draft tidak valid.');
+      const webApps=soc.nWebApps??0, months=soc.socMonths??12;
+      if(!Number.isSafeInteger(webApps)||webApps<0||webApps>1000000||!Number.isSafeInteger(months)||months<1||months>60)
+        throw Error('Parameter SOC pada draft tidak valid.');
+      // Older drafts have no commercial context; validate every restored entry otherwise.
+      const restoredCommercial:Partial<Record<ScopingService,CommercialContext>>={};
+      if(d.commercial!==undefined){
+        if(!d.commercial||typeof d.commercial!=='object'||Array.isArray(d.commercial))throw Error('Parameter komersial draft tidak valid.');
+        for(const [k,v] of Object.entries(d.commercial)){
+          const c=v as CommercialContext;
+          if(!SCOPING_SERVICE_TYPES.includes(k as ScopingService)||!c||typeof c!=='object'||
+            !CLIENT_TIERS.includes(c.client_tier)||!LOCATION_OPTIONS.some(l=>l.id===c.location_type)||
+            !URGENCY_OPTIONS.some(u=>u.id===c.urgency)||typeof c.total_md!=='string'||c.total_md.length>20||
+            !c.role_md||typeof c.role_md!=='object'||!c.costs||typeof c.costs!=='object'||
+            [...Object.values(c.role_md),...Object.values(c.costs)].some(x=>typeof x!=='string'||x.length>20)||
+            validateCommercialContext(c).length)
+            throw Error('Parameter komersial draft tidak valid.');
+          restoredCommercial[k as ScopingService]={client_tier:c.client_tier,location_type:c.location_type,
+            urgency:c.urgency,total_md:c.total_md,role_md:{...c.role_md},costs:{...c.costs}};
+        }
+      }
       setActiveTab(d.activeTab as ScopingService);setScopeInputs(d.scopeInputs);
+      setCommercial(restoredCommercial);setNWebApps(webApps);setSocMonths(months);
       setVaptAssets(d.vaptAssets);setNServers(soc.nServers);setNNetwork(soc.nNetwork);
       setNEndpoints(soc.nEndpoints);setNCloud(soc.nCloud);setHasAD(soc.hasAD);
       setTrafficIntensity(soc.trafficIntensity);setServiceLevel(soc.serviceLevel);
       setHasThreatHunting(soc.hasThreatHunting);setHasIR(soc.hasIR);
-      setSessionDraftMessage('Draft scoping dipulihkan. Tinjau semua parameter sebelum transfer ke BoQ; belum tersimpan ke D1.');
+      setSessionDraftMessage('Draft scoping dipulihkan. Tinjau semua parameter sebelum transfer ke BoQ; belum tersimpan ke database.');
     }catch(e){setSessionDraftMessage(e instanceof Error?e.message:'Pemulihan draft sesi gagal.');}
   };
   const discardSessionDraft=()=>{
@@ -132,19 +183,30 @@ export default function SmartScopingPage() {
 
   const handleProceedToPricing = () => {
     // Transfer remains an unsaved draft. BoQ enforces all D1, role and approval rules.
-    if (missingScope.length || (activeTab === 'VAPT' && vaptIssues.length)) return;
+    if (transferBlocked) return;
+    const effort = estimate.model === 'md' && activeTab !== 'VAPT' && estimate.totalMd > 0
+      ? ' | estimasi effort ' + estimate.totalMd + ' MD' : '';
+    const ctiInfo = estimate.cti ? ' | footprint ' + estimate.cti.score + ' (' + estimate.cti.tierLabel + ')' : '';
     const description = activeTab === 'SOC'
-      ? 'SOC/MDR: ' + socResult.calculated_eps + ' EPS; SLA ' + serviceLevel +
+      ? 'SOC/MDR: ' + socResult.calculated_eps + ' EPS (' + socResult.eps_tier + '); SLA ' + serviceLevel +
         '; servers ' + nServers + '; network ' + nNetwork +
-        '; endpoints ' + nEndpoints + '; cloud ' + nCloud
-      : summarizeServiceScope(activeTab, serviceValues);
+        '; endpoints ' + nEndpoints + '; cloud ' + nCloud + '; web apps ' + nWebApps +
+        '; threat hunting ' + (hasThreatHunting ? 'ya' : 'tidak') + '; IR retainer ' + (hasIR ? 'ya' : 'tidak') +
+        '; kontrak ' + socMonths + ' bulan'
+      : summarizeServiceScope(activeTab, serviceValues) + ctiInfo + effort;
+    // ICOP pricing_sessions context + boq_internal A–E suggestion. No unit price is transferred.
+    const pricing_context = {
+      client_tier: ctx.client_tier, location_type: ctx.location_type, urgency: ctx.urgency,
+      hpp: hppSuggestion(estimate),
+    };
     const draft = activeTab === 'VAPT'
-      ? {version: 2, createdAt: Date.now(), service_type: 'VAPT', items: vaptAssetBoqLines(vaptAssets)}
+      ? {version: 2, createdAt: Date.now(), service_type: 'VAPT', items: vaptAssetBoqLines(vaptAssets), pricing_context}
       : {version: 1, createdAt: Date.now(), service_type: activeTab,
-          description: description.slice(0, 900), quantity: 1,
-          unit: activeTab === 'SOC' ? 'Bulan' : SCOPING_DEFINITIONS[activeTab].outputUnit};
+          description: description.slice(0, 900),
+          quantity: activeTab === 'SOC' ? socMonths : activeTab === 'CTI' ? Number(serviceValues.cti_months) || 1 : 1,
+          unit: activeTab === 'SOC' ? 'Bulan' : SCOPING_DEFINITIONS[activeTab].outputUnit, pricing_context};
     try {
-      sessionStorage.setItem('india_scoping_boq_draft_v1', JSON.stringify(draft));
+      sessionStorage.setItem('rticore_scoping_boq_draft_v1', JSON.stringify(draft));
       router.push('/boq?from=scoping');
     } catch {
       alert('Penyimpanan draft sesi tidak tersedia. Aktifkan session storage browser untuk melanjutkan ke BoQ.');
@@ -185,7 +247,7 @@ export default function SmartScopingPage() {
       form.append('file', file);
       const res = await fetch('/api/scoping/upload', {
         method: 'POST',
-        headers: { 'x-india-document-upload': '1' },
+        headers: { 'x-rticore-document-upload': '1' },
         body: form,
       });
       // The public demo can read documents locally without sending the file to a backend.
@@ -215,7 +277,7 @@ export default function SmartScopingPage() {
     try {
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-india-ai-admin': '1' },
+        headers: { 'Content-Type': 'application/json', 'x-rticore-ai-admin': '1' },
         body: JSON.stringify({
           task_type: 'scoping_analysis',
           prompt: `Ekstrak spesifikasi teknis dan parameter scoping dari dokumen RKS/TOR/RFP berikut:\n\n${aiDocText.slice(0, 11000)}\n\nTentukan:
@@ -508,7 +570,7 @@ export default function SmartScopingPage() {
 
       <section aria-label="Draft scoping sesi" className="rounded-xl border border-blue-200 bg-blue-50 p-4">
        <h2 className="text-sm font-bold text-blue-950">Pemulihan draft Scoping</h2>
-       <p className="mt-1 text-xs text-blue-900">Simpan manual untuk pemulihan di tab ini (maksimal 30 menit). Tidak menyimpan file RKS/TOR, teks AI, atau API key. Draft sesi bukan transaksi D1 dan tidak melompati persetujuan BoQ.</p>
+       <p className="mt-1 text-xs text-blue-900">Simpan manual untuk pemulihan di tab ini (maksimal 30 menit). Tidak menyimpan file RKS/TOR, teks AI, atau API key. Draft sesi bukan transaksi database dan tidak melompati persetujuan BoQ.</p>
        <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={saveSessionDraft} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white">Simpan Draft Sesi</button>
         <button type="button" onClick={restoreSessionDraft} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-900">Pulihkan Draft Sesi</button>
@@ -535,7 +597,17 @@ export default function SmartScopingPage() {
                 </span>
               </h2>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Web Apps (15 EPS)</label>
+                  <input type="number" min={0} value={nWebApps} onChange={e => setNWebApps(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 p-2 text-xs font-bold" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Durasi Kontrak (bulan)</label>
+                  <input type="number" min={1} max={60} value={socMonths} onChange={e => setSocMonths(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 p-2 text-xs font-bold" />
+                </div>
                 <div>
                   <label className="text-xs font-medium text-slate-600 block mb-1">Servers (35 EPS/unit)</label>
                   <input
@@ -634,7 +706,7 @@ export default function SmartScopingPage() {
                       value={serviceValues[field.key]||''} onChange={value=>changeScope(field.key,value)}
                       options={[{value:'',label:'Pilih '+field.label},...(field.options||[]).map(option=>({value:option,label:option}))]}
                       searchable={(field.options?.length||0)>=10}/>
-                    :<input type={field.kind==='number'?'number':'text'} min={field.kind==='number'?1:undefined}
+                    :<input type={field.kind==='number'?'number':'text'} min={field.kind==='number'?(field.min??1):undefined}
                       max={field.kind==='number'?100000:undefined} step={field.kind==='number'?1:undefined}
                       maxLength={field.kind==='text'?350:undefined}
                       className="mt-1.5 w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2.5 text-xs"
@@ -646,6 +718,7 @@ export default function SmartScopingPage() {
               <p className="border-t pt-4 text-xs text-slate-500">Lengkapi parameter dari discovery / RKS. Kebutuhan delivery, effort dan harga final ditentukan Presales dan Finance melalui BoQ approval.</p>
             </section>
           )}
+          <IcopPricingPanel service={activeTab} ctx={ctx} onChange={setCtx} estimate={estimate}/>
         </div>
 
         {/* Output Summary Card (Col 1) */}
@@ -723,14 +796,44 @@ export default function SmartScopingPage() {
                 </p>:<p className="rounded-lg bg-emerald-50 p-3 text-xs font-medium text-emerald-800">
                   Parameter lengkap; siap direview Presales di BoQ.
                 </p>}
-                <p className="text-[11px] text-slate-500">Belum ada estimasi mandays atau harga otomatis untuk kategori ini.</p>
+                {estimate.cti && (
+                  <div className="rounded-lg border border-indigo-100 bg-white p-3 text-xs">
+                    <span className="text-slate-500">Footprint score: </span>
+                    <strong className="text-slate-900">{estimate.cti.score}</strong>
+                    <span className="ml-2 rounded bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-800">Tier CTI: {estimate.cti.tierLabel}</span>
+                  </div>
+                )}
               </div>
             )}
+
+            {/* ICOP 3-range indication (pricing_sessions floor / standard / premium) */}
+            <div className="space-y-2 border-t border-blue-100 pt-3 text-xs">
+              <p className="font-bold text-slate-900">Indikasi Harga ICOP (internal)</p>
+              {estimate.ready ? (<>
+                <div className="flex justify-between gap-2"><span className="text-slate-500">HPP A–E{estimate.periodLabel}</span>
+                  <span className="font-semibold tabular-nums text-slate-800">{estimate.totalInternalCost?formatIDR(estimate.totalInternalCost):'Belum diisi'}</span></div>
+                <div className="flex justify-between gap-2"><span className="text-slate-500">Floor (margin 20%)</span>
+                  <span className="font-semibold tabular-nums text-slate-800">{estimate.floor!==null?formatIDR(estimate.floor)+estimate.periodLabel:'Perlu HPP'}</span></div>
+                {estimate.calibrationFactor!==1&&<div className="flex justify-between gap-2"><span className="text-slate-500">Standard dasar ICOP</span>
+                  <span className="tabular-nums text-slate-600">{formatIDR(estimate.baseStandard)}{estimate.periodLabel}</span></div>}
+                <div className="flex justify-between gap-2"><span className="text-slate-500">Standard (tier ×{estimate.tierMultiplier.toFixed(2)}, DAI {estimate.dai.toFixed(3)}{estimate.calibrationFactor!==1?', kalibrasi v'+scopingModel?.version+' ×'+estimate.calibrationFactor.toFixed(3):''})</span>
+                  <span className="font-bold tabular-nums text-emerald-700">{formatIDR(estimate.standard)}{estimate.periodLabel}</span></div>
+                <div className="flex justify-between gap-2"><span className="text-slate-500">Premium (×1,25)</span>
+                  <span className="font-semibold tabular-nums text-slate-800">{formatIDR(estimate.premium)}{estimate.periodLabel}</span></div>
+                {estimate.contractValueStandard!==undefined&&<div className="flex justify-between gap-2"><span className="text-slate-500">Nilai kontrak standard ({estimate.contractMonths} bln)</span>
+                  <span className="font-semibold tabular-nums text-slate-800">{formatIDR(estimate.contractValueStandard)}</span></div>}
+                {estimate.marginAtStandard!==null&&<p className={`rounded-lg p-2 font-medium ${estimate.marginWarning?'bg-rose-50 text-rose-800':'bg-emerald-50 text-emerald-800'}`}>
+                  Gross margin pada Standard: {estimate.marginAtStandard.toFixed(1)}%{estimate.marginWarning?' — di bawah 25%, perlu review Head Sales.':''}</p>}
+              </>) : <p className="text-slate-500">{estimate.reason}</p>}
+              {commercialIssues.length>0&&<div role="alert" className="rounded-lg bg-amber-50 p-2 text-amber-900">{commercialIssues.map(x=><p key={x}>{x}</p>)}</div>}
+              {socInvalid&&<p role="alert" className="rounded-lg bg-amber-50 p-2 text-amber-900">Jumlah aset SOC harus bilangan bulat ≥ 0 dan durasi kontrak 1–60 bulan.</p>}
+              <p className="text-[11px] leading-relaxed text-slate-500">Bukan harga quotation. Harga tidak ikut ditransfer; HPP A–E dibawa ke BoQ sebagai saran untuk Finance.</p>
+            </div>
 
             {/* Transfer to Pricing Button */}
             <button
               onClick={handleProceedToPricing}
-              disabled={missingScope.length>0 || (activeTab==='VAPT' && vaptIssues.length>0)}
+              disabled={transferBlocked}
               className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-xs font-bold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 transition-all mt-4"
             >
               <span>Transfer Draft Scoping ke BoQ</span>
@@ -744,7 +847,7 @@ export default function SmartScopingPage() {
               <span>Ketentuan Kalkulasi</span>
             </div>
             <p className="text-[11px] leading-relaxed">
-              Untuk VAPT dan SOC, hasil estimasi mengikuti kalkulator yang tersedia. Kategori lain menggunakan parameter standar tanpa harga/effort otomatis. Transfer ke BoQ tidak menyimpan transaksi ke D1: Presales harus melengkapi penawaran, Finance memeriksa costing, dan approval tetap berlaku.
+              Effort VAPT dan EPS SOC mengikuti kalkulator; CTI memakai footprint score ICOP; kategori lain memakai estimasi MD Presales yang dibagi ke role sesuai profil produk. Harga indikatif mengikuti rate card, client tier, DAI dan BoQ A–E ICOP. Transfer ke BoQ tidak menyimpan transaksi ke database: Presales melengkapi penawaran, Finance memeriksa costing, dan approval tetap berlaku.
             </p>
           </div>
         </div>

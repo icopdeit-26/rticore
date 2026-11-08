@@ -7,10 +7,10 @@ Pada menu akun pengguna, Admin dapat memilih role lain tanpa logout untuk menguj
 Administrator, Marketing, Sales, Presales / Solution, Finance, Approver, Legal, dan Viewer.
 
 ## Alur
-1. Login sebagai anggota `india_members` yang aktif dan mempunyai role `admin`.
+1. Login sebagai anggota `rticore_members` yang aktif dan mempunyai role `admin`.
 2. Buka menu profil di kanan atas; pilih **Ganti Role / Mode Uji**.
 3. Pilihan dikirim ke `POST /api/sales/role-switch` dari origin aplikasi yang sama.
-4. Server memverifikasi Cloudflare Access JWT dan keanggotaan D1 aktual sebagai Admin, menulis `ROLE_PREVIEW_SWITCH` ke `india_audit_log`, kemudian menetapkan cookie sementara HttpOnly, SameSite=Strict, Secure pada HTTPS selama 60 menit.
+4. Server memverifikasi Cloudflare Access JWT dan keanggotaan D1 aktual sebagai Admin, menulis `ROLE_PREVIEW_SWITCH` ke `rticore_audit_log`, kemudian menetapkan cookie sementara HttpOnly, SameSite=Strict, Secure pada HTTPS selama 60 menit.
 5. Semua API menggunakan `authorizeBoQ`: role efektif sekarang role uji. Role asal Admin tetap dapat dilihat melalui `GET /api/sales/identity`, dan tidak dapat diubah oleh browser. Sidebar dan menu mengikuti role efektif setelah navigasi ulang.
 6. Pilih **Kembali ke Role Admin** atau Administrator pada menu profil untuk membersihkan cookie sementara.
 
@@ -29,5 +29,5 @@ Administrator, Marketing, Sales, Presales / Solution, Finance, Approver, Legal, 
 - `npm run test:role-preview`
 - `npm run test:modules-13-15`
 - UAT browser: Admin -> Sales -> Finance -> Viewer -> Admin; masing-masing menu dan API harus menolak operasi yang dilarang.
-- Periksa D1 `india_audit_log` action `ROLE_PREVIEW_SWITCH`, lalu verifikasi identitas dan privilege normal setelah sesi expired.
+- Periksa D1 `rticore_audit_log` action `ROLE_PREVIEW_SWITCH`, lalu verifikasi identitas dan privilege normal setelah sesi expired.
 - Rilis hanya setelah lint/typecheck, test dan verifikasi di lingkungan yang disetujui.

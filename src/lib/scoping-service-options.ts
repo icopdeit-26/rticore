@@ -15,6 +15,8 @@ export type ScopingField = {
   options?: readonly string[];
   unit?: string;
   help?: string;
+  /** Minimum for number fields (default 1). 0 allows "tidak ada". */
+  min?: number;
 };
 export type ScopingDefinition = {
   label: string;
@@ -26,18 +28,26 @@ const choice = (key:string,label:string,options:readonly string[],required=true)
   ({key,label,kind:'select',options,required});
 const count = (key:string,label:string,unit:string,required=true):ScopingField =>
   ({key,label,kind:'number',unit,required});
+const optionalCount = (key:string,label:string,unit:string,help?:string):ScopingField =>
+  ({key,label,kind:'number',unit,required:false,min:0,help});
 const text = (key:string,label:string,required=true):ScopingField =>
   ({key,label,kind:'text',required});
 
 export const SCOPING_DEFINITIONS:Record<ScopingService,ScopingDefinition> = {
   VAPT:{label:'VAPT / Pentest',subtitle:'Aplikasi, API, jaringan, source code dan red teaming',outputUnit:'MD',fields:[]},
   SOC:{label:'SOC / MDR',subtitle:'Monitoring, log source, EPS, operasi dan SLA',outputUnit:'Bulan',fields:[]},
-  CTI:{label:'Cyber Threat Intelligence',subtitle:'Digital risk, threat intelligence, dark web dan brand monitoring',outputUnit:'Bulan',fields:[
+  // Aligned with ICOP pricing_cti_inputs (digital footprint -> footprint_score -> cti_tier).
+  CTI:{label:'Cyber Threat Intelligence',subtitle:'Digital footprint, dark web, brand monitoring dan ETLM (ICOP pricing_cti_inputs)',outputUnit:'Bulan',fields:[
     choice('cti_type','Jenis Layanan CTI',['Threat Intelligence Report','Dark Web Monitoring','Brand / Domain Monitoring','Attack Surface Monitoring','Executive Threat Monitoring','Managed CTI']),
-    count('cti_assets','Domain / brand / aset yang dimonitor','aset'),
-    count('cti_sources','Sumber atau organisasi intelijen','sumber',false),
+    count('cti_domains','Jumlah Domain Dimonitor','domain'),
+    optionalCount('cti_subsidiaries','Jumlah Anak Usaha / Entitas','entitas'),
+    optionalCount('cti_executives','Key Executives (VIP)','orang','Untuk executive / VIP monitoring'),
+    optionalCount('cti_mobile_apps','Jumlah Mobile App Dimonitor','aplikasi'),
+    choice('cti_brand_monitoring','Brand Monitoring',['Ya','Tidak']),
+    choice('cti_threat_level','Tingkat Ancaman Industri',['Low','Medium','High','Critical']),
+    choice('cti_etlm','Termasuk ETLM',['Ya','Tidak'],false),
+    optionalCount('cti_rfi','RFI (Request for Information) per Bulan','RFI'),
     choice('cti_frequency','Frekuensi Pelaporan',['Harian','Mingguan','Bulanan','Insidental']),
-    choice('cti_coverage','Cakupan Monitoring',['Indonesia','Regional ASEAN','Global']),
     count('cti_months','Durasi Kontrak','bulan'),
   ]},
   ISO:{label:'ISO & Sertifikasi',subtitle:'Gap assessment, implementasi, audit kesiapan dan sertifikasi',outputUnit:'Paket',fields:[
@@ -118,7 +128,7 @@ export function validateServiceScope(service:ScopingService,values:Record<string
     const value=values[f.key]?.trim()||'';
     if(!value)return !!f.required;
     if(f.kind==='select')return !f.options?.includes(value);
-    return f.kind==='number'&&(!Number.isSafeInteger(Number(value))||Number(value)<=0||Number(value)>100000);
+    return f.kind==='number'&&(!Number.isSafeInteger(Number(value))||Number(value)<(f.min??1)||Number(value)>100000);
   }).map(f=>f.label);
 }
 

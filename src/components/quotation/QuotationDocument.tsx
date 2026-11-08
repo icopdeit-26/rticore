@@ -21,7 +21,7 @@ const UNKNOWN = 'Belum diisi - perlu konfirmasi Sales/Pre-Sales dan persetujuan 
 
 function Brand() {
   return <div className="quote-brand">
-    <div className="quote-brand-logo" aria-label="RTI">
+    <div className="quote-brand-logo" aria-label="RTI"><img src="/logo-rti-light.png" alt="Logo RTI - RiseT Indonesia" className="h-12 w-auto shrink-0 object-contain" />
       <div><div className="quote-logo-text">RTI</div>
       <div className="quote-logo-member">RTICORE Business Management Platform</div></div>
     </div>

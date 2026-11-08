@@ -5,24 +5,24 @@
  */
 import type { BoQRole } from './boq-domain';
 
-export type IndiaNavItem = {
+export type RTICoreNavItem = {
   readonly label: string;
   readonly href: string;
   readonly roles: readonly BoQRole[];
 };
-export type IndiaNavGroup = {
+export type RTICoreNavGroup = {
   readonly id: string;
   readonly label: string;
-  readonly items: readonly IndiaNavItem[];
+  readonly items: readonly RTICoreNavItem[];
 };
 const ALL: BoQRole[] = ['admin','marketing','sales','presales','finance','approver','legal','viewer'];
 const COMMERCIAL: BoQRole[] = ['admin','sales','presales','finance','approver','legal'];
 const SALES: BoQRole[] = ['admin','sales','approver','finance'];
 const PRESALES: BoQRole[] = ['admin','presales','approver','finance','legal'];
 const FINANCE: BoQRole[] = ['admin','finance','approver'];
-const item = (label:string,href:string,roles: readonly BoQRole[]):IndiaNavItem => ({label,href,roles});
+const item = (label:string,href:string,roles: readonly BoQRole[]):RTICoreNavItem => ({label,href,roles});
 
-export const INDIA_NAVIGATION: readonly IndiaNavGroup[] = [
+export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
   {id:'workspace',label:'01 · Executive & My Workspace',items:[
     item('Executive Dashboard','/sales/executive',['admin','finance','approver']),
     item('Activity, SLA & Follow-up','/sales/activities',SALES),
@@ -86,12 +86,13 @@ export const INDIA_NAVIGATION: readonly IndiaNavGroup[] = [
     item('Opsi','/settings/options',['admin']),
     item('Registrasi Opsi Standar','/settings/option-registry',['admin']),
     item('API Key','/settings/ai',['admin']),
+    item('Model Scoping & Harga','/settings/scoping-model',['admin']),
   ]},
 ] as const;
 
-export function navigationForRole(role: string|null|undefined):IndiaNavGroup[] {
+export function navigationForRole(role: string|null|undefined):RTICoreNavGroup[] {
   if(!role || !ALL.includes(role as BoQRole))return [];
-  return INDIA_NAVIGATION.map(group=>({...group,items:group.items.filter(link=>link.roles.includes(role as BoQRole))}))
+  return RTICORE_NAVIGATION.map(group=>({...group,items:group.items.filter(link=>link.roles.includes(role as BoQRole))}))
     .filter(group=>group.items.length>0);
 }
 

@@ -3,7 +3,7 @@ const {Harness,users}=require('./helpers/sales-flow-harness.cjs');
 function fixture(){
  const h=new Harness().seed();
  for(const [role,email] of Object.entries(users)){
-  h.sql.prepare("INSERT OR IGNORE INTO india_members(email,role,active) VALUES(?,?,1)").run(email,role==='other'?'sales':role);
+  h.sql.prepare("INSERT OR IGNORE INTO rticore_members(email,role,active) VALUES(?,?,1)").run(email,role==='other'?'sales':role);
  }
  return h;
 }
@@ -19,7 +19,7 @@ test('actual API: Sales A schedule, Sales B isolated, Admin sees timeline and ma
   const created=await h.call('sales/activities','POST','sales',payload);
   assert.equal(created.status,201,JSON.stringify(created));
   const id=created.body.id;
-  h.sql.prepare("INSERT INTO india_sales_activities(id,tenant_id,opportunity_id,kind,subject,detail,created_by) VALUES('legacy-a','defendit360','opp-qa','note','Existing sales note','Retained prior to Activity Center',?)").run(users.sales);
+  h.sql.prepare("INSERT INTO rticore_sales_activities(id,tenant_id,opportunity_id,kind,subject,detail,created_by) VALUES('legacy-a','defendit360','opp-qa','note','Existing sales note','Retained prior to Activity Center',?)").run(users.sales);
   const [sales,other,admin]=await Promise.all([
    h.call('sales/activities','GET','sales'),h.call('sales/activities','GET','other'),h.call('sales/activities','GET','admin')
   ]);
@@ -36,7 +36,7 @@ test('actual API: Sales A schedule, Sales B isolated, Admin sees timeline and ma
   assert.equal((await h.call('sales/activities','POST','sales',payload,'',{Origin:'https://untrusted.example'})).status,403);
   const map=await h.call('sales/activities','POST','admin',{action:'assign_manager',sales_email:users.sales,manager_email:users.admin});
   assert.equal(map.status,200,JSON.stringify(map));
-  assert.equal(h.sql.prepare('SELECT manager_email FROM india_sales_team_managers WHERE sales_email=?').get(users.sales).manager_email,users.admin);
+  assert.equal(h.sql.prepare('SELECT manager_email FROM rticore_sales_team_managers WHERE sales_email=?').get(users.sales).manager_email,users.admin);
   assert.equal((await h.call('sales/activities','POST','sales',{action:'assign_manager',sales_email:users.sales,manager_email:users.admin})).status,403);
   assert.equal((await h.call('sales/activities','POST','admin',{action:'assign_manager',sales_email:users.sales,manager_email:users.sales})).status,422);
  }finally{h.close();}
@@ -52,11 +52,11 @@ test('actual API: completed outcome, idempotent read, stale CAS and immutable ev
   assert.equal(done.status,200,JSON.stringify(done));
   const stale=await h.call('sales/activities','PATCH','sales',{action:'cancel',id,revision:1,outcome:'Stale cancellation'});
   assert.equal(stale.status,409);
-  const task=h.sql.prepare('SELECT * FROM india_sales_activity_tasks WHERE id=?').get(id);
+  const task=h.sql.prepare('SELECT * FROM rticore_sales_activity_tasks WHERE id=?').get(id);
   assert.equal(task.status,'completed');assert.equal(task.revision,2);
-  assert.equal(h.sql.prepare('SELECT count(*) n FROM india_sales_activity_events WHERE task_id=?').get(id).n,2);
-  assert.equal(h.sql.prepare("SELECT count(*) n FROM india_sales_audit WHERE action='ACTIVITY_COMPLETE'").get().n,1);
-  assert.throws(()=>h.sql.prepare('DELETE FROM india_sales_activity_events WHERE task_id=?').run(id),/IMMUTABLE/);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_sales_activity_events WHERE task_id=?').get(id).n,2);
+  assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_sales_audit WHERE action='ACTIVITY_COMPLETE'").get().n,1);
+  assert.throws(()=>h.sql.prepare('DELETE FROM rticore_sales_activity_events WHERE task_id=?').run(id),/IMMUTABLE/);
  }finally{h.close();}
 });
 test('actual API: injected audit failure reverts activity reschedule and events',async()=>{
@@ -64,11 +64,11 @@ test('actual API: injected audit failure reverts activity reschedule and events'
   const created=await h.call('sales/activities','POST','sales',schedule());
   assert.equal(created.status,201,JSON.stringify(created));const id=created.body.id;
   const newDates=schedule();
-  h.sql.exec("CREATE TRIGGER fail_activity_audit BEFORE INSERT ON india_sales_audit BEGIN SELECT RAISE(ABORT,'inject audit outage'); END");
+  h.sql.exec("CREATE TRIGGER fail_activity_audit BEFORE INSERT ON rticore_sales_audit BEGIN SELECT RAISE(ABORT,'inject audit outage'); END");
   const x=await h.call('sales/activities','PATCH','sales',{action:'reschedule',id,revision:1,start_at:newDates.start_at,due_at:newDates.due_at});
   assert.equal(x.status,503,JSON.stringify(x));
-  assert.equal(h.sql.prepare('SELECT revision FROM india_sales_activity_tasks WHERE id=?').get(id).revision,1);
-  assert.equal(h.sql.prepare('SELECT count(*) n FROM india_sales_activity_events WHERE task_id=?').get(id).n,1);
+  assert.equal(h.sql.prepare('SELECT revision FROM rticore_sales_activity_tasks WHERE id=?').get(id).revision,1);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_sales_activity_events WHERE task_id=?').get(id).n,1);
  }finally{h.close();}
 });
 
@@ -79,7 +79,7 @@ test('actual API: concurrent meeting/visit slots must not overlap for one Sales'
   assert.equal(first.status,201,JSON.stringify(first));
   const collision=await h.call('sales/activities','POST','sales',{...original,kind:'visit',subject:'Kunjungan bersamaan yang harus ditolak'});
   assert.equal(collision.status,409,JSON.stringify(collision));
-  assert.equal(h.sql.prepare("SELECT count(*) n FROM india_sales_activity_tasks WHERE owner_email=?").get(users.sales).n,1);
-  assert.equal(h.sql.prepare("SELECT count(*) n FROM india_sales_activity_events").get().n,1);
+  assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_sales_activity_tasks WHERE owner_email=?").get(users.sales).n,1);
+  assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_sales_activity_events").get().n,1);
  }finally{h.close();}
 });

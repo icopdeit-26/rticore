@@ -7,11 +7,11 @@ async function main(){
  try{
   let ready=false;for(let i=0;i<60;i++){try{const r=await fetch(base+'/sales/forecast',{signal:AbortSignal.timeout(1000)});if(r.ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}
   if(!ready)throw Error('Local production server not ready: '+logs);
-  const test=spawn(process.execPath,['--test','tests/modules-13-15-browser.cjs','tests/sales-stage-filter-browser.test.cjs','tests/browser-http-uat.test.cjs','tests/sales-lifecycle-browser.cjs','tests/india-login-browser.test.cjs'],{stdio:'inherit',env:{...process.env,INDIA_UAT_URL:base}});
+  const test=spawn(process.execPath,['--test','tests/modules-13-15-browser.cjs','tests/sales-stage-filter-browser.test.cjs','tests/browser-http-uat.test.cjs','tests/sales-lifecycle-browser.cjs','tests/rticore-login-browser.test.cjs'],{stdio:'inherit',env:{...process.env,RTICORE_UAT_URL:base}});
   process.exitCode=await new Promise(resolve=>test.on('exit',code=>resolve(code??1)));
   for(const script of ['tests/ai-chat-composer-browser-uat.cjs','tests/ai-chat-browser-uat.cjs']){
    if(process.exitCode!==0)break;
-   const chat=spawn(process.execPath,[script],{stdio:'inherit',env:{...process.env,INDIA_UAT_BASE:base,INDIA_CHAT_UAT_BASE:base}});
+   const chat=spawn(process.execPath,[script],{stdio:'inherit',env:{...process.env,RTICORE_UAT_BASE:base,RTICORE_CHAT_UAT_BASE:base}});
    process.exitCode=await new Promise(resolve=>chat.on('exit',code=>resolve(code??1)));
   }
  }finally{server.kill('SIGTERM');}

@@ -23,6 +23,8 @@ dist/
 credentials.json
 credentials.*.json
 data/icop_database.json
+# Local-mode SQLite database (RTICORE_LOCAL_MODE=1)
+.local-data/
 
 # Microsoft Office temporary lock files
 ~$*
@@ -43,3 +45,7 @@ __pycache__/
 
 # Incremental TypeScript cache is not source evidence
 *.tsbuildinfo
+
+# Local PostgreSQL (PGlite) data and scratch renders
+.pgdata/
+tmp/

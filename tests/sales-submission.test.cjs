@@ -32,5 +32,5 @@ test('Sales API requires independent matching quote submission evidence for nego
  const route=fs.readFileSync(path.join(__dirname,'../src/app/api/sales/submission/route.ts'),'utf8');
  assert.match(route,/authorizeBoQ\(req\)/);
  assert.match(route,/verifySubmissionRights\(row,role,email\)/);
- assert.match(route,/india_sales_submissions/);
+ assert.match(route,/rticore_sales_submissions/);
 });

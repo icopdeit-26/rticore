@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "india",
+  "name": "rticore",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-20",
   "compatibility_flags": [
@@ -15,13 +15,13 @@
   },
   "d1_databases": [
     {
-      "binding": "INDIA_DB",
-      "database_name": "india-staging-db",
+      "binding": "RTICORE_DB",
+      "database_name": "rticore-staging-db",
       "database_id": "8395dd84-1b7d-4eaf-9990-1d8e75a42cb5"
     }
   ],
   "vars": {
-    "INDIA_ACCESS_TEAM_DOMAIN": "green-heart-e2b0.cloudflareaccess.com",
-    "INDIA_ACCESS_AUD": "0411bb42ccf17d67c3e8b81d8e8c6d6124dbfec5025cab563e6a8aea68e70398"
+    "RTICORE_ACCESS_TEAM_DOMAIN": "green-heart-e2b0.cloudflareaccess.com",
+    "RTICORE_ACCESS_AUD": "0411bb42ccf17d67c3e8b81d8e8c6d6124dbfec5025cab563e6a8aea68e70398"
   }
 }

@@ -16,11 +16,11 @@ const iso=(x:unknown)=>typeof x==='string'&&validDeadline(x);
 type Row={id:string;version:number;created_by:string;status:string;category?:string;document_name?:string;evidence_reference?:string;evidence_sha256?:string;due_at?:string;milestone?:string};
 async function snapshot(db:import('@/lib/boq-auth').D1DB,id:string){
  const [bid,requirements,clauses,checklist,deadlines]=await Promise.all([
-  db.prepare('SELECT channel,bid_decision,decided_by,tender_number,tender_deadline FROM india_sales_bids WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first<Bid>(),
-  db.prepare("SELECT id,kind,title,status,compliance_status,file_reference,source_content_hash,reviewed_by FROM india_sales_requirements WHERE tenant_id=? AND opportunity_id=? AND kind IN ('rks','kak','rfp','rfq') ORDER BY created_at").bind(TENANT,id).all<Requirement>(),
-  db.prepare('SELECT id,requirement_id,clause_reference,category,mandatory,requirement_text,response_text,status,compliance_status,is_gap,evidence_reference,evidence_sha256,reviewed_by FROM india_tender_compliance_gaps WHERE tenant_id=? AND opportunity_id=? ORDER BY requirement_id,clause_reference').bind(TENANT,id).all<Clause>(),
-  db.prepare('SELECT * FROM india_tender_checklist WHERE tenant_id=? AND opportunity_id=? ORDER BY category,item_code LIMIT 250').bind(TENANT,id).all<Checklist>(),
-  db.prepare('SELECT * FROM india_tender_deadlines WHERE tenant_id=? AND opportunity_id=? ORDER BY due_at LIMIT 20').bind(TENANT,id).all<Deadline>()
+  db.prepare('SELECT channel,bid_decision,decided_by,tender_number,tender_deadline FROM rticore_sales_bids WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first<Bid>(),
+  db.prepare("SELECT id,kind,title,status,compliance_status,file_reference,source_content_hash,reviewed_by FROM rticore_sales_requirements WHERE tenant_id=? AND opportunity_id=? AND kind IN ('rks','kak','rfp','rfq') ORDER BY created_at").bind(TENANT,id).all<Requirement>(),
+  db.prepare('SELECT id,requirement_id,clause_reference,category,mandatory,requirement_text,response_text,status,compliance_status,is_gap,evidence_reference,evidence_sha256,reviewed_by FROM rticore_tender_compliance_gaps WHERE tenant_id=? AND opportunity_id=? ORDER BY requirement_id,clause_reference').bind(TENANT,id).all<Clause>(),
+  db.prepare('SELECT * FROM rticore_tender_checklist WHERE tenant_id=? AND opportunity_id=? ORDER BY category,item_code LIMIT 250').bind(TENANT,id).all<Checklist>(),
+  db.prepare('SELECT * FROM rticore_tender_deadlines WHERE tenant_id=? AND opportunity_id=? ORDER BY due_at LIMIT 20').bind(TENANT,id).all<Deadline>()
  ]);
  return {bid,requirements:requirements.results,clauses:clauses.results,checklist:checklist.results,deadlines:deadlines.results};
 }
@@ -30,7 +30,7 @@ async function context(req:Request){
  if(!roles.includes(role))return {error:fail('Role tidak berhak mengakses paket penawaran',403)};
  const id=new URL(req.url).searchParams.get('opportunity_id')||'';
  if(!safeID(id))return {error:fail('Opportunity ID tidak valid',422)};
- const d=await db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
+ const d=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
  if(!d)return {error:fail('Opportunity tidak ditemukan',404)};
  if(!canReadDeal(role,email,d.created_by))return {error:fail('Opportunity bukan milik Sales Anda',403)};
  return {db,email,role,id,d};
@@ -51,7 +51,7 @@ export async function GET(req:Request){
    if(!['matrix','checklist','report'].includes(output))return fail('Jenis output tidak dikenal',422);
    const csv=output==='matrix'?matrixCSV(data.clauses,data.requirements):output==='checklist'?checklistCSV(data.checklist):reportCSV(report,id,d.title);
    return new Response(csv,{status:200,headers:{...privateHeaders,'Content-Type':'text/csv; charset=utf-8',
-    'Content-Disposition':'attachment; filename="india-'+output+'-'+id+'.csv"'}});
+    'Content-Disposition':'attachment; filename="rticore-'+output+'-'+id+'.csv"'}});
   }
   return reply({success:true,role,identityEmail:email,deal:{id,title:d.title,stage:d.stage,flow_version:d.flow_version},
    ...data,report,sqlReady});
@@ -66,7 +66,7 @@ export async function POST(req:Request){
   let p:Record<string,unknown>;
   try{p=await readBoundedJSON(req,16000);}catch(e){return fail(e instanceof Error?e.message:'JSON tidak valid',e instanceof RequestBodyError?e.status:400);}
   if(!safeID(p.opportunity_id)||!Number.isSafeInteger(p.flow_version))return fail('Opportunity dan versi wajib',422);
-  const d=await db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,p.opportunity_id as string).first<FlowDeal>();
+  const d=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,p.opportunity_id as string).first<FlowDeal>();
   if(!d)return fail('Opportunity tidak ditemukan',404);
   if(!canReadDeal(role,email,d.created_by))return fail('Opportunity bukan milik Sales Anda',403);
   if(d.flow_version!==p.flow_version)return fail('Opportunity berubah, muat ulang',409);
@@ -77,14 +77,14 @@ export async function POST(req:Request){
    const kind=string(p.milestone,40),due=string(p.due_at,40),notes=string(p.notes,1000);
    if(!milestoneKinds.includes(kind as typeof milestoneKinds[number])||!iso(due)||notes.length<5)return fail('Milestone, timestamp ISO dengan zona waktu, dan catatan wajib',422);
    if(action==='deadline'){
-    writes.push(db.prepare('INSERT INTO india_tender_deadlines(id,tenant_id,opportunity_id,milestone,due_at,notes,created_by) VALUES (?,?,?,?,?,?,?)')
+    writes.push(db.prepare('INSERT INTO rticore_tender_deadlines(id,tenant_id,opportunity_id,milestone,due_at,notes,created_by) VALUES (?,?,?,?,?,?,?)')
      .bind(id,TENANT,d.id,kind,due,notes,email));
    }else{
     if(!safeID(p.id)||!Number.isSafeInteger(p.version))return fail('Versi deadline diperlukan',422);
-    const old=await db.prepare('SELECT * FROM india_tender_deadlines WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,p.id as string).first<Row>();
+    const old=await db.prepare('SELECT * FROM rticore_tender_deadlines WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,p.id as string).first<Row>();
     if(!old||old.version!==p.version||old.milestone!==kind)return fail('Versi deadline berubah atau jenis milestone tidak cocok',409);
-    g.condition+=' AND EXISTS(SELECT 1 FROM india_tender_deadlines WHERE id=? AND version=?)';g.args.push(old.id,old.version);
-    writes.push(db.prepare("UPDATE india_tender_deadlines SET due_at=?,notes=?,created_by=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,review_notes=NULL,version=version+1 WHERE id=?")
+    g.condition+=' AND EXISTS(SELECT 1 FROM rticore_tender_deadlines WHERE id=? AND version=?)';g.args.push(old.id,old.version);
+    writes.push(db.prepare("UPDATE rticore_tender_deadlines SET due_at=?,notes=?,created_by=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,review_notes=NULL,version=version+1 WHERE id=?")
      .bind(due,notes,email,old.id));
    }
   }else if(['item','revise_item'].includes(action)){
@@ -96,24 +96,24 @@ export async function POST(req:Request){
     ||typeof p.mandatory!=='boolean'||(hash&&!shaValid(hash))||(due&&!iso(due))||(source&&!safeID(source)))
     return fail('Kode unik, kategori, mandatory, detail dokumen dan format evidence harus valid',422);
    if(source){
-    const clause=await db.prepare('SELECT id FROM india_tender_compliance_items WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,source).first();
+    const clause=await db.prepare('SELECT id FROM rticore_tender_compliance_items WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,source).first();
     if(!clause)return fail('Klausul evidence bukan milik Opportunity',409);
    }
    if(action==='item'){
-    writes.push(db.prepare('INSERT INTO india_tender_checklist(id,tenant_id,opportunity_id,item_code,category,label,mandatory,document_name,evidence_reference,evidence_sha256,source_clause_id,due_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    writes.push(db.prepare('INSERT INTO rticore_tender_checklist(id,tenant_id,opportunity_id,item_code,category,label,mandatory,document_name,evidence_reference,evidence_sha256,source_clause_id,due_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
      .bind(id,TENANT,d.id,code,category,label,p.mandatory?1:0,document,ref,hash,source||null,due||null,email));
    }else{
     if(!safeID(p.id)||!Number.isSafeInteger(p.version))return fail('ID/version checklist wajib',422);
-    const old=await db.prepare('SELECT * FROM india_tender_checklist WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,p.id as string).first<Row>();
+    const old=await db.prepare('SELECT * FROM rticore_tender_checklist WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,p.id as string).first<Row>();
     if(!old||old.version!==p.version)return fail('Checklist versi lama, muat ulang',409);
-    g.condition+=' AND EXISTS(SELECT 1 FROM india_tender_checklist WHERE id=? AND version=?)';g.args.push(old.id,old.version);
-    writes.push(db.prepare("UPDATE india_tender_checklist SET item_code=?,category=?,label=?,mandatory=?,document_name=?,evidence_reference=?,evidence_sha256=?,source_clause_id=?,due_at=?,created_by=?,status='draft',checked_by=NULL,checked_at=NULL,review_notes=NULL,version=version+1 WHERE id=?")
+    g.condition+=' AND EXISTS(SELECT 1 FROM rticore_tender_checklist WHERE id=? AND version=?)';g.args.push(old.id,old.version);
+    writes.push(db.prepare("UPDATE rticore_tender_checklist SET item_code=?,category=?,label=?,mandatory=?,document_name=?,evidence_reference=?,evidence_sha256=?,source_clause_id=?,due_at=?,created_by=?,status='draft',checked_by=NULL,checked_at=NULL,review_notes=NULL,version=version+1 WHERE id=?")
      .bind(code,category,label,p.mandatory?1:0,document,ref,hash,source||null,due||null,email,old.id));
    }
   }else if(['review_deadline','review_item'].includes(action)){
    if(!safeID(p.id)||!Number.isSafeInteger(p.version)||typeof p.approve!=='boolean'||string(p.review_notes,1000).length<12)
     return fail('ID, versi, keputusan dan catatan review minimal 12 karakter wajib',422);
-   const isDeadline=action==='review_deadline',table=isDeadline?'india_tender_deadlines':'india_tender_checklist';
+   const isDeadline=action==='review_deadline',table=isDeadline?'rticore_tender_deadlines':'rticore_tender_checklist';
    const row=await db.prepare('SELECT * FROM '+table+' WHERE tenant_id=? AND opportunity_id=? AND id=?').bind(TENANT,d.id,p.id as string).first<Row>();
    if(!row)return fail('Data review tidak tersedia',404);
    if(row.version!==p.version||row.status!=='draft')return fail('Item sudah direview atau berubah versinya',409);
@@ -130,10 +130,10 @@ export async function POST(req:Request){
    }
    g.condition+=' AND EXISTS(SELECT 1 FROM '+table+" WHERE id=? AND version=? AND status='draft')";g.args.push(row.id,row.version);
    if(isDeadline){
-    writes.push(db.prepare("UPDATE india_tender_deadlines SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?")
+    writes.push(db.prepare("UPDATE rticore_tender_deadlines SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?")
      .bind(p.approve?'approved':'rejected',email,string(p.review_notes,1000),row.id));
    }else{
-    writes.push(db.prepare("UPDATE india_tender_checklist SET status=?,version=version+1,checked_by=?,review_notes=?,checked_at=CURRENT_TIMESTAMP WHERE id=?")
+    writes.push(db.prepare("UPDATE rticore_tender_checklist SET status=?,version=version+1,checked_by=?,review_notes=?,checked_at=CURRENT_TIMESTAMP WHERE id=?")
      .bind(p.approve?'ready':'rejected',email,string(p.review_notes,1000),row.id));
    }
   }else return fail('Aksi Bid Readiness tidak terdaftar',422);

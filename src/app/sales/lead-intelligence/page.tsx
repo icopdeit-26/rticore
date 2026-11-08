@@ -65,7 +65,7 @@ export default function LeadIntelligence(){
   try{
    await request('POST','/api/marketing/lead-intelligence',{id:selected.id,version:selected.version,
     plan_version:detail?.plan?.version,action,...payload});
-   await load(selected.id);setMessage('Transaksi '+action+' berhasil disimpan di D1 dan audit log.');
+   await load(selected.id);setMessage('Transaksi '+action+' berhasil disimpan ke database dan audit log.');
    if(action==='touch')setTouchNotes('');
   }catch(e){setMessage(e instanceof Error?e.message:String(e));}
   finally{setBusy(false);}
@@ -191,6 +191,6 @@ export default function LeadIntelligence(){
      </div>)}
    </div><p className="text-xs text-slate-500">{overview.definition}</p>
   </section>}
-  <p className="flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14}/> Semua perubahan disimpan melalui Cloudflare Access dan D1 dengan version check; skor dihitung dari data aktual, bukan prediksi AI.</p>
+  <p className="flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14}/> Semua perubahan disimpan ke database PostgreSQL melalui sesi terverifikasi dengan version check; skor dihitung dari data aktual, bukan prediksi AI.</p>
  </main>;
 }

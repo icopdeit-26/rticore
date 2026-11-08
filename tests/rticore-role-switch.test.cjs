@@ -35,7 +35,7 @@ test('Role preview is bound to verified Admin email, role allowlist and one-hour
 function makeRoleRoute(role='admin',failAudit=false){
   const audit=[],writes=[];
   const db={prepare(sql){
-    assert.match(sql,/INSERT INTO india_audit_log/);
+    assert.match(sql,/INSERT INTO rticore_audit_log/);
     return {bind(...args){writes.push(args);return{async run(){if(failAudit)throw Error('Audit unavailable');audit.push(args);return {success:true};}};}};
   }};
   let observedOpts;

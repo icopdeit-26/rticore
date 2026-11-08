@@ -24,7 +24,7 @@ test('organization level rules allow only higher-level approved parents',()=>{
 test('draft parents stay unavailable until independent approval; wrong level fails at review',async()=>{
  const h=new Harness().seed();
  try{
-  h.sql.prepare('INSERT OR IGNORE INTO india_members(email,role,active) VALUES(?,?,1)').run(users.admin2,'admin');
+  h.sql.prepare('INSERT OR IGNORE INTO rticore_members(email,role,active) VALUES(?,?,1)').run(users.admin2,'admin');
   const create=(key,title,level,parent_key='')=>h.call('admin/system','POST','admin',{action:'setting',kind:'organization',setting_key:key,title,level,parent_key,version:0});
   const approve=id=>h.call('admin/system','POST','admin2',{action:'approve',id,notes:'Independent hierarchy approval checks'});
   const root=await expect(create('company','Real Institution','institution'),201);

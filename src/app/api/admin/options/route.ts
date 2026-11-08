@@ -15,8 +15,8 @@ export async function GET(req:Request){
   const group=new URL(req.url).searchParams.get('group');
   if(group&&!keyOK(group))return fail('Grup opsi tidak valid');
   const rows=group?
-   await db.prepare('SELECT id,group_key,option_value,option_label,description,sort_order,active,version,updated_by,updated_at FROM india_admin_options WHERE tenant_id=? AND group_key=? ORDER BY sort_order,option_label LIMIT 500').bind(TENANT,group).all():
-   await db.prepare('SELECT id,group_key,option_value,option_label,description,sort_order,active,version,updated_by,updated_at FROM india_admin_options WHERE tenant_id=? ORDER BY group_key,sort_order,option_label LIMIT 500').bind(TENANT).all();
+   await db.prepare('SELECT id,group_key,option_value,option_label,description,sort_order,active,version,updated_by,updated_at FROM rticore_admin_options WHERE tenant_id=? AND group_key=? ORDER BY sort_order,option_label LIMIT 500').bind(TENANT,group).all():
+   await db.prepare('SELECT id,group_key,option_value,option_label,description,sort_order,active,version,updated_by,updated_at FROM rticore_admin_options WHERE tenant_id=? ORDER BY group_key,sort_order,option_label LIMIT 500').bind(TENANT).all();
   return reply({success:true,items:rows.results});
  }catch{return fail('Registrasi opsi belum siap. Terapkan migrasi 0031 pada D1.',503);}
 }
@@ -35,16 +35,16 @@ export async function POST(req:Request){
     typeof active!=='boolean'||typeof version!=='number'||!Number.isSafeInteger(version)||version<0)
   return fail('Isi grup, kode, nama, deskripsi, urutan, status, dan versi dengan benar');
  try {
-  const existing=await db.prepare('SELECT id,version,active FROM india_admin_options WHERE tenant_id=? AND group_key=? AND option_value=?').bind(TENANT,group,value).first<VersionRow>();
+  const existing=await db.prepare('SELECT id,version,active FROM rticore_admin_options WHERE tenant_id=? AND group_key=? AND option_value=?').bind(TENANT,group,value).first<VersionRow>();
   if((existing?.version||0)!==version)return fail('Opsi sudah berubah. Muat ulang sebelum menyimpan.',409);
   const id=existing?.id||crypto.randomUUID();
   const guard=version===0?
-   'NOT EXISTS(SELECT 1 FROM india_admin_options WHERE tenant_id=? AND group_key=? AND option_value=?)':
-   'EXISTS(SELECT 1 FROM india_admin_options WHERE tenant_id=? AND group_key=? AND option_value=? AND version=?)';
+   'NOT EXISTS(SELECT 1 FROM rticore_admin_options WHERE tenant_id=? AND group_key=? AND option_value=?)':
+   'EXISTS(SELECT 1 FROM rticore_admin_options WHERE tenant_id=? AND group_key=? AND option_value=? AND version=?)';
   const args:(string|number|null)[]=version===0?[TENANT,group,value]:[TENANT,group,value,version];
   const row=version===0?
-   db.prepare('INSERT INTO india_admin_options(id,tenant_id,group_key,option_value,option_label,description,sort_order,active,updated_by) VALUES(?,?,?,?,?,?,?,?,?)').bind(id,TENANT,group,value,label,description,order,active?1:0,email):
-   db.prepare('UPDATE india_admin_options SET option_label=?,description=?,sort_order=?,active=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND group_key=? AND option_value=? AND version=?').bind(label,description,order,active?1:0,email,TENANT,group,value,version);
+   db.prepare('INSERT INTO rticore_admin_options(id,tenant_id,group_key,option_value,option_label,description,sort_order,active,updated_by) VALUES(?,?,?,?,?,?,?,?,?)').bind(id,TENANT,group,value,label,description,order,active?1:0,email):
+   db.prepare('UPDATE rticore_admin_options SET option_label=?,description=?,sort_order=?,active=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND group_key=? AND option_value=? AND version=?').bind(label,description,order,active?1:0,email,TENANT,group,value,version);
   await atomicSales(db,guard,args,[row,operationEvent(db,'admin_options',id,existing?'UPDATE':'CREATE',email,{group_key:group,option_value:value,option_label:label,active,sort_order:order,version:version+1})]);
   return reply({success:true,id,version:version+1},existing?200:201);
  }catch(e){

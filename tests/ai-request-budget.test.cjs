@@ -10,12 +10,12 @@ function load(path){
 test('outbound AI attempts reserve quota atomically even when provider never succeeds',()=>{
  const {RESERVE_AI_REQUEST_SQL}=load('src/lib/ai-request-budget.ts');
  const db=new DatabaseSync(':memory:');try{
-  db.exec('CREATE TABLE india_sales_ai_audit(id TEXT PRIMARY KEY,tenant_id TEXT,opportunity_id TEXT,purpose TEXT,provider_id TEXT,model TEXT,actor_email TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+  db.exec('CREATE TABLE rticore_sales_ai_audit(id TEXT PRIMARY KEY,tenant_id TEXT,opportunity_id TEXT,purpose TEXT,provider_id TEXT,model TEXT,actor_email TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
   const reserve=(id,user='user-a')=>db.prepare(RESERVE_AI_REQUEST_SQL).get(id,'test-tenant','analysis',user,'test-tenant',user);
   for(let i=0;i<20;i++)assert.ok(reserve('attempt-'+i));
   for(let i=20;i<50;i++)assert.equal(reserve('attempt-'+i),undefined);
   assert.ok(reserve('different-user','user-b'));
-  db.exec("UPDATE india_sales_ai_audit SET created_at=datetime('now','-2 hours') WHERE actor_email='user-a'");
+  db.exec("UPDATE rticore_sales_ai_audit SET created_at=datetime('now','-2 hours') WHERE actor_email='user-a'");
   assert.ok(reserve('new-window'));
  }finally{db.close();}
 });

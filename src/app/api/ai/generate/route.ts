@@ -12,7 +12,7 @@ import { AI_WORKSPACE_IDENTITY } from '@/lib/ai-workspace-identity';
 export const dynamic='force-dynamic';
 const json=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:privateHeaders});
 
-const INDIA_CHAT_INSTRUCTION = [
+const RTICORE_CHAT_INSTRUCTION = [
  AI_WORKSPACE_IDENTITY,
  'Anda adalah RTICORE AI Business Assistant untuk RTI, berpengalaman dalam VAPT, SOC/MDR, SIEM, GRC, tender, BoQ, dan approval.',
  'WAJIB jawab SELURUH bagian jawaban dalam Bahasa Indonesia (kecuali nama merek, istilah teknis, dan kode), dengan profesional dan relevan terhadap pertanyaan terakhir.',
@@ -34,7 +34,7 @@ export async function POST(req:Request){
  if(auth.identity.role!=='admin')return json({success:false,message:'Konsol AI saat ini khusus Admin.'},403);
  const origin=req.headers.get('origin');
  if(origin&&origin!==new URL(req.url).origin)return json({success:false,message:'Origin tidak diizinkan.'},403);
- if(req.headers.get('x-india-ai-admin')!=='1')return json({success:false,message:'Permintaan AI tidak valid.'},403);
+ if(req.headers.get('x-rticore-ai-admin')!=='1')return json({success:false,message:'Permintaan AI tidak valid.'},403);
 
  let payload:{prompt?:unknown;history?:unknown;task_type?:unknown;topic_hint?:unknown}|null;
  try{
@@ -60,7 +60,7 @@ export async function POST(req:Request){
 
  const anchor=contextualConversationAnchor(prompt,history,payload?.topic_hint);
  const conversation:AIConversationRequest = {
-  system:INDIA_CHAT_INSTRUCTION+(anchor?'\n'+anchor.guidance:''),
+  system:RTICORE_CHAT_INSTRUCTION+(anchor?'\n'+anchor.guidance:''),
   messages:[...history,{role:'user',content:prompt.trim()}],
  };
  try{

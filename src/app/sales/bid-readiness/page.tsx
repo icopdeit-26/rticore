@@ -32,7 +32,7 @@ export default function BidReadinessPage(){
  const url=(output:string)=>'/api/sales/bid-readiness?opportunity_id='+encodeURIComponent(w.id)+'&output='+output;
  const reviewer=(action:string,id:string,version:number,p:Record<string,unknown>)=>w.mutate({action,id,version,approve:p.approve==='yes',review_notes:p.review_notes});
  return <main className="mx-auto max-w-7xl space-y-5 pb-24">
-  <CommercialHeader title="Tender Compliance & Bid Readiness" description="Periksa kewajiban klausul RKS/KAK, bukti dokumen, milestone tender dan persetujuan independen. Status Ready dihitung oleh server D1, bukan simulasi." workspace={w}/>
+  <CommercialHeader title="Tender Compliance & Bid Readiness" description="Periksa kewajiban klausul RKS/KAK, bukti dokumen, milestone tender dan persetujuan independen. Status Ready dihitung oleh server dari data aktual, bukan simulasi." workspace={w}/>
   {d&&<>
    <section className="rounded-2xl border bg-white p-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -100,7 +100,7 @@ export default function BidReadinessPage(){
     </article>)}</div>
    </section>
    <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Compliance Matrix · Requirement-by-Requirement</h2>
-    <p className="mt-1 text-xs text-slate-500">Klausul lengkap dengan evidence dan hasil reviewer dikelola di modul Compliance; status berikut langsung dari D1.</p>
+    <p className="mt-1 text-xs text-slate-500">Klausul lengkap dengan evidence dan hasil reviewer dikelola di modul Compliance; status berikut langsung dari database.</p>
     <Link className="mt-3 inline-block text-xs font-bold text-blue-800 underline" href={'/sales/compliance?opportunity_id='+encodeURIComponent(w.id)}>Buka pengelolaan klausul dan vendor</Link>
     <div className="mt-3 overflow-x-auto"><table className="min-w-full text-left text-xs"><thead><tr className="bg-slate-100">{['RKS/KAK','Pasal','Kategori','Mandatory','Compliance','Evidence','Gap'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead>
      <tbody>{d.clauses.map(c=><tr key={c.id} className="border-t"><td className="p-3">{d.requirements.find(x=>x.id===c.requirement_id)?.title||c.requirement_id}</td>

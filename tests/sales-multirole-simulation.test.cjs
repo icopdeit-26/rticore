@@ -1,4 +1,4 @@
-// INDIA UAT multirole simulation: domain/role/doc gates, never a Cloudflare Access login substitute.
+// RTICORE UAT multirole simulation: domain/role/doc gates, never a Cloudflare Access login substitute.
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),JSZip=require('jszip');
 const root=path.join(__dirname,'../src/lib');
@@ -19,9 +19,9 @@ function load(name){
 }
 const crm=load('sales-workflow'),access=load('sales-access'),boq=load('boq-domain'),approval=load('boq-workflow'),
  quotation=load('quotation-docx'),map=load('sales-to-post-po'),post=load('post-po-documents'),loss=load('sales-loss-report');
-const users={salesA:'uat.sales.a@india.invalid',salesB:'uat.sales.b@india.invalid',
- presales:'uat.presales@india.invalid',finance:'uat.finance@india.invalid',
- approver:'uat.approver@india.invalid',admin:'uat.admin@india.invalid',viewer:'uat.viewer@india.invalid'};
+const users={salesA:'uat.sales.a@rticore.invalid',salesB:'uat.sales.b@rticore.invalid',
+ presales:'uat.presales@rticore.invalid',finance:'uat.finance@rticore.invalid',
+ approver:'uat.approver@rticore.invalid',admin:'uat.admin@rticore.invalid',viewer:'uat.viewer@rticore.invalid'};
 const account={id:'uat-cust-won-20261020',legal_name:'PT UAT Cyber Won DATA SIMULASI',
  customer_number:'IND-UAT-1001',created_at:'2026-10-20',created_by:users.salesA,fields:{
  industry:'Teknologi Informasi',business_type:'Layanan Teknologi Informasi',employee_band:'100-500',
@@ -145,7 +145,7 @@ test('08 Finance PO checker must differ from Sales maker; Won is gated',()=>{
  assert.match(api,/raw\.created_by\?\.trim\(\)\.toLowerCase\(\)===email\.trim\(\)\.toLowerCase\(\)/);
  assert.match(api,/confirmed_documents!==true/);
  assert.match(api,/Math\.abs\(n-check\.subtotal\)>0\.01/);
- assert.match(api,/india_sales_po_checks/);
+ assert.match(api,/rticore_sales_po_checks/);
  assert.equal(users.finance===users.salesA,false);
  assert.ok(crm.requiredForStage('closed_won',{...deal,fields:{...deal.fields,customer_decision:'pending'}},account).includes('customer_decision (harus approved)'));
 });
@@ -180,12 +180,12 @@ test('11 default AI chain must reject untested providers; does not generate fals
  assert.match(assist,/Batas maksimal 20/);
 });
 test('12 UAT D1 isolated Sales table fixes historical stage and user foreign-key defects',()=>{
- const migration=fs.readFileSync(path.join(__dirname,'../migrations/0004_india_sales_isolation.sql'),'utf8');
- assert.match(migration,/CREATE TABLE IF NOT EXISTS india_sales_accounts/);
- assert.match(migration,/CREATE TABLE IF NOT EXISTS india_sales_opportunities/);
+ const migration=fs.readFileSync(path.join(__dirname,'../migrations/0004_rticore_sales_isolation.sql'),'utf8');
+ assert.match(migration,/CREATE TABLE IF NOT EXISTS rticore_sales_accounts/);
+ assert.match(migration,/CREATE TABLE IF NOT EXISTS rticore_sales_opportunities/);
  assert.match(migration,/discovery.*solution_design.*commercial_review.*quotation_sent/);
  const api=fs.readFileSync(path.join(__dirname,'../src/app/api/sales/route.ts'),'utf8');
- assert.match(api,/INTO india_sales_opportunities/);
- assert.match(api,/INTO india_sales_accounts/);
+ assert.match(api,/INTO rticore_sales_opportunities/);
+ assert.match(api,/INTO rticore_sales_accounts/);
  assert.doesNotMatch(api,/FROM opportunities /);
 });

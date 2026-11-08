@@ -2,11 +2,12 @@
 
 import React,{useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
 import {Navbar} from './Navbar';
 import {Sidebar} from './Sidebar';
 import {MobileNav} from './MobileNav';
-import {AIWorkbench} from '@/components/ai/AIWorkbench';
+const AIWorkbench=dynamic(()=>import('@/components/ai/AIWorkbench').then(module=>module.AIWorkbench));
 
 interface AppShellProps { children:React.ReactNode; }
 type Identity={email:string;role:string;assignedRole:string;rolePreview:boolean};
@@ -26,14 +27,14 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
 
   useEffect(()=>{
     try {
-      const saved=window.localStorage.getItem('india:left-navigation-open') ?? window.localStorage.getItem('india:right-navigation-open');
+      const saved=window.localStorage.getItem('rticore:left-navigation-open') ?? window.localStorage.getItem('rticore:right-navigation-open');
       if(saved==='true'||saved==='false')setDesktopMenuOpen(saved==='true');
     } catch {/* Local storage is optional, including in privacy mode. */}
     setMenuPreferenceLoaded(true);
   },[]);
   useEffect(()=>{
     if(!menuPreferenceLoaded)return;
-    try {window.localStorage.setItem('india:left-navigation-open',String(desktopMenuOpen));}
+    try {window.localStorage.setItem('rticore:left-navigation-open',String(desktopMenuOpen));}
     catch {/* Keep the menu usable when storage is unavailable. */}
   },[desktopMenuOpen,menuPreferenceLoaded]);
 
@@ -50,7 +51,7 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
     const controller=new AbortController();
     fetch('/api/sales/identity',{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal})
       .then(async res=>{
-        if(!res.ok)throw Error('Sesi Cloudflare Access / D1 belum dapat diverifikasi.');
+        if(!res.ok)throw Error('Sesi autentikasi / database belum dapat diverifikasi.');
         const data=await res.json();
         if(data.success!==true||typeof data.identity?.role!=='string'||typeof data.identity?.email!=='string')
           throw Error('Identitas tidak valid');
@@ -80,19 +81,18 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
   // The sign-in page has its own minimal layout (no authenticated header or navigation).
   if(isLoginPage)return <>{children}</>;
   return (
-    <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#f5f7fa] text-slate-900">
       <Navbar role={role} assignedRole={session.identity?.assignedRole??null} rolePreview={session.identity?.rolePreview===true} email={session.identity?.email??null} pendingApprovalsCount={pendingApprovalsCount} onToggleMenu={onToggleMenu} desktopMenuOpen={desktopMenuOpen} mobileMenuOpen={mobileMenuOpen}/>
-      <div role="status" className="no-print border-b border-slate-200 bg-slate-100 px-4 py-2 text-center text-xs font-medium text-slate-700">
-        {session.status==='checking'?'Memverifikasi sesi Cloudflare Access…':
-         session.status==='ready'?session.identity?.rolePreview? `Mode uji role aktif: ${role} · Akun asli: Admin · Semua API mengikuti hak akses role yang dipilih`:`Sesi terverifikasi · Role: ${role}`:
-         'Sesi belum terverifikasi. Fitur transaksi memerlukan Cloudflare Access dan skema D1 yang sesuai.'}
-      </div>
+      {session.status!=='ready' ? <div role="status" className="no-print border-b border-teal-100/60 bg-teal-50/70 px-4 py-1.5 text-center text-[10px] font-medium tracking-wide text-teal-800">
+        {session.status==='checking'?'Memverifikasi sesi pengguna…':
+         'Sesi belum terverifikasi. Silakan login terlebih dahulu untuk mengakses fitur transaksi.'}
+      </div> : null}
       {session.status==='denied'&&<div className="no-print border-b border-indigo-100 bg-indigo-50 px-4 py-2 text-center text-xs">
         <Link href="/login" className="font-semibold text-indigo-800 underline">Buka halaman login RTICORE</Link>
       </div>}
       <div className="flex min-w-0 flex-1 overflow-hidden print:block print:overflow-visible">
         {role&&<Sidebar role={role} desktopOpen={desktopMenuOpen} mobileOpen={mobileMenuOpen} onClose={onCloseMenu}/>}
-        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 overflow-x-clip overflow-y-auto px-3 pb-28 pt-4 sm:p-6 lg:p-8 print:max-w-none print:overflow-visible print:p-0">
+        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 overflow-x-clip overflow-y-auto px-3 pb-28 pt-0 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8 print:max-w-none print:overflow-visible print:p-0">
           {role&&<AIWorkbench/>}
           {children}
         </main>
@@ -101,3 +101,5 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
     </div>
   );
 };
+
+

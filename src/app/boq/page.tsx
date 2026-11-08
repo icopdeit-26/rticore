@@ -3,9 +3,11 @@ import React,{useEffect,useState} from 'react';
 import {defaultBoqService} from '@/lib/sales-workflow';
 import {SCOPING_SERVICE_TYPES} from '@/lib/scoping-service-options';
 import {CompactSelect} from '@/components/ui/CompactSelect';
+import {errorText,readApiJSON} from '@/lib/client-api';
 type Item={description:string;quantity:number;unit:string;unit_price:number;service_type:string};
 type Catalog={sku:string;category:string;description:string;unit:string;license_status:string};
 type Doc={id:string;opportunity_id?:string|null;quotation_number:string;customer_name:string;project_name:string;status:string;version:number;grand_total:number;line_items:Item[];vat_rate:number;payment_terms:string;service_type:string;cost_items?:{code:string;amount:number}[]};
+const ACTION_LABELS:Record<string,string>={create:'BoQ dibuat',save:'BoQ disimpan',update:'BoQ diperbarui',submit:'BoQ diajukan untuk approval',approve:'BoQ disetujui',reject:'BoQ ditolak',revise:'Revisi BoQ dibuat'};
 const blank=()=>({opportunity_id:'',quotation_number:'',customer_name:'',project_name:'',service_type:'VAPT',vat_rate:0,payment_terms:'30-50-20',line_items:[{description:'',quantity:1,unit:'Paket',unit_price:0,service_type:'VAPT'}] as Item[]});
 export default function BoQPage(){
  const [list,setList]=useState<Doc[]>([]),[selected,setSelected]=useState<Doc|null>(null);
@@ -16,13 +18,13 @@ export default function BoQPage(){
  const isFinance=['finance','admin'].includes(role);
  const canCreate=['finance','admin','presales','sales'].includes(role);
  const canEdit=canCreate&&(!selected||selected.status==='draft');
- const load=async()=>{try{const r=await fetch('/api/boq',{cache:'no-store'}),d=await r.json();if(!r.ok)throw Error(d.message);setList(d.boqs||[]);setRole(d.role);}catch(e){setMsg(String(e));}};
+ const load=async()=>{try{const r=await fetch('/api/boq',{cache:'no-store'}),d=await readApiJSON(r);if(!r.ok)throw Error(d.message||'Daftar BoQ gagal dimuat.');setList(d.boqs||[]);setRole(d.role);}catch(e){setMsg(errorText(e,'Daftar BoQ gagal dimuat.'));}};
  useEffect(()=>{
    // Import a deliberately unsaved scope from this browser session.
    // D1 save, opportunity checks, manual price and approval remain mandatory.
    if(new URLSearchParams(window.location.search).get('from')==='scoping'){
     try{
-     const raw=sessionStorage.getItem('india_scoping_boq_draft_v1');
+     const raw=sessionStorage.getItem('rticore_scoping_boq_draft_v1');
      if(!raw)throw Error('Draft scoping tidak ditemukan pada sesi browser ini.');
      const draft=JSON.parse(raw);
      if(!Number.isFinite(draft.createdAt)||draft.createdAt>Date.now()+60000
@@ -48,8 +50,22 @@ export default function BoQPage(){
        return {description:item.description,quantity:item.quantity,unit:item.unit,unit_price:0,service_type:item.service_type};
      });
      setForm(f=>({...f,service_type:draft.service_type,line_items:items}));
-     setMsg('Draft scoping berhasil dimuat. Isi opportunity, harga dan data quotation lalu simpan ke D1. Belum ada data tersimpan.');
-     sessionStorage.removeItem('india_scoping_boq_draft_v1');
+     // Optional ICOP boq_internal A–E suggestion. It only prefills inputs; saving HPP stays Finance/Admin-only.
+     const hpp=draft.pricing_context?.hpp;
+     let hppNote='';
+     if(Array.isArray(hpp)&&hpp.length<=5){
+      const seen=new Set<string>(),next:Record<string,string>={};
+      for(const x of hpp){
+       if(!x||!['A','B','C','D','E'].includes(x.code)||seen.has(x.code)||typeof x.amount!=='number'
+         ||!Number.isSafeInteger(x.amount)||x.amount<0||x.amount>1e13){Object.keys(next).forEach(k=>delete next[k]);break;}
+       seen.add(x.code);next[x.code]=String(x.amount);
+      }
+      if(Object.keys(next).length){setCosts(next);hppNote=' Saran HPP A–E dari Pricing Engine ICOP dimuat; Finance wajib memverifikasi sebelum disimpan.';}
+     }
+     const tier=draft.pricing_context?.client_tier;
+     if(typeof tier==='string'&&/^[SABCDE]$/.test(tier))hppNote+=' Client tier scoping: '+tier+'.';
+     setMsg('Draft scoping berhasil dimuat. Isi opportunity, harga dan data quotation lalu simpan ke database. Belum ada data tersimpan.'+hppNote);
+     sessionStorage.removeItem('rticore_scoping_boq_draft_v1');
     }catch(e){setMsg(e instanceof Error?e.message:'Draft scoping tidak dapat diimpor.');}
    }
    void load();void fetch('/api/sales?entity=deals',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.success)setSalesDeals(j.deals||[])}).catch(()=>{});const id=new URLSearchParams(window.location.search).get('opportunity_id');
@@ -82,20 +98,20 @@ export default function BoQPage(){
    if(action==='approve')body.reason=prompt('Alasan pengecualian margin jika di bawah 25%; jika tidak, kosongkan:')||'';
    const endpoint=selected?'/api/boq/'+selected.id:'/api/boq';
    const response=await fetch(endpoint,{method:selected?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-   const result=await response.json();if(!response.ok)throw Error(result.message);
-   await load();setSelected(null);setForm(blank());setCosts({});setMsg('Berhasil: '+action);
-  }catch(e){setMsg(String(e));}finally{setBusy(false);}
+   const result=await readApiJSON(response);if(!response.ok||result.success===false)throw Error(result.message||'Transaksi BoQ gagal.');
+   await load();setSelected(null);setForm(blank());setCosts({});setMsg('Berhasil: '+(ACTION_LABELS[action]||action));
+  }catch(e){setMsg(errorText(e,'Transaksi BoQ gagal.'));}finally{setBusy(false);}
  };
  const download=async(format:string)=>{
   if(!selected)return;setBusy(true);
-  try{const r=await fetch('/api/boq/export?id='+encodeURIComponent(selected.id)+'&format='+format);if(!r.ok){const j=await r.json();throw Error(j.message);}
+  try{const r=await fetch('/api/boq/export?id='+encodeURIComponent(selected.id)+'&format='+format);if(!r.ok){const j=await readApiJSON(r);throw Error(j.message||'Ekspor BoQ gagal.');}
   const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download='RTI_'+format+'_'+selected.quotation_number.replace(/[^a-zA-Z0-9]/g,'-')+'.xlsx';
   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
-  }catch(e){setMsg(String(e));}finally{setBusy(false);}
+  }catch(e){setMsg(errorText(e,'Ekspor BoQ gagal.'));}finally{setBusy(false);}
  };
  return <main className="min-w-0 space-y-5 pb-24"><header className="flex flex-wrap justify-between gap-3">
-   <div><h1 className="text-xl font-bold text-slate-900">BoQ Management · RTI</h1><p className="text-xs text-slate-500">D1 · Peran {role||'belum terautentikasi'} · Excel</p></div>
+   <div><h1 className="text-xl font-bold text-slate-900">BoQ Management · RTI</h1><p className="text-xs text-slate-500">PostgreSQL · Peran {role||'belum terautentikasi'} · Excel</p></div>
    <div className="flex gap-2">{role==='admin'&&<a href="/boq/users" className="rounded-lg border px-3 py-2 text-xs font-semibold">Atur Role</a>}
    <button className="rounded-lg bg-blue-700 px-3 py-2 text-xs text-white" onClick={()=>{setSelected(null);setForm(blank());setCosts({});}}>+ BoQ Baru</button></div>
   </header>{msg&&<p role="status" className="rounded-lg border border-blue-200 p-3 text-xs">{msg}</p>}
@@ -140,7 +156,7 @@ export default function BoQPage(){
     <button disabled={!canEdit||form.line_items.length===1} onClick={()=>change('line_items',form.line_items.filter((_,j)=>j!==i))} className="text-xs text-red-700">Hapus</button></div>)}
    {isFinance&&<div className="space-y-2 border-t pt-4"><h3 className="font-bold text-sm">HPP Internal (Finance)</h3><p className="text-xs text-slate-500">Isi seluruh A-E; nol hanya jika biaya tidak berlaku.</p>
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{['A','B','C','D','E'].map(k=><label key={k} className="text-xs">Komponen {k}<input disabled={!canEdit} className="mt-1 w-full rounded border p-2" type="number" min="0" placeholder="Belum diisi" value={costs[k]||''} onChange={e=>setCosts(p=>({...p,[k]:e.target.value}))}/></label>)}</div></div>}
-   <div className="flex flex-wrap gap-2 border-t pt-4">{canEdit&&<button disabled={busy} onClick={()=>call(selected?'update':'create')} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white">Simpan ke D1</button>}
+   <div className="flex flex-wrap gap-2 border-t pt-4">{canEdit&&<button disabled={busy} onClick={()=>call(selected?'update':'create')} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white">Simpan BoQ</button>}
      {selected?.status==='draft'&&canEdit&&<button disabled={busy} onClick={()=>call('submit')} className="rounded-lg border p-2 text-xs">Submit Approval</button>}
      {selected?.status==='submitted'&&['admin','approver'].includes(role)&&<><button disabled={busy} onClick={()=>call('approve')} className="rounded-lg border p-2 text-xs">Approve</button><button disabled={busy} onClick={()=>call('reject')} className="rounded-lg border p-2 text-xs">Reject</button></>}
      {selected&&['submitted','approved','rejected'].includes(selected.status)&&canCreate&&<button disabled={busy} onClick={()=>call('revise')} className="rounded-lg border p-2 text-xs">Buat Revisi</button>}</div>

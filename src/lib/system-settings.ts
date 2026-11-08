@@ -8,7 +8,7 @@ export function apiResource(path:string){
  if(path.startsWith('/api/ai'))return 'ai';if(path.startsWith('/api/boq'))return 'boq';
  if(path.startsWith('/api/sales'))return 'sales';if(path.startsWith('/api/marketing'))return 'marketing';return null;
 }
-export async function effectiveSetting(db:D1DB,kind:string,key:string){const r=await db.prepare('SELECT data_json FROM india_effective_settings WHERE tenant_id=? AND kind=? AND setting_key=?').bind(TENANT,kind,key).first<{data_json:string}>();return r?JSON.parse(r.data_json) as Record<string,unknown>:null;}
+export async function effectiveSetting(db:D1DB,kind:string,key:string){const r=await db.prepare('SELECT data_json FROM rticore_effective_settings WHERE tenant_id=? AND kind=? AND setting_key=?').bind(TENANT,kind,key).first<{data_json:string}>();return r?JSON.parse(r.data_json) as Record<string,unknown>:null;}
 export async function accessRestricted(db:D1DB,path:string,role:string){
  if(role==='admin')return false;const resource=apiResource(path);if(!resource)return false;
  const p=await effectiveSetting(db,'access',resource);return !!p&&Array.isArray(p.denied_roles)&&p.denied_roles.includes(role);

@@ -20,24 +20,24 @@ export async function erpGrant(a:BoQIdentity,capability:string,unitId?:string){
  // Every grant must have a separately approved employee-unit affiliation.
  // Recursively accept grants for the employee's unit or its ancestors.
  const q=await a.db.prepare(`WITH RECURSIVE scoped_units(unit_id) AS (
-  SELECT s.unit_id FROM india_erp_staff_org s WHERE s.tenant_id=? AND lower(s.email)=? AND s.status='approved'
+  SELECT s.unit_id FROM rticore_erp_staff_org s WHERE s.tenant_id=? AND lower(s.email)=? AND s.status='approved'
   UNION ALL
-  SELECT u.parent_id FROM india_erp_org_units u JOIN scoped_units x ON x.unit_id=u.id
+  SELECT u.parent_id FROM rticore_erp_org_units u JOIN scoped_units x ON x.unit_id=u.id
    WHERE u.tenant_id=? AND u.parent_id IS NOT NULL
  )
- SELECT g.id FROM india_erp_capability_grants g JOIN india_members m ON lower(m.email)=lower(g.email) JOIN india_erp_role_capability_matrix pol ON pol.role=m.role AND pol.capability=g.capability AND pol.allowed=1
+ SELECT g.id FROM rticore_erp_capability_grants g JOIN rticore_members m ON lower(m.email)=lower(g.email) JOIN rticore_erp_role_capability_matrix pol ON pol.role=m.role AND pol.capability=g.capability AND pol.allowed=1
  WHERE g.tenant_id=? AND lower(g.email)=? AND g.capability=? AND g.status='approved' AND m.active=1
  AND EXISTS(SELECT 1 FROM scoped_units WHERE unit_id=g.unit_id)
  `+(unitId?'AND g.unit_id=?':'')+' LIMIT 1').bind(TENANT,a.email,TENANT,TENANT,a.email,capability,...(unitId?[unitId]:[])).first();
  if(!q)throw new ERPError('Akses ERP memerlukan penempatan staff dan grant legal-unit yang disetujui secara independen',403);
 }
 export async function erpProjectUnit(db:D1DB,id:string){
- const row=await db.prepare("SELECT s.legal_entity_id FROM india_erp_project_scopes s JOIN india_delivery_projects p ON p.id=s.project_id AND p.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.project_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
+ const row=await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_project_scopes s JOIN rticore_delivery_projects p ON p.id=s.project_id AND p.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.project_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
  if(!row)throw new ERPError('Legal entity proyek belum disetujui',409);
  return row.legal_entity_id;
 }
 export async function erpOpportunityUnit(db:D1DB,id:string){
- const row=await db.prepare("SELECT s.legal_entity_id FROM india_erp_opportunity_scopes s WHERE s.tenant_id=? AND s.opportunity_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
+ const row=await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_opportunity_scopes s WHERE s.tenant_id=? AND s.opportunity_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
  if(!row)throw new ERPError('Legal entity Opportunity belum disetujui',409);
  return row.legal_entity_id;
 }

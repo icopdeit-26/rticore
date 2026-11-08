@@ -259,10 +259,10 @@ body {
 
 /* Keep the global mobile navigation out of view while the AI chat composer is
    active. The chat modal itself is portaled to <body> and has a higher z-index. */
-body.india-ai-chat-open nav[aria-label="Navigasi utama mobile"] {
+body.rticore-ai-chat-open nav[aria-label="Navigasi utama mobile"] {
   display: none !important;
 }
-body.india-ai-chat-open {
+body.rticore-ai-chat-open {
   overflow: hidden;
 }
 

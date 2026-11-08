@@ -1,6 +1,6 @@
 -- AI provider settings (no plaintext provider credentials in D1).
--- Apply to the INDIA D1 binding before opening the admin menu.
-CREATE TABLE IF NOT EXISTS india_ai_providers (
+-- Apply to the RTICORE D1 binding before opening the admin menu.
+CREATE TABLE IF NOT EXISTS rticore_ai_providers (
  provider_id TEXT PRIMARY KEY CHECK(provider_id IN ('openai','gemini','anthropic','groq','openrouter','deepseek')),
  model TEXT NOT NULL,
  priority INTEGER NOT NULL,
@@ -12,11 +12,11 @@ CREATE TABLE IF NOT EXISTS india_ai_providers (
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_by TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS india_ai_config_audit (
+CREATE TABLE IF NOT EXISTS rticore_ai_config_audit (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  actor_email TEXT NOT NULL,
  provider_id TEXT NOT NULL,
  action TEXT NOT NULL,
  happened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_audit_time ON india_ai_config_audit(happened_at);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_time ON rticore_ai_config_audit(happened_at);

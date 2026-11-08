@@ -1,0 +1,51 @@
+name: RTICORE 420 staged catalog and technical UAT
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/rticore-uat-420-batches.mjs'
+      - '.github/workflows/rticore-uat420-staged-ci.yml'
+      - 'docs/RTICORE_UAT_210_CATALOG.json'
+      - 'docs/RTICORE_ERP_UAT_210_CATALOG.json'
+permissions:
+  contents: read
+jobs:
+  staged-uat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Catalog-by-catalog gate (definitions, never operational PASS)
+        run: node scripts/rticore-uat-420-batches.mjs --batch=${{ matrix.batch }}
+      - name: Existing isolated technical regressions for this batch
+        shell: bash
+        run: |
+          case '${{ matrix.batch }}' in
+            1) npm run gate:automated ;;
+            2) npm run test:erp && node --test tests/rticore-erp-enterprise-contract.test.cjs ;;
+            3) npm run test:erp && npm run test:service-operations ;;
+            4) npm run test:erp && npm run test:service-operations ;;
+            5) npm run test:psa-timesheets ;;
+            6) npm run test:service-operations && npm run test:sales-transactions && npm run test:post-po ;;
+            7) npm run test:rticore-negative && node --test tests/rticore-negative-enterprise-matrix.test.cjs tests/release-evidence.test.cjs ;;
+            *) exit 2 ;;
+          esac
+      - name: Retain batch-level catalog integrity report (NOT signed UAT)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rticore-uat420-batch-${{ matrix.batch }}-catalog
+          path: artifacts/rticore-uat420/batch-${{ matrix.batch }}.json
+          if-no-files-found: warn
+          retention-days: 14
+# This workflow runs isolated source/synthetic technical checks. Never records business-UAT PASS.
+# No production D1, Access role impersonation, bank payments, HR payroll, SIEM/EDR actions or deployment.

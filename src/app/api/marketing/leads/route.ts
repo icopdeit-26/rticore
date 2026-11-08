@@ -18,11 +18,11 @@ const sameRegistration=(r:LeadRow,v:LeadInput)=>
  r.estimated_value_idr===v.estimated_value_idr&&r.expected_closing_date===v.expected_closing_date;
 const owner=(role:string,email:string,row:LeadRow)=>role==='admin'||role==='marketing'||(role==='sales'&&row.assigned_sales_email===email);
 const origin=(req:Request)=>!req.headers.get('origin')||req.headers.get('origin')===new URL(req.url).origin;
-const readLead=(db:D1DB,id:string)=>db.prepare('SELECT * FROM india_marketing_leads WHERE id=? AND tenant_id=?')
+const readLead=(db:D1DB,id:string)=>db.prepare('SELECT * FROM rticore_marketing_leads WHERE id=? AND tenant_id=?')
  .bind(id,TENANT).first<LeadRow>();
 const trim=(x:unknown,max=200)=>typeof x==='string'?x.trim().slice(0,max):'';
 async function loadSalesOwner(db:D1DB,email:string){
- return db.prepare("SELECT role,active FROM india_members WHERE email=?").bind(email)
+ return db.prepare("SELECT role,active FROM rticore_members WHERE email=?").bind(email)
   .first<{role:string;active:number}>();
 }
 export async function GET(req:Request){
@@ -37,13 +37,13 @@ export async function GET(req:Request){
    if(!r)return fail('Lead tidak tersedia',404);
    if(!owner(role,email,r))return fail('Lead ini bukan tugas Sales Anda',403);
    const [activities,link]=await Promise.all([
-    db.prepare('SELECT kind,summary,next_action_at,created_by,created_at FROM india_marketing_activities WHERE tenant_id=? AND lead_id=? ORDER BY created_at DESC LIMIT 60').bind(TENANT,id).all(),
-    db.prepare('SELECT customer_id,opportunity_id,converted_by,converted_at FROM india_sales_lead_links WHERE tenant_id=? AND lead_id=?').bind(TENANT,id).first()
+    db.prepare('SELECT kind,summary,next_action_at,created_by,created_at FROM rticore_marketing_activities WHERE tenant_id=? AND lead_id=? ORDER BY created_at DESC LIMIT 60').bind(TENANT,id).all(),
+    db.prepare('SELECT customer_id,opportunity_id,converted_by,converted_at FROM rticore_sales_lead_links WHERE tenant_id=? AND lead_id=?').bind(TENANT,id).first()
    ]);
    return respond({success:true,lead:view(r),activities:activities.results,link});
   }
-  const result=await db.prepare('SELECT * FROM india_marketing_leads WHERE tenant_id=? ORDER BY updated_at DESC LIMIT 250').bind(TENANT).all<LeadRow>();
-  return respond({success:true,role,leads:result.results.filter(r=>owner(role,email,r)).map(view)});
+  const result=await db.prepare('SELECT * FROM rticore_marketing_leads WHERE tenant_id=? ORDER BY updated_at DESC LIMIT 250').bind(TENANT).all<LeadRow>();
+  return respond({success:true,role,email,leads:result.results.filter(r=>owner(role,email,r)).map(view)});
  }catch{return fail('Database Marketing belum siap. Migrasi 0004 dan 0005 wajib dijalankan.',503);}
 }
 export async function POST(req:Request){
@@ -61,7 +61,7 @@ export async function POST(req:Request){
    const requestKey=trim(p.request_key,64);
    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
     return fail('Request ID lead tidak valid. Muat ulang formulir untuk membuat ID baru.',422);
-   const repeated=await db.prepare('SELECT * FROM india_marketing_leads WHERE tenant_id=? AND created_by=? AND request_key=?')
+   const repeated=await db.prepare('SELECT * FROM rticore_marketing_leads WHERE tenant_id=? AND created_by=? AND request_key=?')
     .bind(TENANT,email,requestKey).first<LeadRow>();
    if(repeated){
     // A retry must work even if its source campaign was paused after the first commit.
@@ -71,7 +71,7 @@ export async function POST(req:Request){
    }
    // New Leads, unlike retries, must reference an active campaign.
    if(v.campaign_id){
-    const selected=await db.prepare('SELECT name,status FROM india_marketing_campaigns WHERE id=? AND tenant_id=?')
+    const selected=await db.prepare('SELECT name,status FROM rticore_marketing_campaigns WHERE id=? AND tenant_id=?')
      .bind(v.campaign_id,TENANT).first<{name:string;status:string}>();
     if(!selected||selected.status!=='active')return fail('Campaign tidak ada atau tidak aktif. Pilih campaign aktif.',409);
     v.campaign=selected.name;
@@ -81,9 +81,9 @@ export async function POST(req:Request){
    if(!assignee||assignee.active!==1||!['sales','admin'].includes(assignee.role))return fail('Sales owner harus akun aktif dengan role Sales/Admin',422);
    const id=crypto.randomUUID(),lead_number='LD-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+id.slice(0,8).toUpperCase();
    await db.batch([
-    db.prepare('INSERT INTO india_marketing_leads(id,tenant_id,lead_number,account_name,source,campaign,campaign_id,service_family,contact_name,contact_email,assigned_sales_email,estimated_value_idr,expected_closing_date,qualification_json,status,created_by,updated_by,request_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO rticore_marketing_leads(id,tenant_id,lead_number,account_name,source,campaign,campaign_id,service_family,contact_name,contact_email,assigned_sales_email,estimated_value_idr,expected_closing_date,qualification_json,status,created_by,updated_by,request_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
      .bind(id,TENANT,lead_number,v.account_name,v.source,v.campaign,v.campaign_id||null,v.service_family,v.contact_name,v.contact_email,v.assigned_sales_email,v.estimated_value_idr,v.expected_closing_date,JSON.stringify(v.qualification),'new',email,email,requestKey),
-    db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
      .bind(crypto.randomUUID(),TENANT,'lead',id,'CREATE',email,'Lead '+lead_number)
    ]);
    return respond({success:true,id,lead_number,status:'new'},201);
@@ -98,22 +98,22 @@ export async function POST(req:Request){
      (date&&!/^\d{4}-\d{2}-\d{2}$/.test(date)))return fail('Jenis, deskripsi atau jadwal tidak valid');
    const id=crypto.randomUUID();
    await db.batch([
-    db.prepare('INSERT INTO india_marketing_activities(id,tenant_id,lead_id,kind,summary,next_action_at,created_by) VALUES (?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO rticore_marketing_activities(id,tenant_id,lead_id,kind,summary,next_action_at,created_by) VALUES (?,?,?,?,?,?,?)')
      .bind(id,TENANT,row.id,kind,summary,date||null,email),
-    db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
      .bind(crypto.randomUUID(),TENANT,'lead',row.id,'ACTIVITY',email,kind)
    ]);
    return respond({success:true,id},201);
   }
   if(p.entity==='convert'){
-   if(req.headers.get('origin')!==new URL(req.url).origin||req.headers.get('x-india-lead-action')!=='convert')return fail('Origin atau konfirmasi konversi tidak valid',403);
+   if(req.headers.get('origin')!==new URL(req.url).origin||req.headers.get('x-rticore-lead-action')!=='convert')return fail('Origin atau konfirmasi konversi tidak valid',403);
    if(!safeID(p.id))return fail('Lead ID tidak valid');
    const row=await readLead(db,p.id as string);
    if(!row)return fail('Lead tidak ditemukan',404);
    if(!['sales','admin'].includes(role)||(role==='sales'&&row.assigned_sales_email!==email))
     return fail('Konversi hanya oleh Sales penanggung jawab atau Admin',403);
    if(row.status==='converted'){
-    const linked=await db.prepare('SELECT customer_id,opportunity_id FROM india_sales_lead_links WHERE tenant_id=? AND lead_id=?')
+    const linked=await db.prepare('SELECT customer_id,opportunity_id FROM rticore_sales_lead_links WHERE tenant_id=? AND lead_id=?')
      .bind(TENANT,row.id).first<{customer_id:string;opportunity_id:string}>();
     if(!linked)return fail('Lead bertanda converted tetapi referensi Opportunity tidak ditemukan; hubungi Admin',409);
     return respond({success:true,lead_id:row.id,...linked,already_converted:true});
@@ -125,7 +125,7 @@ export async function POST(req:Request){
    if(row.estimated_value_idr<=0||!row.expected_closing_date)return fail('Nilai peluang dan tanggal closing harus lengkap sebelum konversi',422);
    const title=trim(p.opportunity_title,240);
    if(title.length<3)return fail('Nama proyek/opportunity wajib diisi',422);
-   const existing=await db.prepare('SELECT id,legal_name,created_by FROM india_sales_accounts WHERE tenant_id=? AND lower(trim(legal_name))=?')
+   const existing=await db.prepare('SELECT id,legal_name,created_by FROM rticore_sales_accounts WHERE tenant_id=? AND lower(trim(legal_name))=?')
     .bind(TENANT,normalizeName(row.account_name)).first<{id:string;legal_name:string;created_by:string}>();
    if(existing&&existing.created_by.toLowerCase()!==row.assigned_sales_email.toLowerCase())return fail('Customer milik Sales lain; butuh persetujuan perpindahan akses',409);
    const customerId=existing?.id||crypto.randomUUID(),opportunityId=crypto.randomUUID();
@@ -148,22 +148,22 @@ export async function POST(req:Request){
    // Identity from the qualified Lead overrides any browser-submitted values.
    const customerData={...profile,...contact};
    const nextVersion=row.version+1;
-   const statements=[db.prepare("UPDATE india_marketing_leads SET status='converted',version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status='qualified' AND version=? AND assigned_sales_email=?")
+   const statements=[db.prepare("UPDATE rticore_marketing_leads SET status='converted',version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status='qualified' AND version=? AND assigned_sales_email=?")
      .bind(email,row.id,TENANT,row.version,row.assigned_sales_email)];
    if(!existing)statements.push(
-    db.prepare("INSERT INTO india_sales_accounts(id,tenant_id,legal_name,customer_number,data_json,created_by) SELECT ?,tenant_id,account_name,?,?,assigned_sales_email FROM india_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
+    db.prepare("INSERT INTO rticore_sales_accounts(id,tenant_id,legal_name,customer_number,data_json,created_by) SELECT ?,tenant_id,account_name,?,?,assigned_sales_email FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
      .bind(customerId,'IND-'+customerId.slice(0,12).toUpperCase(),JSON.stringify(customerData),TENANT,row.id,nextVersion)
    );
    statements.push(
-    db.prepare("INSERT INTO india_sales_opportunities(id,tenant_id,company_id,title,stage,estimated_value_idr,data_json,created_by) SELECT ?,tenant_id,? ,?,'prospecting',?,?,assigned_sales_email FROM india_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
+    db.prepare("INSERT INTO rticore_sales_opportunities(id,tenant_id,company_id,title,stage,estimated_value_idr,data_json,created_by) SELECT ?,tenant_id,? ,?,'prospecting',?,?,assigned_sales_email FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
      .bind(opportunityId,customerId,title,row.estimated_value_idr,JSON.stringify(fields),TENANT,row.id,nextVersion),
-    db.prepare("INSERT INTO india_sales_lead_links(tenant_id,lead_id,customer_id,opportunity_id,converted_by) SELECT tenant_id,id,?,?,? FROM india_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
+    db.prepare("INSERT INTO rticore_sales_lead_links(tenant_id,lead_id,customer_id,opportunity_id,converted_by) SELECT tenant_id,id,?,?,? FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
      .bind(customerId,opportunityId,email,TENANT,row.id,nextVersion),
-    db.prepare("INSERT INTO india_marketing_lead_events(id,tenant_id,lead_id,action,actor_email,from_status,to_status,detail) SELECT ?,tenant_id,id,'CONVERT',?,'qualified','converted',? FROM india_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
+    db.prepare("INSERT INTO rticore_marketing_lead_events(id,tenant_id,lead_id,action,actor_email,from_status,to_status,detail) SELECT ?,tenant_id,id,'CONVERT',?,'qualified','converted',? FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
      .bind(crypto.randomUUID(),email,'Customer '+customerId+' / Opportunity '+opportunityId,TENANT,row.id,nextVersion),
-    db.prepare("INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) SELECT ?,tenant_id,'lead',id,'CONVERT',?,? FROM india_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
+    db.prepare("INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) SELECT ?,tenant_id,'lead',id,'CONVERT',?,? FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
      .bind(crypto.randomUUID(),email,'Opportunity '+opportunityId,TENANT,row.id,nextVersion),
-    db.prepare("INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,from_stage,to_stage,summary) SELECT ?,tenant_id,'deal',?,'CREATE',?,NULL,'prospecting',? FROM india_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
+    db.prepare("INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,from_stage,to_stage,summary) SELECT ?,tenant_id,'deal',?,'CREATE',?,NULL,'prospecting',? FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND status='converted' AND version=?")
      .bind(crypto.randomUUID(),opportunityId,row.assigned_sales_email,'Lead '+row.lead_number,TENANT,row.id,nextVersion)
    );
    const results=await db.batch(statements) as Array<{success?:boolean;meta?:{changes?:number}}>;
@@ -176,12 +176,12 @@ export async function POST(req:Request){
   // request key guarantees a single registration; return its stable identifier.
   if(p.entity==='lead'&&typeof p.request_key==='string'){
    try{
-    const same=await db.prepare('SELECT * FROM india_marketing_leads WHERE tenant_id=? AND created_by=? AND request_key=?')
+    const same=await db.prepare('SELECT * FROM rticore_marketing_leads WHERE tenant_id=? AND created_by=? AND request_key=?')
      .bind(TENANT,email,p.request_key).first<LeadRow>();
     if(same){
      const original=validateLead(p);
      if(original.campaign_id){
-      const campaign=await db.prepare('SELECT name FROM india_marketing_campaigns WHERE id=? AND tenant_id=?')
+      const campaign=await db.prepare('SELECT name FROM rticore_marketing_campaigns WHERE id=? AND tenant_id=?')
        .bind(original.campaign_id,TENANT).first<{name:string}>();
       if(campaign)original.campaign=campaign.name;
      }
@@ -194,7 +194,7 @@ export async function POST(req:Request){
    try{
     const lead=await readLead(db,p.id as string);
     if(lead&&['admin','sales'].includes(role)&&(role==='admin'||lead.assigned_sales_email===email)&&lead.status==='converted'){
-     const same=await db.prepare('SELECT customer_id,opportunity_id FROM india_sales_lead_links WHERE tenant_id=? AND lead_id=?')
+     const same=await db.prepare('SELECT customer_id,opportunity_id FROM rticore_sales_lead_links WHERE tenant_id=? AND lead_id=?')
       .bind(TENANT,lead.id).first<{customer_id:string;opportunity_id:string}>();
      if(same)return respond({success:true,lead_id:lead.id,...same,already_converted:true});
     }
@@ -228,9 +228,9 @@ export async function PATCH(req:Request){
    return fail('Isi minimal satu identitas kontak sebelum kualifikasi',422);
   if(!Number.isSafeInteger(p.version)||Number(p.version)!==row.version)return fail('Versi Lead berubah; muat ulang data',409);
   const updates=await db.batch([
-   db.prepare("UPDATE india_marketing_leads SET status=?,qualification_json=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status=? AND version=? AND qualification_json=?")
+   db.prepare("UPDATE rticore_marketing_leads SET status=?,qualification_json=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status=? AND version=? AND qualification_json=?")
     .bind(target,JSON.stringify(v.qualification),email,row.id,TENANT,row.status,row.version,row.qualification_json),
-   db.prepare("INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,from_stage,to_stage) SELECT ?,tenant_id,'lead',id,'STAGE',?,?,? FROM india_marketing_leads WHERE id=? AND tenant_id=? AND version=? AND status=?")
+   db.prepare("INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,from_stage,to_stage) SELECT ?,tenant_id,'lead',id,'STAGE',?,?,? FROM rticore_marketing_leads WHERE id=? AND tenant_id=? AND version=? AND status=?")
     .bind(crypto.randomUUID(),email,row.status,target,row.id,TENANT,row.version+1,target)
   ]) as Array<{success?:boolean;meta?:{changes?:number}}>;
   if(updates.length!==2||updates.some(x=>x.success===false||x.meta?.changes!==1))

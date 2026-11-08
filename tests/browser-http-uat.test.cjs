@@ -6,7 +6,7 @@ const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path');
 const artifactDir=path.join(process.cwd(),'artifacts','browser-uat');
 fs.mkdirSync(artifactDir,{recursive:true});
-const base=process.env.INDIA_UAT_URL||'http://127.0.0.1:3100';
+const base=process.env.RTICORE_UAT_URL||'http://127.0.0.1:3100';
 const salesAccount={id:'uat-customer-a',legal_name:'PT DATA UAT NONPRODUKSI',
   customer_number:'IND-UAT-001',fields:{},created_at:'2026-10-21',created_by:'sales.a@uat.invalid'};
 const roles=[

@@ -23,22 +23,22 @@ export async function POST(req:Request){
  if(!safeID(id)||!safeID(release)||!VAULT_KINDS.includes(kind as VaultKind)||!name||name.length>180||/[\x00-\x1f\x7f/\\]/.test(name))return deny('Opportunity, paket, jenis dan nama file harus valid',422);
  if(role==='presales'&&kind!=='proposal')return deny('Presales hanya mengunggah proposal',403);
  try{
-  const d=await db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
+  const d=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
   if(!d)return deny('Opportunity tidak tersedia',404);
   if(!canReadDeal(role,email,d.created_by))return deny('Opportunity bukan milik Sales ini',403);
   if(['closed_won','closed_lost'].includes(d.stage))return deny('Dokumen transaksi yang sudah ditutup terkunci',409);
-  const r=await db.prepare('SELECT status FROM india_sales_releases WHERE id=? AND tenant_id=? AND opportunity_id=?').bind(release,TENANT,id).first<{status:string}>();
+  const r=await db.prepare('SELECT status FROM rticore_sales_releases WHERE id=? AND tenant_id=? AND opportunity_id=?').bind(release,TENANT,id).first<{status:string}>();
   if(!r||r.status==='superseded'||(kind==='proposal'?r.status!=='scoped':r.status!=='approved'))return deny('Upload harus sesuai paket aktif dan tahapan persetujuannya',409);
   const bytes=await boundedBody(req);if(!bytes.length)return deny('File kosong',422);
   const media=await inspectDocument(name,bytes);if(!media)return deny('Gunakan PDF, DOCX, PNG, JPEG atau email EML dengan isi file yang sesuai',415);
   const doc:VaultDoc={id:crypto.randomUUID(),tenant_id:TENANT,opportunity_id:id,release_id:release,kind:kind as VaultKind,file_name:name,media_type:media,byte_length:bytes.length,sha256:await documentHash(bytes),iv:'',chunk_count:0,created_by:email};
   const sealed=await sealDocument(doc,bytes),guard=dealGuard(d);
-  guard.condition+=' AND EXISTS(SELECT 1 FROM india_sales_releases WHERE id=? AND tenant_id=? AND opportunity_id=? AND status=?)';guard.args.push(release,TENANT,id,r.status);
+  guard.condition+=' AND EXISTS(SELECT 1 FROM rticore_sales_releases WHERE id=? AND tenant_id=? AND opportunity_id=? AND status=?)';guard.args.push(release,TENANT,id,r.status);
   await atomicSales(db,guard.condition,guard.args,[
-   db.prepare('INSERT INTO india_document_vault(id,tenant_id,opportunity_id,release_id,kind,file_name,media_type,byte_length,sha256,iv,chunk_count,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(doc.id,TENANT,id,release,kind,name,media,bytes.length,doc.sha256,sealed.iv,sealed.chunks.length,email),
-   ...sealed.chunks.map((c,i)=>db.prepare('INSERT INTO india_document_chunks(document_id,part,ciphertext) VALUES(?,?,?)').bind(doc.id,i,c)),
-   db.prepare('INSERT INTO india_document_governance(document_id,tenant_id,opportunity_id,kind,version) SELECT ?,?,?,?,COALESCE((SELECT max(version)+1 FROM india_document_governance WHERE tenant_id=? AND opportunity_id=? AND kind=?),1)').bind(doc.id,TENANT,id,kind,TENANT,id,kind),
-   db.prepare("INSERT INTO india_document_access_events(id,tenant_id,opportunity_id,source,document_id,action,actor_email,actor_role,description) VALUES(?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),TENANT,id,'release',doc.id,'UPLOAD',email,role,name),
+   db.prepare('INSERT INTO rticore_document_vault(id,tenant_id,opportunity_id,release_id,kind,file_name,media_type,byte_length,sha256,iv,chunk_count,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(doc.id,TENANT,id,release,kind,name,media,bytes.length,doc.sha256,sealed.iv,sealed.chunks.length,email),
+   ...sealed.chunks.map((c,i)=>db.prepare('INSERT INTO rticore_document_chunks(document_id,part,ciphertext) VALUES(?,?,?)').bind(doc.id,i,c)),
+   db.prepare('INSERT INTO rticore_document_governance(document_id,tenant_id,opportunity_id,kind,version) SELECT ?,?,?,?,COALESCE((SELECT max(version)+1 FROM rticore_document_governance WHERE tenant_id=? AND opportunity_id=? AND kind=?),1)').bind(doc.id,TENANT,id,kind,TENANT,id,kind),
+   db.prepare("INSERT INTO rticore_document_access_events(id,tenant_id,opportunity_id,source,document_id,action,actor_email,actor_role,description) VALUES(?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),TENANT,id,'release',doc.id,'UPLOAD',email,role,name),
    salesAudit(db,id,'DOCUMENT_UPLOADED',email,kind+' / '+doc.id)
   ]);
   return res({success:true,id:doc.id,reference:vaultReference(doc.id),sha256:doc.sha256,file_name:name,byte_length:bytes.length},201);
@@ -50,14 +50,14 @@ export async function GET(req:Request){
  const p=new URL(req.url).searchParams,id=p.get('id'),opp=p.get('opportunity_id');
  if(!safeID(id||opp))return deny('ID dokumen atau Opportunity harus valid');
  try{
-  const doc=id?await db.prepare('SELECT * FROM india_document_vault WHERE id=? AND tenant_id=?').bind(id,TENANT).first<VaultDoc>():null;
+  const doc=id?await db.prepare('SELECT * FROM rticore_document_vault WHERE id=? AND tenant_id=?').bind(id,TENANT).first<VaultDoc>():null;
   if(id&&!doc)return deny('Dokumen tidak ditemukan',404);
   const opportunity=doc?.opportunity_id||opp!;
-  const d=await db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,opportunity).first<FlowDeal>();
+  const d=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,opportunity).first<FlowDeal>();
   if(!d)return deny('Opportunity tidak ditemukan',404);
   if(!canReadDeal(role,email,d.created_by))return deny('Opportunity bukan milik Sales ini',403);
-  if(!doc){const rows=await db.prepare('SELECT v.id,v.release_id,v.kind,v.file_name,v.media_type,v.byte_length,v.sha256,v.created_by,v.created_at,g.version,g.retention_until,g.legal_hold FROM india_document_vault v LEFT JOIN india_document_governance g ON g.document_id=v.id WHERE v.tenant_id=? AND v.opportunity_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 100').bind(TENANT,opportunity).all();return res({success:true,documents:rows.results});}
-  const policy=await db.prepare('SELECT retention_until,legal_hold FROM india_document_governance WHERE document_id=? AND tenant_id=? AND opportunity_id=?').bind(doc.id,TENANT,opportunity).first<{retention_until:string|null;legal_hold:number}>();
+  if(!doc){const rows=await db.prepare('SELECT v.id,v.release_id,v.kind,v.file_name,v.media_type,v.byte_length,v.sha256,v.created_by,v.created_at,g.version,g.retention_until,g.legal_hold FROM rticore_document_vault v LEFT JOIN rticore_document_governance g ON g.document_id=v.id WHERE v.tenant_id=? AND v.opportunity_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 100').bind(TENANT,opportunity).all();return res({success:true,documents:rows.results});}
+  const policy=await db.prepare('SELECT retention_until,legal_hold FROM rticore_document_governance WHERE document_id=? AND tenant_id=? AND opportunity_id=?').bind(doc.id,TENANT,opportunity).first<{retention_until:string|null;legal_hold:number}>();
   if(!policy)return deny('Kebijakan dokumen belum tersedia',503);
   if(policy.retention_until&&policy.retention_until<new Date().toISOString().slice(0,10)&&!policy.legal_hold&&!['admin','legal'].includes(role))
    return deny('Masa retensi terlampaui. Minta tinjauan Admin/Legal.',403);
@@ -65,7 +65,7 @@ export async function GET(req:Request){
   // Audit must commit before plaintext leaves the authenticated endpoint.
   await db.batch([
    salesAudit(db,opportunity,'DOCUMENT_DOWNLOADED',email,doc.kind+' / '+doc.id),
-   db.prepare('INSERT INTO india_document_access_events(id,tenant_id,opportunity_id,source,document_id,action,actor_email,actor_role,description) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,opportunity,'release',doc.id,'DOWNLOAD',email,role,doc.file_name)
+   db.prepare('INSERT INTO rticore_document_access_events(id,tenant_id,opportunity_id,source,document_id,action,actor_email,actor_role,description) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,opportunity,'release',doc.id,'DOWNLOAD',email,role,doc.file_name)
   ]);
   return new Response(new Uint8Array(bytes),{headers:{...privateHeaders,'Content-Type':doc.media_type,'Content-Length':String(bytes.length),'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(doc.file_name),'Content-Security-Policy':"sandbox; default-src 'none'",'Referrer-Policy':'no-referrer'}});
  }catch(e){const v=vaultError(e);return deny(v.message,v.status);}

@@ -79,7 +79,7 @@ export function StageFilter({
         </button>)}
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-white px-4 py-3">
-        <span className="text-[11px] text-slate-500">Jumlah berasal dari data pipeline D1.</span>
+        <span className="text-[11px] text-slate-500">Jumlah berasal dari data pipeline database.</span>
         <button type="button" onClick={() => choose('all')}
           className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">Reset Filter</button>
       </div>

@@ -90,6 +90,6 @@ test('multi-asset editor and BoQ import preserve per-asset rows and approval con
   assert.match(boq, /draft.version===2/);
   assert.match(boq, /line_items:items/);
   assert.match(boq, /unit_price:0/);
-  assert.match(boq, /Simpan ke D1/);
+  assert.match(boq, />Simpan BoQ</);
   assert.match(boq, /Submit Approval/);
 });

@@ -44,10 +44,10 @@ test('scoping drafts reach BoQ for review, not direct approval or D1 writes',()=
  const boq=source('src/app/boq/page.tsx');
  assert.match(scoping,/SCOPING_SERVICE_TYPES\.map/);
  assert.match(scoping,/validateServiceScope/);
- assert.match(scoping,/sessionStorage\.setItem\('india_scoping_boq_draft_v1'/);
+ assert.match(scoping,/sessionStorage\.setItem\('rticore_scoping_boq_draft_v1'/);
  assert.match(scoping,/router\.push\('\/boq\?from=scoping'\)/);
- assert.match(boq,/sessionStorage\.getItem\('india_scoping_boq_draft_v1'/);
+ assert.match(boq,/sessionStorage\.getItem\('rticore_scoping_boq_draft_v1'/);
  assert.match(boq,/unit_price:0/);
- assert.match(boq,/Simpan ke D1/);
+ assert.match(boq,/>Simpan BoQ</);
  assert.match(boq,/\/api\/boq/);
 });

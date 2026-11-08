@@ -1,8 +1,8 @@
 @echo off
-title Git Manual Push - India
+title Git Manual Push - RTICore
 cd /d "%~dp0"
 echo ================================================
-echo Repository: elanghaqeem-hash/India
+echo Repository: elanghaqeem-hash/RTICore
 echo Branch: main
 echo ================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0auto-push.ps1" -Once

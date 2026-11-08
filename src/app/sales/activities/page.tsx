@@ -2,6 +2,7 @@
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
 import Link from 'next/link';
 import {CalendarDays,Clock3,PhoneCall,MapPin,Users,AlertTriangle,CheckCircle2,Bell,ArrowRight} from 'lucide-react';
+import {readApiJSON} from '@/lib/client-api';
 type Task={id:string;lead_id:string|null;opportunity_id:string|null;owner_email:string;kind:string;subject:string;detail:string;target_name:string;customer_name:string;start_at:string;due_at:string;status:string;revision:number;outcome:string};
 type Event={id:string;task_id:string;action:string;actor_email:string;detail:string;at:string;subject:string;owner_email:string};
 type SLA={lead_id:string;owner_email:string;account_name:string;lead_number:string;response_due_at:string;first_response_at:string|null};
@@ -16,7 +17,7 @@ const fmt=(v:string)=>new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',d
 const localInput=(d:Date)=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 async function call(method:'GET'|'POST'|'PATCH',path:string,body?:Record<string,unknown>){
  const r=await fetch(path,{method,cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
- const data=await r.json();if(!r.ok||!data.success)throw Error(data.message||'Transaksi tidak berhasil');return data;
+ const data=await readApiJSON(r);if(!r.ok||!data.success)throw Error(data.message||'Transaksi tidak berhasil');return data;
 }
 export default function SalesActivities(){
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[targets,setTargets]=useState<Target[]>([]);
@@ -45,7 +46,7 @@ export default function SalesActivities(){
  };
  const create=(e:React.FormEvent)=>{e.preventDefault();
   const t=targets.find(x=>x.kind+':'+x.id===target);if(!t)return setMessage('Pilih Lead atau Opportunity terlebih dahulu');
-  void run(()=>call('POST','/api/sales/activities',{action:'schedule',scope:t.kind,target_id:t.id,kind,subject,detail,start_at:new Date(start).toISOString(),due_at:new Date(due).toISOString()}),'Jadwal tersimpan di D1.');
+  void run(()=>call('POST','/api/sales/activities',{action:'schedule',scope:t.kind,target_id:t.id,kind,subject,detail,start_at:new Date(start).toISOString(),due_at:new Date(due).toISOString()}),'Jadwal tersimpan di database.');
  };
  const mutate=(t:Task,action:'complete'|'cancel'|'reschedule')=>{
   const outcome=outcomes[t.id]||'';
@@ -78,7 +79,7 @@ export default function SalesActivities(){
   <header className="flex flex-wrap items-center justify-between gap-3"><div>
    <p className="text-xs font-extrabold uppercase tracking-wide text-blue-700">RTICORE / Sales Execution</p>
    <h1 className="mt-1 text-2xl font-extrabold text-slate-900">Activity & Follow-up Center</h1>
-   <p className="mt-1 max-w-3xl text-xs text-slate-600">Jadwal Sales tersambung ke Lead dan Opportunity D1. SLA respons menggunakan waktu kalender (120 menit), notifikasi otomatis memerlukan Cloudflare Cron aktif.</p>
+   <p className="mt-1 max-w-3xl text-xs text-slate-600">Jadwal Sales tersambung ke Lead dan Opportunity pada database PostgreSQL. SLA respons menggunakan waktu kalender (120 menit) dengan pemantauan pengingat terjadwal.</p>
   </div><Link href="/sales/pipeline" className="rounded-lg border bg-white px-3 py-2 text-xs font-bold text-slate-700">Sales Pipeline →</Link></header>
   {message&&<div role="status" className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">{message}</div>}
   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -135,7 +136,7 @@ export default function SalesActivities(){
       <b className="block break-words">{t.subject}</b><span>{fmt(t.start_at)} WIB</span><p className="break-all text-slate-500">{t.owner_email}</p>
      </div>)}{!mine.length&&<span className="text-[11px] text-slate-400">—</span>}</div></div>;
    })}</div></section>}
-  {tab==='timeline'&&<section className="space-y-3"><h2 className="text-sm font-bold">Activity Timeline · Riwayat D1</h2>
+  {tab==='timeline'&&<section className="space-y-3"><h2 className="text-sm font-bold">Activity Timeline · Riwayat Database</h2>
    {(snapshot?.events||[]).length===0?<p className="text-sm text-slate-500">Belum ada event aktivitas.</p>:
    <div className="space-y-2">{snapshot?.events.map(e=><div key={e.id} className="rounded-xl border bg-white p-3">
     <div className="flex flex-wrap justify-between gap-2 text-xs"><b>{statusName[e.action]||e.action} · {e.subject}</b><span className="text-slate-500">{fmt(e.at)} WIB</span></div>
@@ -156,6 +157,6 @@ export default function SalesActivities(){
     <button disabled={busy||!managerSales||!managerEmail} onClick={()=>void run(()=>call('POST','/api/sales/activities',{action:'assign_manager',sales_email:managerSales,manager_email:managerEmail}),'Pemetaan Sales Manager berhasil disimpan.')} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Simpan Pemetaan</button>
     <div className="space-y-1 text-xs text-slate-600">{snapshot.managers.map(x=><p key={x.sales_email}>{x.sales_email} → <b>{x.manager_email}</b></p>)}</div>
    </section>}
-  <footer className="flex items-center gap-2 text-[11px] text-slate-500"><CheckCircle2 size={14}/> Data kegiatan tersimpan pada D1; tidak mengirim email eksternal secara otomatis.</footer>
+  <footer className="flex items-center gap-2 text-[11px] text-slate-500"><CheckCircle2 size={14}/> Data kegiatan tersimpan pada database PostgreSQL; tidak mengirim email eksternal secara otomatis.</footer>
  </main>;
 }

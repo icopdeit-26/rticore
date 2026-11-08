@@ -1,11 +1,12 @@
 'use client';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
+import {readApiJSON} from '@/lib/client-api';
 export const inputStyle='mt-1 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100';
 export const buttonStyle='rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40';
 export async function commercialAPI(url:string,body?:Record<string,unknown>){
  const r=await fetch(url,{method:body?'POST':'GET',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
- const x=await r.json();if(!r.ok||!x.success)throw Error(x.message||'Transaksi gagal');return x;
+ const x=await readApiJSON(r);if(!r.ok||!x.success)throw Error(x.message||'Transaksi gagal');return x;
 }
 type Base={role:string;identityEmail:string;deal:{id:string;title:string;stage:string;flow_version:number}};
 export function useOpportunityWorkspace<T extends Base>(endpoint:string){

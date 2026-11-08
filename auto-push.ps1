@@ -25,7 +25,7 @@ function Sync-GitChanges {
             throw "Expected branch $Branch but found $actualBranch"
         }
         $origin = (Invoke-Git -ArgsList @('remote','get-url','origin') | Out-String).Trim()
-        if ($origin -notmatch '^(https://github[.]com/elanghaqeem-hash/India([.]git)?|git@github[.]com:elanghaqeem-hash/India([.]git)?)$') {
+        if ($origin -notmatch '^(https://github[.]com/elanghaqeem-hash/RTICore([.]git)?|git@github[.]com:elanghaqeem-hash/RTICore([.]git)?)$') {
             throw "Unexpected origin: $origin"
         }
 
@@ -62,7 +62,7 @@ if ($Once) {
     exit 1
 }
 
-Write-Host "Auto-push India; branch=$Branch; interval=$IntervalSeconds seconds." -ForegroundColor Cyan
+Write-Host "Auto-push RTICore; branch=$Branch; interval=$IntervalSeconds seconds." -ForegroundColor Cyan
 Write-Host "Keep this window open. Press Ctrl+C to stop." -ForegroundColor Yellow
 $watcher = New-Object System.IO.FileSystemWatcher
 $watcher.Path = $PSScriptRoot

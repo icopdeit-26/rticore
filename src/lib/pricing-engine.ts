@@ -79,12 +79,13 @@ export const BASE_SELLING_RATE: Record<RoleLevel, number> = {
 
 // Client Tier Multipliers (BRD 3.1 & PreDev 01)
 export const CLIENT_TIER_MULTIPLIERS: Record<ClientTier, { default: number; min: number; max: number; label: string }> = {
-  S: { default: 1.40, min: 1.30, max: 1.50, label: 'Tier S: BUMN Holding / Tier-1 Bank' },
-  A: { default: 1.00, min: 1.00, max: 1.00, label: 'Tier A: Enterprise Tbk / Large Bank (Baseline)' },
-  B: { default: 0.90, min: 0.85, max: 0.95, label: 'Tier B: Mid Enterprise / Multifinance' },
-  C: { default: 2.00, min: 2.00, max: 2.50, label: 'Tier C: High-Growth Fintech / Tech Unicorn' },
-  D: { default: 0.80, min: 0.70, max: 0.90, label: 'Tier D: Government / BUMN Regulated Pagu' },
-  E: { default: 0.80, min: 0.75, max: 0.85, label: 'Tier E: BPR/BPRS / SMB' },
+  // Labels follow ICOP PreDev §1.D and icop_crm_schema companies.client_tier.
+  S: { default: 1.40, min: 1.30, max: 1.50, label: 'Tier S — Premium: Bank BUKU III/IV, BUMN Strategis' },
+  A: { default: 1.00, min: 1.00, max: 1.00, label: 'Tier A — Standard: Bank BUKU I/II, BPD, Multifinance' },
+  B: { default: 0.90, min: 0.85, max: 0.95, label: 'Tier B — Value: BPR, Fintech startup, Swasta menengah' },
+  C: { default: 2.00, min: 2.00, max: 2.50, label: 'Tier C — Overseas: klien / proyek luar negeri' },
+  D: { default: 0.80, min: 0.70, max: 0.90, label: 'Tier D — Gov/Tender: Pemerintah, BUMN via LPSE' },
+  E: { default: 0.80, min: 0.75, max: 0.85, label: 'Tier E — Channel: via mitra reseller' },
 };
 
 // Calculate DAI

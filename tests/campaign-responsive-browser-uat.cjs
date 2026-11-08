@@ -6,7 +6,7 @@ const { chromium, devices } = require('playwright');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const origin = process.env.INDIA_CAMPAIGN_FIXTURE_URL || 'http://127.0.0.1:3100';
+const origin = process.env.RTICORE_CAMPAIGN_FIXTURE_URL || 'http://127.0.0.1:3100';
 const shots = path.join(process.cwd(), 'artifacts', 'campaign-browser-uat');
 fs.mkdirSync(shots, { recursive: true });
 const codePattern = /^CMP-\d{8}-[A-F0-9]{12}$/;

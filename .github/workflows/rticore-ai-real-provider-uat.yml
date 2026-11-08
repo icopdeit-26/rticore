@@ -1,0 +1,34 @@
+name: RTICORE AI REAL Admin Access + OpenRouter UAT
+
+on:
+  push:
+    branches:
+      - fix/rticore-ai-chat-composer-mobile-20261022
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  genuine-admin-openrouter-uat:
+    runs-on: ubuntu-latest
+    environment: rticore-uat
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies for JWT validation
+        run: npm install --no-audit --no-fund
+      - name: Run real five-turn continuity UAT only against pinned isolated Worker
+        run: node scripts/rticore-ai-chat-live-uat.mjs
+        env:
+          RTICORE_AI_CHAT_UAT_URL: https://uat-rticore.elang-haqeem.workers.dev
+          RTICORE_AI_CHAT_UAT_WORKER: uat-rticore
+          RTICORE_AI_CHAT_UAT_D1_ID: eaed652e-7322-4950-a304-dd50baa5de02
+          RTICORE_AI_CHAT_EXPECTED_SHA: ${{ github.sha }}
+          RTICORE_AI_CHAT_UAT_CF_READ_TOKEN: ${{ secrets.RTICORE_UAT_CF_WORKER_READ_TOKEN }}
+          RTICORE_AI_CHAT_UAT_ADMIN_JWT: ${{ secrets.RTICORE_UAT_JWT_ADMIN }}
+          RTICORE_AI_CHAT_UAT_ACCESS_DOMAIN: green-heart-e2b0.cloudflareaccess.com
+          RTICORE_AI_CHAT_UAT_ACCESS_AUD: 0ff25afa9e770fd7bff66b1395681cebcea32b309e5060a4ea8be858d658feb5

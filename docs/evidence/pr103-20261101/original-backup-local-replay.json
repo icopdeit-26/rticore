@@ -35,7 +35,7 @@
   ],
   "injected_failure_rollback": "PASS",
   "rollback_after_failure": "PASS",
-  "rehearsal_error": "no such table: india_injected_failure_missing_table",
+  "rehearsal_error": "no such table: rticore_injected_failure_missing_table",
   "planned_additions": [],
   "target": 45,
   "migration_execution": "PASS",

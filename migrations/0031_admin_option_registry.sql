@@ -1,5 +1,5 @@
--- INDIA admin-managed dropdown options. Additive, with no production/demo seed.
-CREATE TABLE india_admin_options (
+-- RTICORE admin-managed dropdown options. Additive, with no production/demo seed.
+CREATE TABLE rticore_admin_options (
  id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
  group_key TEXT NOT NULL CHECK(length(group_key) BETWEEN 2 AND 61),
@@ -14,8 +14,8 @@ CREATE TABLE india_admin_options (
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  UNIQUE(tenant_id,group_key,option_value)
 );
-CREATE INDEX india_admin_options_display ON india_admin_options(tenant_id,group_key,active,sort_order,option_label);
-CREATE TRIGGER india_admin_options_no_delete BEFORE DELETE ON india_admin_options
+CREATE INDEX rticore_admin_options_display ON rticore_admin_options(tenant_id,group_key,active,sort_order,option_label);
+CREATE TRIGGER rticore_admin_options_no_delete BEFORE DELETE ON rticore_admin_options
  BEGIN SELECT RAISE(ABORT,'OPTION_DELETE_FORBIDDEN_USE_DEACTIVATE'); END;
-INSERT OR IGNORE INTO india_schema_file_manifest(path,source_branch) VALUES('migrations/0031_admin_option_registry.sql','admin-registration-center');
-INSERT INTO india_schema_migrations(version) VALUES(31);
+INSERT OR IGNORE INTO rticore_schema_file_manifest(path,source_branch) VALUES('migrations/0031_admin_option_registry.sql','admin-registration-center');
+INSERT INTO rticore_schema_migrations(version) VALUES(31);

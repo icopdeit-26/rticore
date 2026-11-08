@@ -8,7 +8,7 @@ const res=(data:unknown,status=200)=>Response.json(data,{status,headers:privateH
 const deny=(message:string,status=400)=>res({success:false,message},status);
 const trustedOrigin=(r:Request)=>!r.headers.get('origin')||r.headers.get('origin')===new URL(r.url).origin;
 type Deal=FlowDeal & {id:string;stage:string;created_by:string;data_json:string};
-const readDeal=(db:D1DB,id:string)=>db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<Deal>();
+const readDeal=(db:D1DB,id:string)=>db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<Deal>();
 const allowed=['admin','sales','presales','finance','approver','legal'];
 const visible=(role:string,email:string,d:Deal)=>role!=='sales'||d.created_by.toLowerCase()===email.toLowerCase();
 async function payload(r:Request){const body=await r.text();if(body.length>13000)throw Error('Payload terlalu besar');
@@ -18,7 +18,7 @@ async function payload(r:Request){const body=await r.text();if(body.length>13000
 }
 const text=(x:unknown,n=300)=>typeof x==='string'?x.trim().slice(0,n):'';
 async function audit(db:D1DB,opp:string,action:string,email:string,summary:string){
- await db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+ await db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
  .bind(crypto.randomUUID(),TENANT,'deal',opp,action,email,summary.slice(0,300)).run();
 }
 export async function GET(req:Request){
@@ -29,7 +29,7 @@ export async function GET(req:Request){
  try{
   const deal=await readDeal(db,id);if(!deal)return deny('Opportunity tidak ditemukan',404);
   if(!visible(role,email,deal))return deny('Deal bukan milik Sales Anda',403);
-  const r=await db.prepare('SELECT * FROM india_sales_award_documents WHERE tenant_id=? AND opportunity_id=? ORDER BY created_at DESC LIMIT 50').bind(TENANT,id).all<AwardDoc>();
+  const r=await db.prepare('SELECT * FROM rticore_sales_award_documents WHERE tenant_id=? AND opportunity_id=? ORDER BY created_at DESC LIMIT 50').bind(TENANT,id).all<AwardDoc>();
   const poNumber=JSON.parse(deal.data_json||'{}').po_number||'';
   return res({success:true,role,po_number:poNumber,documents:r.results,hasDualVerifiedPO:r.results.some(x=>validAwardForWon(x,poNumber))});
  }catch{return deny('Award/PO registry belum tersedia. Migrasi 0008 wajib.',503);}
@@ -57,9 +57,9 @@ export async function POST(req:Request){
   await requireVaultDocument(db,archive,digest,opportunityId,release.id,kind);
   const docId=crypto.randomUUID(),guard=dealGuard(deal);
   await atomicSales(db,guard.condition,guard.args,[
-   db.prepare('INSERT INTO india_sales_award_documents(id,tenant_id,opportunity_id,document_kind,document_number,file_name,archive_reference,original_sha256,created_by,release_id,po_data_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+   db.prepare('INSERT INTO rticore_sales_award_documents(id,tenant_id,opportunity_id,document_kind,document_number,file_name,archive_reference,original_sha256,created_by,release_id,po_data_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .bind(docId,TENANT,opportunityId,kind,number,filename,archive,digest.toLowerCase(),email,release.id,poSnapshot(f)),
-   db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+   db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
     .bind(crypto.randomUUID(),TENANT,'deal',opportunityId,'AWARD_EVIDENCE_REGISTER',email,kind+' '+number)
   ]);
   return res({success:true,id:docId,verified:false,requiresFinanceAndLegal:true},201);
@@ -74,7 +74,7 @@ export async function PATCH(req:Request){
  const id=text(p.document_id,100),kind=text(p.review_kind,20);
  if(!safeID(id)||!['finance','legal'].includes(kind))return deny('ID atau jenis review tidak valid');
  try{
-  const doc=await db.prepare('SELECT * FROM india_sales_award_documents WHERE id=? AND tenant_id=?').bind(id,TENANT).first<AwardDoc>();
+  const doc=await db.prepare('SELECT * FROM rticore_sales_award_documents WHERE id=? AND tenant_id=?').bind(id,TENANT).first<AwardDoc>();
   if(!doc)return deny('Dokumen award tidak ditemukan',404);
   const issue=awardReviewAllowed(doc,role,email,kind as 'finance'|'legal');
   if(issue)return deny(issue,403);
@@ -82,11 +82,11 @@ export async function PATCH(req:Request){
   const notes=text(p.review_notes,1500);if(notes.length<15)return deny('Catatan review bukti asli minimal 15 karakter',422);
   const field=kind==='finance'?'finance':'legal';
   const sql=field==='finance'
-   ?"UPDATE india_sales_award_documents SET finance_reviewed_by=?,finance_reviewed_at=CURRENT_TIMESTAMP,finance_review_notes=? WHERE id=? AND tenant_id=? AND finance_reviewed_by IS NULL"
-   :"UPDATE india_sales_award_documents SET legal_reviewed_by=?,legal_reviewed_at=CURRENT_TIMESTAMP,legal_review_notes=? WHERE id=? AND tenant_id=? AND legal_reviewed_by IS NULL";
+   ?"UPDATE rticore_sales_award_documents SET finance_reviewed_by=?,finance_reviewed_at=CURRENT_TIMESTAMP,finance_review_notes=? WHERE id=? AND tenant_id=? AND finance_reviewed_by IS NULL"
+   :"UPDATE rticore_sales_award_documents SET legal_reviewed_by=?,legal_reviewed_at=CURRENT_TIMESTAMP,legal_review_notes=? WHERE id=? AND tenant_id=? AND legal_reviewed_by IS NULL";
   const parent=await readDeal(db,doc.opportunity_id);if(!parent||['closed_won','closed_lost'].includes(parent.stage))return deny('Opportunity tertutup',409);
   const guard=dealGuard(parent);
-  guard.condition+=' AND EXISTS(SELECT 1 FROM india_sales_award_documents WHERE id=? AND '+field+'_reviewed_by IS NULL)';guard.args.push(id);
+  guard.condition+=' AND EXISTS(SELECT 1 FROM rticore_sales_award_documents WHERE id=? AND '+field+'_reviewed_by IS NULL)';guard.args.push(id);
   await atomicSales(db,guard.condition,guard.args,[db.prepare(sql).bind(email,notes,id,TENANT),salesAudit(db,doc.opportunity_id,'AWARD_'+field.toUpperCase()+'_REVIEW',email,doc.document_number)]);
   return res({success:true,review_kind:field,reviewed_by:email});
  }catch(e){if(/VAULT_|OperationError/.test(String(e))){const v=vaultError(e);return deny(v.message,v.status);}const t=transactionError(e);return deny(t.message,t.status);}

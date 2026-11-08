@@ -11,9 +11,9 @@ export async function GET(req:Request){
   await erpGrant(a.identity,'finance_gl',unit);
   const {db}=a.identity;
   const [accounts,periods,journals]=await Promise.all([
-   db.prepare('SELECT id,code,name,category,active FROM india_gl_accounts WHERE tenant_id=? AND legal_entity_id=? ORDER BY code LIMIT 500').bind(TENANT,unit).all(),
-   db.prepare('SELECT id,period,status FROM india_gl_periods WHERE tenant_id=? AND legal_entity_id=? ORDER BY period DESC LIMIT 80').bind(TENANT,unit).all(),
-   db.prepare("SELECT j.id,j.period_id,j.memo,j.source_type,j.source_key,j.status,j.version,j.created_by,j.reviewed_by,j.posted_by,coalesce((SELECT sum(l.debit_cents) FROM india_gl_lines l WHERE l.tenant_id=j.tenant_id AND l.journal_id=j.id),0) AS debit_cents FROM india_gl_journals j WHERE j.tenant_id=? AND j.legal_entity_id=? ORDER BY j.created_at DESC LIMIT 250").bind(TENANT,unit).all()]);
+   db.prepare('SELECT id,code,name,category,active FROM rticore_gl_accounts WHERE tenant_id=? AND legal_entity_id=? ORDER BY code LIMIT 500').bind(TENANT,unit).all(),
+   db.prepare('SELECT id,period,status FROM rticore_gl_periods WHERE tenant_id=? AND legal_entity_id=? ORDER BY period DESC LIMIT 80').bind(TENANT,unit).all(),
+   db.prepare("SELECT j.id,j.period_id,j.memo,j.source_type,j.source_key,j.status,j.version,j.created_by,j.reviewed_by,j.posted_by,coalesce((SELECT sum(l.debit_cents) FROM rticore_gl_lines l WHERE l.tenant_id=j.tenant_id AND l.journal_id=j.id),0) AS debit_cents FROM rticore_gl_journals j WHERE j.tenant_id=? AND j.legal_entity_id=? ORDER BY j.created_at DESC LIMIT 250").bind(TENANT,unit).all()]);
   return erpReply({success:true,accounts:accounts.results,periods:periods.results,journals:journals.results,posting_mode:'manual_human_approved_only'});
  }catch(e){return erpError(e);}
 }
@@ -27,7 +27,7 @@ export async function POST(req:Request){
    erpAssert(erpId(v.legal_entity_id)&&erpText(v.code,2,30)&&erpText(v.name,3,160)&&['asset','liability','equity','revenue','expense'].includes(String(v.category)),'Data akun tidak valid');
    await erpGrant(a.identity,'finance_gl',v.legal_entity_id as string);
    const id=crypto.randomUUID();
-   await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO india_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES(?,?,?,?,?,?,?)').bind(id,TENANT,v.legal_entity_id as string,v.code as string,v.name as string,v.category as string,email)],'gl',id,'ACCOUNT_CREATE',{code:v.code});
+   await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES(?,?,?,?,?,?,?)').bind(id,TENANT,v.legal_entity_id as string,v.code as string,v.name as string,v.category as string,email)],'gl',id,'ACCOUNT_CREATE',{code:v.code});
    return erpReply({success:true,id},201);
   }
   if(action==='period'){
@@ -35,7 +35,7 @@ export async function POST(req:Request){
    erpAssert(erpId(v.legal_entity_id)&&erpPeriod(v.period),'Periode akuntansi tidak valid');
    await erpGrant(a.identity,'finance_gl',v.legal_entity_id as string);
    const id=crypto.randomUUID();
-   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM india_erp_org_units WHERE tenant_id=? AND id=? AND kind='legal_entity' AND active=1)",[TENANT,v.legal_entity_id as string],[db.prepare('INSERT INTO india_gl_periods(id,tenant_id,legal_entity_id,period,created_by) VALUES(?,?,?,?,?)').bind(id,TENANT,v.legal_entity_id as string,v.period as string,email)],'gl',id,'PERIOD_OPEN',{period:v.period});
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_erp_org_units WHERE tenant_id=? AND id=? AND kind='legal_entity' AND active=1)",[TENANT,v.legal_entity_id as string],[db.prepare('INSERT INTO rticore_gl_periods(id,tenant_id,legal_entity_id,period,created_by) VALUES(?,?,?,?,?)').bind(id,TENANT,v.legal_entity_id as string,v.period as string,email)],'gl',id,'PERIOD_OPEN',{period:v.period});
    return erpReply({success:true,id},201);
   }
   if(action==='journal'){
@@ -54,63 +54,63 @@ export async function POST(req:Request){
    erpAssert(debits>0n&&debits===credits&&debits<BigInt(Number.MAX_SAFE_INTEGER),'Jurnal tidak seimbang');
    await erpGrant(a.identity,'finance_gl',v.legal_entity_id as string);
    const id=crypto.randomUUID();
-   const writes=[db.prepare('INSERT INTO india_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by) VALUES(?,?,?,?,?,?,?,?)').bind(id,TENANT,v.legal_entity_id as string,v.period_id as string,v.source_type as string,v.source_key as string,(v.memo as string).trim(),email)];
-   for(const line of lines)writes.push(db.prepare('INSERT INTO india_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,id,line.account_id as string,line.debit_cents as number,line.credit_cents as number));
-   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM india_gl_periods WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status='open')",[TENANT,v.period_id as string,v.legal_entity_id as string],writes,'gl',id,'JOURNAL_DRAFT',{source_type:v.source_type,source_key:v.source_key,lines:lines.length});
+   const writes=[db.prepare('INSERT INTO rticore_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by) VALUES(?,?,?,?,?,?,?,?)').bind(id,TENANT,v.legal_entity_id as string,v.period_id as string,v.source_type as string,v.source_key as string,(v.memo as string).trim(),email)];
+   for(const line of lines)writes.push(db.prepare('INSERT INTO rticore_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,id,line.account_id as string,line.debit_cents as number,line.credit_cents as number));
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_gl_periods WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status='open')",[TENANT,v.period_id as string,v.legal_entity_id as string],writes,'gl',id,'JOURNAL_DRAFT',{source_type:v.source_type,source_key:v.source_key,lines:lines.length});
    return erpReply({success:true,id},201);
   }
   if(action==='review'||action==='post'){
    erpAssert(erpId(v.id)&&Number.isSafeInteger(v.version),'ID dan versi jurnal wajib');
-   const row=await db.prepare('SELECT id,legal_entity_id,created_by,reviewed_by,status,version FROM india_gl_journals WHERE tenant_id=? AND id=?').bind(TENANT,v.id as string).first<{legal_entity_id:string;created_by:string;reviewed_by:string|null;status:string;version:number}>();
+   const row=await db.prepare('SELECT id,legal_entity_id,created_by,reviewed_by,status,version FROM rticore_gl_journals WHERE tenant_id=? AND id=?').bind(TENANT,v.id as string).first<{legal_entity_id:string;created_by:string;reviewed_by:string|null;status:string;version:number}>();
    erpAssert(row,'Jurnal tidak ditemukan',404);await erpGrant(a.identity,'finance_gl',row.legal_entity_id);
    erpAssert(row.version===v.version,'Versi jurnal telah berubah',409);
    if(action==='review'){
     erpAssert(role==='approver','Persetujuan jurnal hanya Approver',403);
     erpAssert(row.status==='draft'&&row.created_by.toLowerCase()!==email,'Maker dilarang mengesahkan jurnal sendiri',403);
     erpAssert(typeof v.approve==='boolean'&&erpText(v.notes,12,800),'Keputusan dan catatan wajib');
-    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM india_gl_journals WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,v.id as string,v.version as number,email],[db.prepare('UPDATE india_gl_journals SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,v.id as string)],'gl',v.id as string,'JOURNAL_REVIEW',{approved:v.approve});
+    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,v.id as string,v.version as number,email],[db.prepare('UPDATE rticore_gl_journals SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,v.id as string)],'gl',v.id as string,'JOURNAL_REVIEW',{approved:v.approve});
    }else{
     erpAssert(role==='finance'&&row.status==='approved'&&!!row.reviewed_by&&row.reviewed_by.toLowerCase()!==email,'Hanya Finance dapat posting jurnal yang disetujui secara independen',403);
-    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM india_gl_journals WHERE tenant_id=? AND id=? AND status='approved' AND version=?)",[TENANT,v.id as string,v.version as number],[db.prepare("UPDATE india_gl_journals SET status='posted',version=version+1,posted_by=?,posted_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?").bind(email,TENANT,v.id as string)],'gl',v.id as string,'JOURNAL_POST',{version:v.version});
+    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND id=? AND status='approved' AND version=?)",[TENANT,v.id as string,v.version as number],[db.prepare("UPDATE rticore_gl_journals SET status='posted',version=version+1,posted_by=?,posted_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?").bind(email,TENANT,v.id as string)],'gl',v.id as string,'JOURNAL_POST',{version:v.version});
    }
    return erpReply({success:true});
   }
 
   if(action==='reverse'){
    erpAssert(role==='finance'&&erpId(v.original_journal_id)&&erpId(v.period_id)&&erpText(v.memo,12,500),'Reversal memerlukan Finance, jurnal, periode dan alasan',403);
-   const original=await db.prepare("SELECT j.id,j.legal_entity_id,j.status,j.created_by FROM india_gl_journals j WHERE j.tenant_id=? AND j.id=?").bind(TENANT,v.original_journal_id as string).first<{id:string;legal_entity_id:string;status:string;created_by:string}>();
+   const original=await db.prepare("SELECT j.id,j.legal_entity_id,j.status,j.created_by FROM rticore_gl_journals j WHERE j.tenant_id=? AND j.id=?").bind(TENANT,v.original_journal_id as string).first<{id:string;legal_entity_id:string;status:string;created_by:string}>();
    erpAssert(original&&original.status==='posted','Hanya jurnal posted boleh dibalik',409);
    await erpGrant(a.identity,'finance_gl',original.legal_entity_id);
-   const old=await db.prepare("SELECT account_id,debit_cents,credit_cents FROM india_gl_lines WHERE tenant_id=? AND journal_id=?").bind(TENANT,original.id).all<{account_id:string;debit_cents:number;credit_cents:number}>();
+   const old=await db.prepare("SELECT account_id,debit_cents,credit_cents FROM rticore_gl_lines WHERE tenant_id=? AND journal_id=?").bind(TENANT,original.id).all<{account_id:string;debit_cents:number;credit_cents:number}>();
    erpAssert(old.results.length>=2,'Sumber jurnal tidak memiliki baris valid',409);
    const id=crypto.randomUUID();
-   const writes=[db.prepare("INSERT INTO india_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by) VALUES(?,?,?,?,?,?,?,?)").bind(id,TENANT,original.legal_entity_id,v.period_id as string,'reversal',original.id,v.memo as string,email)];
-   for(const line of old.results)writes.push(db.prepare('INSERT INTO india_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,id,line.account_id,line.credit_cents,line.debit_cents));
-   writes.push(db.prepare('INSERT INTO india_gl_reversal_links(tenant_id,original_journal_id,reversal_journal_id,created_by) VALUES(?,?,?,?)').bind(TENANT,original.id,id,email));
-   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM india_gl_periods WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status='open') AND NOT EXISTS(SELECT 1 FROM india_gl_reversal_links WHERE tenant_id=? AND original_journal_id=?)",
+   const writes=[db.prepare("INSERT INTO rticore_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by) VALUES(?,?,?,?,?,?,?,?)").bind(id,TENANT,original.legal_entity_id,v.period_id as string,'reversal',original.id,v.memo as string,email)];
+   for(const line of old.results)writes.push(db.prepare('INSERT INTO rticore_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),TENANT,id,line.account_id,line.credit_cents,line.debit_cents));
+   writes.push(db.prepare('INSERT INTO rticore_gl_reversal_links(tenant_id,original_journal_id,reversal_journal_id,created_by) VALUES(?,?,?,?)').bind(TENANT,original.id,id,email));
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_gl_periods WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status='open') AND NOT EXISTS(SELECT 1 FROM rticore_gl_reversal_links WHERE tenant_id=? AND original_journal_id=?)",
     [TENANT,v.period_id as string,original.legal_entity_id,TENANT,original.id],writes,'gl',id,'REVERSAL_DRAFT',{original:original.id});
    return erpReply({success:true,id},201);
   }
   if(action==='request_close'){
    erpAssert(role==='finance'&&erpId(v.period_id)&&erpText(v.notes,12,800),'Close request memerlukan Finance dan alasan',403);
-   const period=await db.prepare("SELECT id,legal_entity_id,status FROM india_gl_periods WHERE tenant_id=? AND id=?").bind(TENANT,v.period_id as string).first<{id:string;legal_entity_id:string;status:string}>();
+   const period=await db.prepare("SELECT id,legal_entity_id,status FROM rticore_gl_periods WHERE tenant_id=? AND id=?").bind(TENANT,v.period_id as string).first<{id:string;legal_entity_id:string;status:string}>();
    erpAssert(period&&period.status==='open','Periode harus masih open',409);
    await erpGrant(a.identity,'finance_gl',period.legal_entity_id);
-   const rows=await db.prepare("SELECT count(DISTINCT j.id) journal_count,coalesce(sum(l.debit_cents),0) debits,coalesce(sum(l.credit_cents),0) credits FROM india_gl_journals j JOIN india_gl_lines l ON l.tenant_id=j.tenant_id AND l.journal_id=j.id WHERE j.tenant_id=? AND j.period_id=? AND j.status='posted'").bind(TENANT,period.id).first<{journal_count:number;debits:number;credits:number}>();
+   const rows=await db.prepare("SELECT count(DISTINCT j.id) journal_count,coalesce(sum(l.debit_cents),0) debits,coalesce(sum(l.credit_cents),0) credits FROM rticore_gl_journals j JOIN rticore_gl_lines l ON l.tenant_id=j.tenant_id AND l.journal_id=j.id WHERE j.tenant_id=? AND j.period_id=? AND j.status='posted'").bind(TENANT,period.id).first<{journal_count:number;debits:number;credits:number}>();
    erpAssert(rows&&rows.journal_count>0&&rows.debits===rows.credits&&Number.isSafeInteger(rows.debits),'Periode belum memiliki jurnal posted yang seimbang',409);
    const id=crypto.randomUUID();
-   await erpAtom(a.identity,"NOT EXISTS(SELECT 1 FROM india_gl_journals WHERE tenant_id=? AND period_id=? AND status IN ('draft','approved')) AND NOT EXISTS(SELECT 1 FROM india_gl_close_requests WHERE tenant_id=? AND period_id=? AND status IN ('pending','approved'))",
-    [TENANT,period.id,TENANT,period.id],[db.prepare("INSERT INTO india_gl_close_requests(id,tenant_id,period_id,legal_entity_id,requested_by,reason,notes,snapshot_debits,snapshot_credits,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(id,TENANT,period.id,period.legal_entity_id,email,v.notes as string,v.notes as string,rows.debits,rows.credits,email)],'gl',id,'CLOSE_REQUEST',{period_id:period.id,debits:rows.debits});
+   await erpAtom(a.identity,"NOT EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND period_id=? AND status IN ('draft','approved')) AND NOT EXISTS(SELECT 1 FROM rticore_gl_close_requests WHERE tenant_id=? AND period_id=? AND status IN ('pending','approved'))",
+    [TENANT,period.id,TENANT,period.id],[db.prepare("INSERT INTO rticore_gl_close_requests(id,tenant_id,period_id,legal_entity_id,requested_by,reason,notes,snapshot_debits,snapshot_credits,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(id,TENANT,period.id,period.legal_entity_id,email,v.notes as string,v.notes as string,rows.debits,rows.credits,email)],'gl',id,'CLOSE_REQUEST',{period_id:period.id,debits:rows.debits});
    return erpReply({success:true,id},201);
   }
   if(action==='review_close'){
    erpAssert(role==='approver'&&erpId(v.id)&&Number.isSafeInteger(v.version)&&typeof v.approve==='boolean'&&erpText(v.notes,12,800),'Review close wajib Approver independen',403);
-   const close=await db.prepare('SELECT x.id,x.period_id,x.status,x.version,coalesce(x.created_by,x.requested_by) created_by,x.snapshot_debits,x.snapshot_credits,p.legal_entity_id FROM india_gl_close_requests x JOIN india_gl_periods p ON p.tenant_id=x.tenant_id AND p.id=x.period_id WHERE x.tenant_id=? AND x.id=?').bind(TENANT,v.id as string).first<{id:string;status:string;version:number;created_by:string;snapshot_debits:number|null;snapshot_credits:number|null;legal_entity_id:string}>();
+   const close=await db.prepare('SELECT x.id,x.period_id,x.status,x.version,coalesce(x.created_by,x.requested_by) created_by,x.snapshot_debits,x.snapshot_credits,p.legal_entity_id FROM rticore_gl_close_requests x JOIN rticore_gl_periods p ON p.tenant_id=x.tenant_id AND p.id=x.period_id WHERE x.tenant_id=? AND x.id=?').bind(TENANT,v.id as string).first<{id:string;status:string;version:number;created_by:string;snapshot_debits:number|null;snapshot_credits:number|null;legal_entity_id:string}>();
    erpAssert(close&&close.status==='pending'&&close.version===v.version&&close.created_by.toLowerCase()!==email,'Review close dilarang self-approval',409);
    await erpGrant(a.identity,'finance_gl',close.legal_entity_id);
    erpAssert(!v.approve||(Number.isSafeInteger(close.snapshot_debits)&&Number.isSafeInteger(close.snapshot_credits)), 'Permintaan lama belum memiliki snapshot rekonsiliasi; tolak lalu ajukan kembali oleh Finance',409);
-   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM india_gl_close_requests WHERE tenant_id=? AND id=? AND status='pending' AND version=? AND lower(coalesce(created_by,requested_by))!=?)",
-    [TENANT,close.id,close.version,email],[db.prepare("UPDATE india_gl_close_requests SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?").bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,close.id)],'gl',close.id,'CLOSE_REVIEW',{approved:v.approve});return erpReply({success:true});
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_gl_close_requests WHERE tenant_id=? AND id=? AND status='pending' AND version=? AND lower(coalesce(created_by,requested_by))!=?)",
+    [TENANT,close.id,close.version,email],[db.prepare("UPDATE rticore_gl_close_requests SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?").bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,close.id)],'gl',close.id,'CLOSE_REVIEW',{approved:v.approve});return erpReply({success:true});
   }
   throw new ERPError('Aksi GL tidak tersedia');
  }catch(e){return erpError(e);}

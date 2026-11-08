@@ -21,8 +21,12 @@ const D1_ROUTES = new Set([
   '/api/reports',
   '/api/admin/system',
   '/api/admin/options',
+  '/api/admin/scoping-model',
+  '/api/scoping/model',
   '/api/reference/options',
   '/api/psa/timesheets',
+  // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
+  '/api/local-auth',
 ]);
 
 export function isEnabledD1ApiRoute(path: string): boolean {

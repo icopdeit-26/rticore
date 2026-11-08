@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 
-const baseUrl = process.env.INDIA_CHAT_UAT_BASE || 'http://127.0.0.1:3124';
+const baseUrl = process.env.RTICORE_CHAT_UAT_BASE || 'http://127.0.0.1:3124';
 const turns = [
   'Jelaskan penetration testing untuk aplikasi web.',
   'Alat apa saja yang bisa digunakan?',

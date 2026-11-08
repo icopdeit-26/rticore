@@ -9,8 +9,8 @@ const payload={
 test('migration 0031 creates empty auditable admin options without demo data',()=>{
  const h=new Harness(true,true).seed();
  try{
-  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM india_admin_options").get().n,0);
-  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM india_schema_migrations WHERE version=31").get().n,1);
+  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_admin_options").get().n,0);
+  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_schema_migrations WHERE version=31").get().n,1);
   assert.equal(h.sql.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
  }finally{h.close();}
 });
@@ -28,23 +28,23 @@ test('only Admin can register or edit option values; authenticated staff may rea
   const saved=await expect(h.call('admin/options','GET','admin'),200);
   assert.equal(saved.body.items.length,1);
   assert.equal(saved.body.items[0].updated_by,'admin@flow.invalid');
-  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM india_operations_events WHERE tenant_id=? AND area='admin_options'").get(tenant).n,1);
+  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_operations_events WHERE tenant_id=? AND area='admin_options'").get(tenant).n,1);
   await expect(h.call('admin/options','POST','admin2',{...payload,version:0}),409);
   await expect(h.call('admin/options','POST','admin2',{...payload,version:1,active:false}),200);
   assert.equal((await expect(h.call('reference/options','GET','viewer',null,'?group=sumber_lead'),200)).body.items.length,0);
   await expect(h.call('admin/options','POST','admin',{...payload,version:1,active:true}),409);
-  assert.equal(h.sql.prepare("SELECT version FROM india_admin_options WHERE group_key='sumber_lead'").get().version,2);
-  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM india_operations_events WHERE tenant_id=? AND area='admin_options'").get(tenant).n,2);
+  assert.equal(h.sql.prepare("SELECT version FROM rticore_admin_options WHERE group_key='sumber_lead'").get().version,2);
+  assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_operations_events WHERE tenant_id=? AND area='admin_options'").get(tenant).n,2);
  }finally{h.close();}
 });
 test('audit failure rolls back option changes and cross-site origin is rejected',async()=>{
  const h=new Harness(true,true).seed();
  try{
   await expect(h.call('admin/options','POST','admin',payload,'',{Origin:'https://attacker.invalid'}),403);
-  h.sql.exec("CREATE TRIGGER fail_option_audit BEFORE INSERT ON india_operations_events WHEN NEW.area='admin_options' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
+  h.sql.exec("CREATE TRIGGER fail_option_audit BEFORE INSERT ON rticore_operations_events WHEN NEW.area='admin_options' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
   await expect(h.call('admin/options','POST','admin',payload),503);
-  assert.equal(h.sql.prepare('SELECT count(*) AS n FROM india_admin_options').get().n,0);
-  assert.equal(h.sql.prepare('SELECT count(*) AS n FROM india_sales_tx_guards').get().n,0);
+  assert.equal(h.sql.prepare('SELECT count(*) AS n FROM rticore_admin_options').get().n,0);
+  assert.equal(h.sql.prepare('SELECT count(*) AS n FROM rticore_sales_tx_guards').get().n,0);
  }finally{h.close();}
 });
 test('Admin registration UI enforces server-verified role; options API cannot appear through an unsafe prefix',()=>{

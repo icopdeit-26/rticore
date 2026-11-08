@@ -64,7 +64,7 @@ export function LoginSessionStatus() {
         </button>
       </div>
       {session.status==='checking'&&
-        <p role="status" className="mt-2 text-sm text-slate-600">Memeriksa sesi Cloudflare Access dan keanggotaan RTICORE…</p>}
+        <p role="status" className="mt-2 text-sm text-slate-600">Memeriksa sesi autentikasi dan keanggotaan RTICORE…</p>}
       {session.status==='signed-out'&&
         <p role="status" className="mt-2 text-sm text-slate-600">Belum login. Gunakan tombol masuk di bawah untuk melanjutkan verifikasi akun.</p>}
       {session.status==='forbidden'&&
@@ -74,7 +74,7 @@ export function LoginSessionStatus() {
         </div>}
       {session.status==='unavailable'&&
         <p role="status" className="mt-2 text-sm text-slate-600">
-          Status sesi belum dapat dipastikan. Anda tetap dapat masuk melalui Cloudflare Access; pemeriksaan ulang tersedia di atas.
+          Status sesi belum dapat dipastikan. Silakan masuk melalui panel login; pemeriksaan ulang tersedia di atas.
         </p>}
       {session.status==='no-workspace'&&
         <div role="alert" className="mt-2 text-sm text-amber-800">

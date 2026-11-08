@@ -72,7 +72,7 @@ export default function DocumentVaultPage(){
      {deals.map(d=><option value={d.id} key={d.id}>{d.company_name} — {d.title} ({d.stage})</option>)}
     </select>
    </label>
-   <p className="mt-2 text-xs text-slate-500">Data tampil sesuai akses Cloudflare Access dan kepemilikan Opportunity. Role aktif: {role||'—'}.</p>
+   <p className="mt-2 text-xs text-slate-500">Data tampil sesuai hak akses sesi terverifikasi dan kepemilikan Opportunity. Role aktif: {role||'—'}.</p>
   </section>
   {opp&&<section className="rounded-2xl border bg-white p-4 shadow-sm">
    <h2 className="font-bold text-slate-900">Simpan Dokumen Asli</h2>

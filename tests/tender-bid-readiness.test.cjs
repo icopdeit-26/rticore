@@ -49,7 +49,7 @@ async function seedPackage(h){
 }
 test('0021/0022/0023 migration has durable history and clean foreign keys',()=>{
  const h=new Harness(true,true).seed();try{
-  assert.equal(h.sql.prepare('SELECT version FROM india_schema_migrations WHERE version=21').get().version,21);
+  assert.equal(h.sql.prepare('SELECT version FROM rticore_schema_migrations WHERE version=21').get().version,21);
   assert.deepEqual(h.sql.prepare('PRAGMA foreign_key_check').all(),[]);
   assert.equal(h.sql.prepare('PRAGMA quick_check').get().quick_check,'ok');
  }finally{h.close();}
@@ -85,10 +85,10 @@ test('deadline must have independent reviewer; revision removes approval',async(
   await expect(api(h,'approver',{action:'review_deadline',id:t.body.id,version:1,approve:true,review_notes:'Independent customer deadline approval'}),201);
   await expect(api(h,'approver',{action:'review_deadline',id:t.body.id,version:1,approve:true,review_notes:'Duplicate approval conflict'}),409);
   await expect(api(h,'sales',{action:'revise_deadline',id:t.body.id,version:2,milestone:'submission',due_at:deadline,notes:'Official addendum revises deadline'}),201);
-  const row=h.sql.prepare('SELECT status,reviewed_by,version FROM india_tender_deadlines').get();
+  const row=h.sql.prepare('SELECT status,reviewed_by,version FROM rticore_tender_deadlines').get();
   assert.equal(row.status,'draft');assert.equal(row.reviewed_by,null);assert.equal(row.version,3);
-  assert.equal(h.sql.prepare('SELECT count(*) n FROM india_tender_readiness_history').get().n,2);
-  assert.throws(()=>h.sql.exec('DELETE FROM india_tender_readiness_history'),/IMMUTABLE/);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_tender_readiness_history').get().n,2);
+  assert.throws(()=>h.sql.exec('DELETE FROM rticore_tender_readiness_history'),/IMMUTABLE/);
  }finally{h.close();}
 });
 test('checklist blocks absent evidence, prevents maker review, and preserves revision audit',async()=>{
@@ -100,8 +100,8 @@ test('checklist blocks absent evidence, prevents maker review, and preserves rev
   await expect(api(h,'sales',{action:'revise_item',id:item.body.id,version:1,item_code:'ADM-01',category:'administrative',label:'Signed corporate declaration',mandatory:true,document_name:'signed.pdf',evidence_reference:original.body.reference,evidence_sha256:original.body.sha256}),201);
   await expect(api(h,'finance',{action:'review_item',id:item.body.id,version:2,approve:true,review_notes:'Original signed file and archive checksum checked'}),201);
   await expect(api(h,'sales',{action:'revise_item',id:item.body.id,version:3,item_code:'ADM-01',category:'administrative',label:'Signed corporate declaration',mandatory:true,document_name:'unsigned.pdf',evidence_reference:original.body.reference,evidence_sha256:original.body.sha256}),201);
-  assert.equal(h.sql.prepare('SELECT status FROM india_tender_checklist').get().status,'draft');
-  assert.equal(h.sql.prepare('SELECT count(*) n FROM india_tender_readiness_history').get().n,3);
+  assert.equal(h.sql.prepare('SELECT status FROM rticore_tender_checklist').get().status,'draft');
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_tender_readiness_history').get().n,3);
  }finally{h.close();}
 });
 test('GO + all reviewed RKS/clauses, 3 checklist categories, deadline makes SQL and report ready',async()=>{
@@ -124,7 +124,7 @@ test('one extra unreviewed RKS cannot be bypassed by another compliant source',a
 test('deadline expiry or rejected administrative checklist revokes readiness without rewriting history',async()=>{
  const h=new Harness(true,true).seed();try{
   await prepare(h);const pkg=await seedPackage(h);assert.equal((await get(h)).body.report.ready,true);
-  h.sql.prepare('UPDATE india_tender_deadlines SET due_at=? WHERE id=?').run('2026-01-01T08:00:00+07:00',pkg.deadlineId);
+  h.sql.prepare('UPDATE rticore_tender_deadlines SET due_at=? WHERE id=?').run('2026-01-01T08:00:00+07:00',pkg.deadlineId);
   const r=await get(h);assert.equal(r.body.report.deadline_status,'expired');assert.equal(r.body.report.ready,false);
  }finally{h.close();}
 });
@@ -145,11 +145,11 @@ test('invalid CSV formula cells are neutralized; all three exports are protected
 test('stale CAS and audit write failure leave deadline/checklist unchanged',async()=>{
  const h=new Harness(true,true).seed();try{
   const item=await expect(api(h,'sales',{action:'item',item_code:'COM-01',category:'commercial',mandatory:true,label:'Approved price quotation'}),201);
-  h.beforeBatch=()=>h.sql.prepare('UPDATE india_tender_checklist SET version=version+1 WHERE id=?').run(item.body.id);
+  h.beforeBatch=()=>h.sql.prepare('UPDATE rticore_tender_checklist SET version=version+1 WHERE id=?').run(item.body.id);
   await expect(api(h,'sales',{action:'revise_item',id:item.body.id,version:1,item_code:'COM-01',category:'commercial',mandatory:true,label:'Updated price quotation'}),409);
-  assert.equal(h.sql.prepare('SELECT label FROM india_tender_checklist').get().label,'Approved price quotation');
-  h.sql.exec("CREATE TRIGGER deny_readiness_audit BEFORE INSERT ON india_sales_audit BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
+  assert.equal(h.sql.prepare('SELECT label FROM rticore_tender_checklist').get().label,'Approved price quotation');
+  h.sql.exec("CREATE TRIGGER deny_readiness_audit BEFORE INSERT ON rticore_sales_audit BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
   await expect(api(h,'sales',{action:'deadline',milestone:'submission',due_at:deadline,notes:'Deadline for audit rollback'}),503);
-  assert.equal(h.sql.prepare('SELECT count(*) n FROM india_tender_deadlines').get().n,0);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_tender_deadlines').get().n,0);
  }finally{h.close();}
 });

@@ -1,6 +1,6 @@
--- INDIA 0006: tender decision, RKS/KAK checklist and submission evidence metadata.
+-- RTICORE 0006: tender decision, RKS/KAK checklist and submission evidence metadata.
 -- Metadata is NOT an original document archive. Keep signed documents in approved secure storage.
-CREATE TABLE IF NOT EXISTS india_sales_bids (
+CREATE TABLE IF NOT EXISTS rticore_sales_bids (
  opportunity_id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
  channel TEXT NOT NULL CHECK(channel IN ('direct','rfq','rfp','tender')),
@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS india_sales_bids (
  decided_by TEXT,
  decided_at TEXT,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- FOREIGN KEY(tenant_id,opportunity_id) REFERENCES india_sales_opportunities(tenant_id,id)
+ FOREIGN KEY(tenant_id,opportunity_id) REFERENCES rticore_sales_opportunities(tenant_id,id)
 );
-CREATE INDEX IF NOT EXISTS idx_sales_bids_decision ON india_sales_bids(tenant_id,bid_decision,updated_at DESC);
-CREATE TABLE IF NOT EXISTS india_sales_requirements (
+CREATE INDEX IF NOT EXISTS idx_sales_bids_decision ON rticore_sales_bids(tenant_id,bid_decision,updated_at DESC);
+CREATE TABLE IF NOT EXISTS rticore_sales_requirements (
  id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
  opportunity_id TEXT NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS india_sales_requirements (
  reviewed_by TEXT,
  reviewed_at TEXT,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- FOREIGN KEY(tenant_id,opportunity_id) REFERENCES india_sales_opportunities(tenant_id,id)
+ FOREIGN KEY(tenant_id,opportunity_id) REFERENCES rticore_sales_opportunities(tenant_id,id)
 );
-CREATE INDEX IF NOT EXISTS idx_sales_requirements_opportunity ON india_sales_requirements(tenant_id,opportunity_id,kind,status);
-INSERT OR IGNORE INTO india_schema_migrations(version) VALUES(6);
+CREATE INDEX IF NOT EXISTS idx_sales_requirements_opportunity ON rticore_sales_requirements(tenant_id,opportunity_id,kind,status);
+INSERT OR IGNORE INTO rticore_schema_migrations(version) VALUES(6);

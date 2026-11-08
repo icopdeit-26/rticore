@@ -11,8 +11,8 @@ test('RTICORE menu renders on the left and reuses role-filtered canonical naviga
   assert.match(side,/navigationForRole\(role\)/);
   assert.match(side,/group\.items\.filter/);
   assert.match(side,/aria-current=\{active\?'page'/);
-  assert.match(side,/india-left-sidebar-desktop/);
-  assert.match(side,/india-left-sidebar-mobile/);
+  assert.match(side,/rticore-left-sidebar-desktop/);
+  assert.match(side,/rticore-left-sidebar-mobile/);
   assert.match(side,/desktopOpen\?'w-80 border-r':'w-0'/);
   assert.match(side,/inset-y-0 left-0/);
   assert.match(side,/border-r border-white\/20/);
@@ -29,11 +29,11 @@ test('header button toggles mobile drawer and desktop panel with accessible labe
   assert.match(shell,/setDesktopMenuOpen\(value=>!value\)/);
   assert.match(shell,/setMobileMenuOpen\(value=>!value\)/);
   assert.match(shell,/onToggleMenu=\{onToggleMenu\}/);
-  assert.match(header,/aria-controls="india-left-sidebar-desktop" aria-expanded=\{desktopMenuOpen\}/);
-  assert.match(header,/aria-controls="india-left-sidebar-mobile" aria-expanded=\{mobileMenuOpen\}/);
+  assert.match(header,/aria-controls="rticore-left-sidebar-desktop" aria-expanded=\{desktopMenuOpen\}/);
+  assert.match(header,/aria-controls="rticore-left-sidebar-mobile" aria-expanded=\{mobileMenuOpen\}/);
   assert.match(header,/PanelLeftClose/);
   assert.match(header,/PanelLeftOpen/);
-  assert.ok(header.indexOf('india-left-sidebar-desktop')<header.indexOf('<Link href="/"'));
+  assert.ok(header.indexOf('<Link href="/"')<header.indexOf('rticore-left-sidebar-desktop'));
 
   assert.match(side,/onClick=\{onClose\}/);
   assert.match(side,/event\.key==='Escape'/);
@@ -49,7 +49,7 @@ test('sidebar offers keyword search, active route, compact groups, and saved des
   assert.match(side,/item\.label\.toLocaleLowerCase/);
   assert.match(side,/<details key=/);
   assert.match(side,/pathname\.startsWith\(item\.href\+'\/'\)/);
-  assert.match(side,/bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900/);
-  assert.match(shell,/localStorage\.getItem\('india:left-navigation-open'\)/);
-  assert.match(shell,/localStorage\.setItem\('india:left-navigation-open'/);
+  assert.match(side,/aria-current=\{active\?'page':undefined\}/);
+  assert.match(shell,/localStorage\.getItem\('rticore:left-navigation-open'\)/);
+  assert.match(shell,/localStorage\.setItem\('rticore:left-navigation-open'/);
 });

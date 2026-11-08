@@ -1,6 +1,6 @@
 const {Harness,users,tenant,expect}=require('./sales-flow-harness.cjs');
 const today=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);
-function fixture(maxVersion=Infinity){const h=new Harness(true,true,maxVersion).seed();for(const [k,email] of Object.entries(users))h.sql.prepare('INSERT OR IGNORE INTO india_members(email,role,active) VALUES(?,?,1)').run(email,k==='other'?'sales':k==='admin2'?'admin':k);return h;}
+function fixture(maxVersion=Infinity){const h=new Harness(true,true,maxVersion).seed();for(const [k,email] of Object.entries(users))h.sql.prepare('INSERT OR IGNORE INTO rticore_members(email,role,active) VALUES(?,?,1)').run(email,k==='other'?'sales':k==='admin2'?'admin':k);return h;}
 async function upload(h,kind='supporting',role='finance',opp='opp-qa'){
  const library=['supporting','quotation','nda','rks','kak'].includes(kind);const release=library?null:h.release()?.id;
  const q=new URLSearchParams({opportunity_id:opp,kind,filename:kind+'-'+crypto.randomUUID()+'.pdf',...(release?{release_id:release}:{})});
@@ -9,9 +9,9 @@ async function upload(h,kind='supporting',role='finance',opp='opp-qa'){
  return {status:r.status,body:await r.json()};
 }
 async function won(h=fixture(),family='VAPT'){
- h.sql.prepare("UPDATE india_sales_opportunities SET data_json=json_set(data_json,'$.service_family',?)").run(family);
+ h.sql.prepare("UPDATE rticore_sales_opportunities SET data_json=json_set(data_json,'$.service_family',?)").run(family);
  const service=({'SOC/MDR':'SOC','Cybersecurity Governance':'GRC','Cybersecurity Technology':'TECHNOLOGY'})[family]||'VAPT';
- h.sql.prepare("UPDATE india_boq SET service_type=?,line_items_json=json_set(line_items_json,'$[0].service_type',?)").run(service,service);
+ h.sql.prepare("UPDATE rticore_boq SET service_type=?,line_items_json=json_set(line_items_json,'$[0].service_type',?)").run(service,service);
  await expect(h.flow('scope','presales'),201);
  const proposal=await expect(upload(h,'proposal','sales'),201);
  await expect(h.flow('propose','sales',{proposal_reference:proposal.body.reference,proposal_sha256:proposal.body.sha256}),200);
@@ -30,8 +30,8 @@ async function won(h=fixture(),family='VAPT'){
  await expect(h.call('sales','POST','finance',{entity:'verify_po',id:'opp-qa',confirmed_documents:true}),200);
  await expect(h.stage('closed_won'),200);return h;
 }
-const project=h=>h.sql.prepare("SELECT * FROM india_delivery_projects WHERE opportunity_id='opp-qa'").get();
-const contract=h=>h.sql.prepare('SELECT * FROM india_service_contracts').get();
+const project=h=>h.sql.prepare("SELECT * FROM rticore_delivery_projects WHERE opportunity_id='opp-qa'").get();
+const contract=h=>h.sql.prepare('SELECT * FROM rticore_service_contracts').get();
 const operation=(h,role,action,p={})=>h.call('sales/service-operations','POST',role,{opportunity_id:'opp-qa',project_version:project(h)?.version,contract_version:contract(h)?.version,action,...p});
 async function milestone(h,amount=1000000){const doc=await expect(upload(h),201);const m=await expect(operation(h,'presales','milestone',{title:'Final delivery acceptance',trigger_text:'Signed customer BAST',amount_idr:amount,due_date:today()}),201);await expect(operation(h,'finance','accept_milestone',{id:m.body.id,document_id:doc.body.id}),201);return {id:m.body.id,document:doc.body.id};}
 async function invoice(h,amount=1000000){const m=await milestone(h,amount);const i=await expect(operation(h,'finance','invoice',{milestone_id:m.id,document_id:m.document,number:'INV-'+crypto.randomUUID(),issue_date:today(),due_date:today(),amount_idr:amount,vat_idr:110000}),201);await expect(operation(h,'approver','review_invoice',{id:i.body.id,approve:true,notes:'Independent accepted BAST and invoice reconciliation'}),201);return {id:i.body.id,document:m.document};}

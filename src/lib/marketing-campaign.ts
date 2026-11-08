@@ -14,16 +14,29 @@ export function isAutoCampaignCode(code:string):boolean{
 }
 export type CampaignInput={
  code:string;name:string;channel:CampaignChannel;status:CampaignStatus;
- owner_email:string;budget_idr:number;start_date:string;end_date:string;notes:string;
+ owner_email:string;owner_emails:string[];budget_idr:number;start_date:string;end_date:string;notes:string;
 };
+/** Legacy rows contain one email; multi-owner rows contain a JSON array in the same TEXT field. */
+export function campaignOwnerEmails(value:unknown):string[]{
+ let raw=value;
+ if(typeof raw==='string'&&raw.trim().startsWith('[')){
+  try{raw=JSON.parse(raw);}catch{throw Error('Email campaign owner tidak valid');}
+ }
+ if(typeof raw==='string')raw=[raw];
+ if(!Array.isArray(raw)||raw.length===0||raw.length>20||raw.some(x=>typeof x!=='string'||!emailValid(x.trim())))
+  throw Error('Email campaign owner harus valid; pilih 1–20 anggota');
+ return [...new Set(raw.map(x=>x.trim().toLowerCase()))];
+}
+export function campaignOwnerStorage(emails:string[]):string{return emails.length===1?emails[0]:JSON.stringify(emails);}
 const clean=(x:unknown,max:number)=>typeof x==='string'?x.trim().slice(0,max):'';
 export function validateCampaign(raw:unknown):CampaignInput{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Campaign harus object');
  const p=raw as Record<string,unknown>;
+ const ownerEmails=campaignOwnerEmails(p.owner_emails??p.owner_email);
  const input:CampaignInput={
   code:clean(p.code,60).toUpperCase(),name:clean(p.name,240).replace(/\s+/g,' '),
   channel:clean(p.channel,30) as CampaignChannel,status:clean(p.status,30) as CampaignStatus,
-  owner_email:clean(p.owner_email,200).toLowerCase(),budget_idr:Number(p.budget_idr??0),
+  owner_email:ownerEmails[0],owner_emails:ownerEmails,budget_idr:Number(p.budget_idr??0),
   start_date:clean(p.start_date,20),end_date:clean(p.end_date,20),notes:clean(p.notes,1200)
  };
  if(!/^[A-Z0-9][A-Z0-9_-]{2,59}$/.test(input.code))throw Error('Kode campaign 3-60 karakter alfanumerik, dash atau underscore');

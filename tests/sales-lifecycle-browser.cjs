@@ -3,7 +3,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path');
 const {Harness,expect}=require('./helpers/sales-flow-harness.cjs');
-const base=process.env.INDIA_UAT_URL||'http://127.0.0.1:3100';
+const base=process.env.RTICORE_UAT_URL||'http://127.0.0.1:3100';
 const screenshots=path.join(process.cwd(),'artifacts/browser-uat');fs.mkdirSync(screenshots,{recursive:true});
 async function pageFor(browser,d,role,mobile=false,pathname='/proposals'){const page=await browser.newPage({viewport:mobile?{width:375,height:812}:{width:1280,height:900}});page.setDefaultTimeout(15000);await page.route('**/api/**',async route=>{const req=route.request(),u=new URL(req.url()),apiPath=u.pathname.slice('/api/'.length);try{
  if(apiPath==='sales/vault'){
@@ -26,7 +26,7 @@ test('mobile and desktop browser uploads connect proposal, submission, independe
   await page.getByLabel('Upload dokumen asli ke Document Vault').setInputFiles({name:'receipt.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\nSynthetic browser submission receipt')});await page.getByRole('status').filter({hasText:'Dokumen asli tersimpan.'}).waitFor();
   page.once('dialog',x=>x.accept());await page.getByRole('button',{name:'Catat Submission (Reported)',exact:true}).click();await page.getByRole('status').filter({hasText:'Pengiriman tercatat'}).waitFor();await page.close();
   page=await pageFor(browser,d,'finance',true,'/sales/submission');await page.getByPlaceholder('Catatan verifikasi bukti asli minimal 15 karakter').fill('Original email evidence independently checked');page.once('dialog',x=>x.accept());await page.getByRole('button',{name:'Verified',exact:true}).click();await page.getByRole('status').filter({hasText:'Hasil pemeriksaan bukti'}).waitFor();await page.close();await expect(d.stage('negotiation'),200);
-  page=await pageFor(browser,d,'sales',true);await fillNotes(page,'Customer accepted the exact scope terms and quotation value');await fillProof(page,'archive/customer/browser-uat','c'.repeat(64));await page.getByRole('combobox',{name:/^Keputusan/}).selectOption('approved');await page.getByLabel('Nilai sebelum PPN (IDR)',{exact:true}).fill('1000000');await page.getByRole('button',{name:'Catat Keputusan & Bukti Pelanggan',exact:true}).click();await settle(page);assert.equal(d.sql.prepare('SELECT decision FROM india_sales_negotiations').get().decision,'approved');
+  page=await pageFor(browser,d,'sales',true);await fillNotes(page,'Customer accepted the exact scope terms and quotation value');await fillProof(page,'archive/customer/browser-uat','c'.repeat(64));await page.getByRole('combobox',{name:/^Keputusan/}).selectOption('approved');await page.getByLabel('Nilai sebelum PPN (IDR)',{exact:true}).fill('1000000');await page.getByRole('button',{name:'Catat Keputusan & Bukti Pelanggan',exact:true}).click();await settle(page);assert.equal(d.sql.prepare('SELECT decision FROM rticore_sales_negotiations').get().decision,'approved');
   assert.ok((await page.getByRole('link',{name:'Quotation Submission →',exact:true}).getAttribute('href')).includes('opportunity_id=opp-qa'));
   assert.ok((await page.getByRole('link',{name:'PO & Finance–Legal Review →',exact:true}).getAttribute('href')).includes('opportunity_id=opp-qa'));
   const dims=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(dims.scroll<=dims.width+2,JSON.stringify(dims));
@@ -39,6 +39,6 @@ test('mobile and desktop browser uploads connect proposal, submission, independe
    await page.getByLabel('Catatan pemeriksaan asli').fill('Original PO scope and amount independently checked by '+role);page.once('dialog',x=>x.accept());await page.getByRole('button',{name:'Verifikasi sebagai '+(role==='legal'?'Legal':'Finance'),exact:true}).click();await page.getByRole('status').filter({hasText:'Hasil review '+role}).waitFor();
    const dims=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(dims.scroll<=dims.width+2,JSON.stringify(dims));await page.close();
   }
-  await expect(d.call('sales','POST','finance',{entity:'verify_po',id:'opp-qa',confirmed_documents:true}),200);await expect(d.stage('closed_won'),200);assert.equal(d.deal().stage,'closed_won');assert.equal(d.sql.prepare('SELECT count(*) n FROM india_document_vault').get().n,4);assert.deepEqual(d.sql.prepare('PRAGMA foreign_key_check').all(),[]);
+  await expect(d.call('sales','POST','finance',{entity:'verify_po',id:'opp-qa',confirmed_documents:true}),200);await expect(d.stage('closed_won'),200);assert.equal(d.deal().stage,'closed_won');assert.equal(d.sql.prepare('SELECT count(*) n FROM rticore_document_vault').get().n,4);assert.deepEqual(d.sql.prepare('PRAGMA foreign_key_check').all(),[]);
  }finally{if(page&&!page.isClosed())await page.close();await browser.close();d.close();}
 });

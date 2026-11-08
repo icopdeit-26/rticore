@@ -17,6 +17,9 @@ export const PRESALES_FIELDS=new Set([
  'project_postal','project_pic_name','project_pic_phone','project_pic_email',
  'implementation_timeline','contract_duration','license_or_sku','asset_profile',
  'methodology','exclusions','team_composition',
+ // ICOP scoping estimator output (indication only; quotation price stays in approved BoQ).
+ 'scoping_product','scoping_params','scoping_estimate_md','scoping_estimate_base',
+ 'scoping_estimate_price','scoping_client_tier','scoping_model_version',
 ]);
 export function canEditDeal(role:SalesRole,email:string,creator:string|null|undefined,fields:Record<string,string>,
  hasTitleOrValueChange:boolean):boolean{

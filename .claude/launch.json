@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rticore-local",
+      "runtimeExecutable": "npm.cmd",
+      "runtimeArgs": ["run", "dev:local"],
+      "port": 3000,
+      "url": "http://localhost:3000"
+    }
+  ]
+}

@@ -67,7 +67,7 @@ export default function SalesProcurement(){
    const digest=await crypto.subtle.digest('SHA-256',data);
    const hash=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,'0')).join('');
    const form=new FormData();form.set('file',file);
-   const response=await fetch('/api/scoping/upload',{method:'POST',credentials:'same-origin',headers:{'x-india-document-upload':'1'},body:form});
+   const response=await fetch('/api/scoping/upload',{method:'POST',credentials:'same-origin',headers:{'x-rticore-document-upload':'1'},body:form});
    const result=await response.json();
    if(!response.ok||!result.success)throw Error(result.message||'Gagal mengekstrak RKS/KAK');
    const extracted=String(result.text||result.extractedText||'').trim().slice(0,2000);

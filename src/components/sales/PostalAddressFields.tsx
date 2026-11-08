@@ -87,9 +87,9 @@ export function PostalAddressFields({values,onChange,disabled=false}:Props){
    <p className="mt-1 text-xs text-slate-600">Cari dan pilih kode pos berdasarkan nomor atau nama wilayah. Provinsi, kabupaten/kota, kecamatan, dan desa/kelurahan diambil dari master nasional.</p></div>
   <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
    <div className="min-w-0 sm:col-span-2">
-    <label htmlFor="india-postal-search" className="block text-xs font-semibold text-slate-700">Pilih kode pos terstandar</label>
+    <label htmlFor="rticore-postal-search" className="block text-xs font-semibold text-slate-700">Pilih kode pos terstandar</label>
     <div className="relative mt-1">
-     <input id="india-postal-search" className={input+' mt-0 pr-10'} type="search" autoComplete="off"
+     <input id="rticore-postal-search" className={input+' mt-0 pr-10'} type="search" autoComplete="off"
       aria-label="Cari kode pos atau nama wilayah" disabled={disabled} value={lookup}
       onChange={e=>setLookup(e.target.value)}
       placeholder="Cari kode pos, kelurahan, kecamatan, kota atau provinsi"/>

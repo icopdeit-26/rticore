@@ -28,4 +28,4 @@ jobs:
       - name: Check RTICORE/RTI branding
         run: npm run test:branding
       - name: Regression tests for login, sidebar, quotation and assistant
-        run: node --test tests/india-login-experience.test.cjs tests/india-access-entrypoints.test.cjs tests/enterprise-navigation.test.cjs tests/quotation-docx.test.cjs tests/quotation-layout.test.cjs
+        run: node --test tests/rticore-login-experience.test.cjs tests/rticore-access-entrypoints.test.cjs tests/enterprise-navigation.test.cjs tests/quotation-docx.test.cjs tests/quotation-layout.test.cjs

@@ -1,4 +1,4 @@
-# Cloudflare India — Next.js/OpenNext Compatibility Fix
+# Cloudflare RTICore — Next.js/OpenNext Compatibility Fix
 
 Status: **staging candidate, not production ready**.
 
@@ -10,7 +10,7 @@ Cloudflare's Wrangler auto-setup detected `Next.js 14.2.35` and installed OpenNe
 
 - Upgrade Next.js to 15.5.28 and keep React 18.3.1.
 - Pin OpenNext 1.20.12 and Wrangler 4.151.2.
-- Commit a non-interactive Wrangler config targeting **india** and OpenNext build output.
+- Commit a non-interactive Wrangler config targeting **rticore** and OpenNext build output.
 - Add explicit Cloudflare build/deploy scripts.
 - Temporarily remove outdated npm lockfile until npm can regenerate a matching lock on an online builder (use `npm install --package-lock-only` then commit the new lock).
 

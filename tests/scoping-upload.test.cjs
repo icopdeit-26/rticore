@@ -65,12 +65,12 @@ test('upload and AI endpoints enforce access, origin and consent UI', () => {
   const page = source('src/app/scoping/page.tsx');
   const middleware = source('src/middleware.ts');
   assert.match(route, /authorizeBoQ\(req\)/);
-  assert.match(route, /x-india-document-upload/);
+  assert.match(route, /x-rticore-document-upload/);
   assert.match(middleware, /api\/scoping\/upload/);
   assert.match(ai, /auth\.identity\.role!=='admin'/);
   assert.match(ai, /maxChars/);
   assert.match(page, /aiConsent/);
   assert.match(page, /type="file"/);
   assert.match(page, /\.pdf,\.docx,\.txt/);
-  assert.match(page, /x-india-ai-admin/);
+  assert.match(page, /x-rticore-ai-admin/);
 });

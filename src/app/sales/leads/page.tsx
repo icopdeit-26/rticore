@@ -8,6 +8,8 @@ import {PostalAddressFields} from '@/components/sales/PostalAddressFields';
 import {StandardCustomerChoice} from '@/components/sales/StandardCustomerChoice';
 import {ManagedOptionSelect} from '@/components/sales/ManagedOptionSelect';
 import {CompactSelect} from '@/components/ui/CompactSelect';
+import {validateLead} from '@/lib/marketing-lead';
+import {errorText,readApiJSON} from '@/lib/client-api';
 type Lead={id:string;version:number;lead_number:string;account_name:string;source:string;campaign:string;campaign_id?:string|null;service_family:string;
  contact_name:string;contact_email:string;assigned_sales_email:string;estimated_value_idr:number;
  expected_closing_date:string;status:'new'|'assigned'|'qualified'|'disqualified'|'converted';
@@ -26,11 +28,11 @@ const flds=[
  ['target_next_action','Rencana tindak lanjut'],['disqualification_reason','Alasan tidak diteruskan']
 ] as const;
 const empty=()=>({account_name:'',source:'',campaign:'',campaign_id:'',service_family:'VAPT',contact_name:'',contact_email:'',
- assigned_sales_email:'',estimated_value_idr:'',expected_closing_date:''});
+ assigned_sales_email:'',contact_phone:'',estimated_value_idr:'',expected_closing_date:''});
 async function api(method:'GET'|'POST'|'PATCH',url:string,data?:Record<string,unknown>){
  const response=await fetch(url,{method,credentials:'same-origin',cache:'no-store',
-  headers:{'Content-Type':'application/json',...(data?.entity==='convert'?{'x-india-lead-action':'convert'}:{})},...(data?{body:JSON.stringify(data)}:{})});
- const j=await response.json();
+  headers:{'Content-Type':'application/json',...(data?.entity==='convert'?{'x-rticore-lead-action':'convert'}:{})},...(data?{body:JSON.stringify(data)}:{})});
+ const j=await readApiJSON(response);
  if(!response.ok||!j.success)throw Error((j.message||'Transaksi gagal')+(j.missing?.length?' — '+j.missing.join(', '):''));
  return j;
 }
@@ -41,6 +43,7 @@ export default function MarketingLeads(){
  const [campaigns,setCampaigns]=useState<CampaignOption[]>([]);
  const [campaignError,setCampaignError]=useState('');
  const [role,setRole]=useState('');
+ const [identityEmail,setIdentityEmail]=useState('');
  const [form,setForm]=useState(empty());
  // Stable for safe network retries; regenerated only for the next new Lead.
  const [requestKey,setRequestKey]=useState('');
@@ -53,21 +56,28 @@ export default function MarketingLeads(){
  const [newMode,setNewMode]=useState(false);
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('');
+ const [createError,setCreateError]=useState('');
  const refresh=useCallback(async()=>{
-  try{
+  // Independent panels start together; a slow optional panel must not delay the Lead list.
+  await Promise.all([
+   (async()=>{try{
    const j=await api('GET','/api/marketing/leads');setList(j.leads||[]);setRole(j.role||'');
+   setIdentityEmail(j.email||'');
+   }catch(e){setMessage(e instanceof Error?e.message:String(e));}})(),
    // Marketing/Admin see planned campaigns too. Sales remains restricted by the API.
    // Never silently mislabel an API failure as an empty Campaign directory.
-   try{
+   (async()=>{try{
     const c=await api('GET','/api/marketing/campaigns');
     setCampaigns(c.campaigns||[]);setCampaignError('');
    }catch(e){
     setCampaigns([]);
     setCampaignError(e instanceof Error?e.message:String(e));
-   }
+   }})(),
+   (async()=>{
    const intelligence=await api('GET','/api/marketing/lead-intelligence?mode=queue').catch(()=>({leads:[]}));
    setScores(Object.fromEntries((intelligence.leads||[]).map((x:{id:string;score:number;temperature:string})=>[x.id,{score:x.score,temperature:x.temperature}])));
-  }catch(e){setMessage(e instanceof Error?e.message:String(e));}
+   })()
+  ]);
  },[]);
  const load=async(id:string)=>{
   const j=await api('GET','/api/marketing/leads?id='+encodeURIComponent(id));
@@ -78,13 +88,14 @@ export default function MarketingLeads(){
   setNewMode(false);
  };
  useEffect(()=>{void refresh();},[refresh]);
- useEffect(()=>{const id=new URLSearchParams(window.location.search).get('lead_id');if(id)void load(id);},[]);
+ useEffect(()=>{const id=new URLSearchParams(window.location.search).get('lead_id');
+  if(id)load(id).catch(e=>setMessage('Lead dari tautan tidak dapat dibuka: '+errorText(e)));},[]);
  const run=async(fn:()=>Promise<unknown>,result:string,next?:string)=>{
   setBusy(true);setMessage('');
   try{const j=await fn() as {id?:string;opportunity_id?:string};await refresh();
    if(next||j.id)await load(next||j.id||'');
    setMessage(result+(j.opportunity_id?' • Opportunity '+j.opportunity_id:''));}
-  catch(e){setMessage(e instanceof Error?e.message:String(e));}
+  catch(e){const text=e instanceof Error?e.message:String(e);setMessage(text);if(newMode)setCreateError(text);}
   finally{setBusy(false);}
  };
  const activateCampaign=async(c:CampaignOption)=>{
@@ -98,13 +109,16 @@ export default function MarketingLeads(){
   }catch(e){setMessage('Gagal mengaktifkan Campaign: '+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
  };
- const create=()=>void run(async()=>{
+ const create=()=>{if(busy)return;setCreateError('');void run(async()=>{
+  const leadForm={...form,assigned_sales_email:role==='sales'?identityEmail:form.assigned_sales_email};
+  const leadQualification={contact_phone:form.contact_phone};
+  validateLead({...leadForm,estimated_value_idr:Number(form.estimated_value_idr||0),qualification:leadQualification});
   const id=requestKey||crypto.randomUUID();
-  const result=await api('POST','/api/marketing/leads',{entity:'lead',...form,request_key:id,
-   estimated_value_idr:Number(form.estimated_value_idr||0),qualification:{}});
+  const result=await api('POST','/api/marketing/leads',{entity:'lead',...leadForm,request_key:id,
+   estimated_value_idr:Number(form.estimated_value_idr||0),qualification:leadQualification});
   setRequestKey(crypto.randomUUID());
   return result;
- },'Lead tersimpan di D1');
+ },'Lead tersimpan di database');};
  const changeStatus=(status:'assigned'|'qualified')=>{
   if(!selected)return;
   void run(()=>api('PATCH','/api/marketing/leads',{id:selected.lead.id,version:selected.lead.version,status,qualification}),
@@ -118,8 +132,9 @@ export default function MarketingLeads(){
  };
  const note=()=>{
   if(!selected||!activity.trim())return;
-  void run(()=>api('POST','/api/marketing/leads',{entity:'activity',id:selected.lead.id,kind:'note',summary:activity}),
-   'Aktivitas dicatat.',selected.lead.id);setActivity('');
+  // Clear the draft only after the server accepted it; a failed save keeps the text.
+  void run(async()=>{const result=await api('POST','/api/marketing/leads',{entity:'activity',id:selected.lead.id,kind:'note',summary:activity});setActivity('');return result;},
+   'Aktivitas dicatat.',selected.lead.id);
  };
  const qualified=list.filter(x=>x.status==='qualified').length;
  const converted=list.filter(x=>x.status==='converted').length;
@@ -129,11 +144,11 @@ export default function MarketingLeads(){
  const campaignStatusText:Record<string,string>={planned:'Direncanakan',paused:'Dijeda',completed:'Selesai',cancelled:'Dibatalkan'};
  return <main className="min-w-0 space-y-5 pb-24">
   <header className="flex flex-wrap items-start justify-between gap-3">
-   <div><div className="flex items-center gap-2 text-xs font-bold text-blue-700"><Megaphone size={16}/> RTICORE · Marketing</div>
+   <div><div className="flex items-center gap-2 text-xs font-bold text-blue-700"><Megaphone size={16}/> RTICORE · Sales</div>
     <h1 className="mt-1 text-xl font-extrabold text-slate-900 sm:text-2xl">Lead-to-Opportunity Workspace</h1>
-    <p className="mt-1 max-w-2xl text-xs text-slate-600">Lead → Qualification → Konversi Customer/Opportunity → Sales Pipeline. Semua menggunakan sumber data D1 yang sama.</p>
+    <p className="mt-1 max-w-2xl text-xs text-slate-600">Lead → Qualification → Konversi Customer/Opportunity → Sales Pipeline. Semua menggunakan sumber database PostgreSQL yang sama.</p>
    </div>
-   <button type="button" disabled={busy||!['admin','marketing','sales'].includes(role)} onClick={()=>{setNewMode(true);setSelected(null);setMessage('');setForm(empty());setRequestKey(crypto.randomUUID());}}
+   <button type="button" disabled={busy||!['admin','marketing','sales'].includes(role)} onClick={()=>{setNewMode(true);setSelected(null);setMessage('');setCreateError('');setForm({...empty(),assigned_sales_email:role==='marketing'?'':identityEmail});setRequestKey(crypto.randomUUID());}}
     className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50"><Plus size={15}/> Lead Baru</button>
   </header>
   <div className="flex flex-wrap gap-2">
@@ -159,11 +174,11 @@ export default function MarketingLeads(){
       {scores[x.id]&&<div className="mt-1 text-[11px] font-semibold text-blue-700">Lead Score {scores[x.id].score}/100 · {scores[x.id].temperature}</div>}
      </button>)}
    </section>
-   {newMode?<section className="rounded-xl border bg-white p-4">
+   {newMode?<section className="rounded-xl border bg-white p-4" aria-busy={busy}>
     <h2 className="text-sm font-bold">Registrasi Lead Baru</h2>
     <p className="mt-1 text-xs text-slate-500">Gunakan identitas perusahaan yang sebenarnya. Tidak ada data dummy yang diisi otomatis.</p>
     <div className="mt-4">
-     <label className="block text-xs font-semibold text-slate-700">Campaign terdaftar (opsional, mengikat attribution ke D1)
+     <label className="block text-xs font-semibold text-slate-700">Campaign terdaftar (opsional, mengikat attribution ke database)
       <select className={'mt-1 '+cls} disabled={busy} value={form.campaign_id} onChange={e=>{
        const id=e.target.value,selected=activeCampaigns.find(x=>x.id===id);
        setForm(v=>({...v,campaign_id:selected?.id||'',campaign:selected?.name||''}));
@@ -180,7 +195,7 @@ export default function MarketingLeads(){
      </div>:inactiveCampaigns.length>0&&['admin','marketing'].includes(role)?
       <details open={activeCampaigns.length===0} className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
        <summary className="cursor-pointer font-semibold">{inactiveCampaigns.length} Campaign terdaftar belum aktif — lihat dan aktifkan</summary>
-       <p className="mt-2">Campaign berstatus Direncanakan/Dijeda sudah tersimpan di D1, tetapi belum dapat dihubungkan ke Lead baru sampai diaktifkan.</p>
+       <p className="mt-2">Campaign berstatus Direncanakan/Dijeda sudah tersimpan di database, tetapi belum dapat dihubungkan ke Lead baru sampai diaktifkan.</p>
        <div className="mt-2 space-y-2">
         {inactiveCampaigns.map(x=><div key={x.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-white p-2">
          <span className="min-w-0 break-words"><b>{x.name}</b> <span className="font-normal">({campaignStatusText[x.status]||x.status})</span></span>
@@ -194,20 +209,25 @@ export default function MarketingLeads(){
     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
     {([
      ['account_name','Perusahaan / Prospek *'],['source','Sumber Lead *'],['campaign','Kampanye / Event'],
-     ['contact_name','Nama PIC'],['contact_email','Email PIC'],['assigned_sales_email','Sales Owner (email aktif) *'],
+     ['contact_name','Nama PIC'],['contact_email','Email PIC'],['contact_phone','No. telepon PIC'],['assigned_sales_email','Sales Owner (email aktif) *'],
      ['estimated_value_idr','Estimasi nilai IDR'],['expected_closing_date','Target closing']
     ] as const).map(([key,label])=><label key={key} className="min-w-0 text-xs font-semibold text-slate-700">{label}
       {key==='source'?<ManagedOptionSelect group="lead_source" label={label} required value={form.source} onChange={value=>setForm(s=>({...s,source:value}))} className={'mt-1 '+cls}/>:<input className={'mt-1 '+cls} disabled={key==='campaign'&&!!form.campaign_id}
-       type={key==='contact_email'||key==='assigned_sales_email'?'email':key==='expected_closing_date'?'date':key==='estimated_value_idr'?'number':'text'}
-       value={form[key]} onChange={e=>setForm(s=>({...s,[key]:e.target.value}))}/>}</label>)}
+       type={key==='contact_email'||key==='assigned_sales_email'?'email':key==='contact_phone'?'tel':key==='expected_closing_date'?'date':key==='estimated_value_idr'?'number':'text'}
+       readOnly={key==='assigned_sales_email'&&role==='sales'}
+       aria-invalid={key==='contact_email'&&createError==='Email PIC tidak valid'?true:undefined}
+       aria-describedby={key==='contact_email'?'lead-contact-email-help':undefined}
+       value={form[key]} onChange={e=>{setCreateError('');setForm(s=>({...s,[key]:e.target.value}));}}/>}
+      {key==='contact_email'&&<span id="lead-contact-email-help" className="mt-1 block text-[11px] font-normal text-slate-500">Opsional. Kosongkan jika belum tersedia; jangan isi dengan tanda “-”.</span>}</label>)}
     <label className="text-xs font-semibold text-slate-700">Jenis produk / layanan *
      <CompactSelect label="Jenis produk / layanan" required className={'mt-1 '+cls}
       value={form.service_family} onChange={value=>setForm(s=>({...s,service_family:value}))}
       options={SERVICE_GROUPS.flatMap(group=>SERVICE_CATALOG.filter(item=>item.group===group)
        .map(item=>({value:item.name,label:item.name,group})))} searchable/></label>
     </div>
-    <button disabled={busy||!form.account_name.trim()||!form.source.trim()||!form.assigned_sales_email.trim()} onClick={create}
-     className="mt-4 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Simpan Lead</button>
+    {createError&&<p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{createError}</p>}
+    <button type="button" disabled={busy} onClick={create}
+     className="mt-4 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{busy?'Menyimpan Lead…':'Simpan Lead'}</button>
    </section>:selected?<section className="min-w-0 space-y-4 rounded-xl border bg-white p-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">{selected.lead.account_name}</h2>
      <p className="text-xs text-slate-500">{selected.lead.lead_number} • {statuses[selected.lead.status]}</p></div>

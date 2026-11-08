@@ -42,7 +42,7 @@ export default function BoQUsers(){
  return <main className="mx-auto max-w-5xl space-y-5 pb-20">
   <AdminNavigation/>
   <header className="rounded-2xl border bg-white p-5"><p className="text-xs font-bold text-indigo-700">RTICORE · KHUSUS ADMIN</p><h1 className="mt-1 text-2xl font-bold">Registrasi User</h1>
-   <p className="mt-2 text-sm text-slate-600">Daftarkan email, tetapkan peran dan unit kerja, serta kelola status akses pengguna. Identitas juga harus diizinkan oleh kebijakan login Cloudflare Access.</p>
+   <p className="mt-2 text-sm text-slate-600">Daftarkan email, tetapkan peran dan unit kerja, serta kelola status akses pengguna pada database sistem.</p>
   </header>
   {loading&&<p role="status" className="rounded-xl border bg-white p-4 text-sm">Memverifikasi akses Admin…</p>}
   {error&&<p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}

@@ -1,4 +1,4 @@
-# India public UI preview
+# RTICore public UI preview
 
 This change enables a **UI-only public preview**, not a full production system.
 
@@ -10,4 +10,4 @@ This change enables a **UI-only public preview**, not a full production system.
 
 Before production: proper authentication, RBAC, D1 persistence and migrations, server-only provider secrets, real client data import, tests, and lockfile regeneration are mandatory.
 
-Working demo URL after deployment: https://india.elang-haqeem.workers.dev
+Working demo URL after deployment: https://rticore.elang-haqeem.workers.dev

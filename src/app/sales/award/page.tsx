@@ -4,13 +4,15 @@ import Link from 'next/link';
 import VaultPicker from '@/components/sales/VaultPicker';
 import {vaultDownload} from '@/lib/document-vault-links';
 import {ArrowLeft,FileCheck2,ShieldCheck} from 'lucide-react';
+import {OpportunityPicker} from '@/components/sales/OpportunityPicker';
+import {errorText,readApiJSON} from '@/lib/client-api';
 type Award={id:string;document_kind:string;document_number:string;file_name:string;archive_reference:string;original_sha256:string;
  created_by:string;finance_reviewed_by:string|null;legal_reviewed_by:string|null;finance_review_notes?:string;legal_review_notes?:string};
 const field='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs';
 async function api(method:'GET'|'POST'|'PATCH',url:string,body?:Record<string,unknown>){
  const r=await fetch(url,{method,credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},
  ...(body?{body:JSON.stringify(body)}:{})});
- const j=await r.json();if(!r.ok||!j.success)throw Error(j.message||'Transaksi gagal');return j;
+ const j=await readApiJSON(r);if(!r.ok||!j.success)throw Error(j.message||'Transaksi gagal');return j;
 }
 export default function AwardDesk(){
  const [opp,setOpp]=useState(''),[role,setRole]=useState(''),[po,setPo]=useState('');
@@ -23,14 +25,18 @@ export default function AwardDesk(){
    const j=await api('GET','/api/sales/award?opportunity_id='+encodeURIComponent(id));
    setDocs(j.documents||[]);setReady(!!j.hasDualVerifiedPO);setRole(j.role||'');setPo(j.po_number||'');
    setForm(p=>({...p,document_number:p.document_number||j.po_number||''}));
-  }catch(e){setMessage(e instanceof Error?e.message:String(e));}
+  }catch(e){setMessage(errorText(e));}
  },[]);
- useEffect(()=>{const id=new URLSearchParams(window.location.search).get('opportunity_id')||'';setOpp(id);
-  if(id)void refresh(id);else setMessage('Pilih Opportunity dari Sales Pipeline untuk melanjutkan.');},[refresh]);
+ const select=useCallback((id:string)=>{
+  setOpp(id);setDocs([]);setReady(false);setPo('');setMessage('');
+  setForm({document_kind:'po',document_number:'',file_name:'',archive_reference:'',original_sha256:''});
+  if(id)void refresh(id);else setMessage('Pilih Opportunity untuk melanjutkan.');
+ },[refresh]);
+ useEffect(()=>{select(new URLSearchParams(window.location.search).get('opportunity_id')||'');},[select]);
  const run=async(fn:()=>Promise<unknown>,done:string)=>{
   setBusy(true);setMessage('');
   try{await fn();await refresh(opp);setMessage(done);}
-  catch(e){setMessage(e instanceof Error?e.message:String(e));}
+  catch(e){setMessage(errorText(e));}
   finally{setBusy(false);}
  };
  const add=()=>void run(()=>api('POST','/api/sales/award',{opportunity_id:opp,...form}),
@@ -44,7 +50,8 @@ export default function AwardDesk(){
   <header className="rounded-xl border bg-white p-4 sm:p-5">
    <Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(opp)} className="inline-flex items-center gap-1 text-xs font-bold text-blue-700"><ArrowLeft size={14}/> Kembali ke Sales Opportunity</Link>
    <h1 className="mt-3 flex items-center gap-2 text-xl font-bold"><FileCheck2 size={20}/> Award, PO/SPK & Legal Review</h1>
-   <p className="mt-2 text-xs text-slate-500">Opportunity: {opp} · Nomor PO Sales: {po||'belum tersedia'}</p>
+   <OpportunityPicker value={opp} onChange={select} disabled={busy}/>
+   <p className="mt-2 text-xs text-slate-500">Nomor PO Sales: {po||'belum tersedia'}</p>
    <div className={'mt-3 rounded-lg border p-3 text-xs '+(ready?'border-emerald-200 bg-emerald-50 text-emerald-950':'border-amber-200 bg-amber-50 text-amber-950')}>
     {ready?'Pemeriksaan ganda tercatat untuk PO/SPK ini; tahapan Won masih memerlukan seluruh gate lain.':
      'Gate Won belum lengkap: diperlukan PO/SPK dengan referensi arsip, SHA-256, review Finance, dan review Legal terpisah.'}

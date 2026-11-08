@@ -11,7 +11,7 @@ import {openDocument,type VaultDoc} from '@/lib/document-vault';
 type Original={document_id:string;kind:string;file_name:string;evidence_reference:string;sha256:string};
 const same=(a:string,b:string)=>a.toLowerCase()===b.toLowerCase();
 export async function tenderVaultGaps(db:D1DB,opportunity:string,requirements:Requirement[],clauses:Clause[],checklist:Checklist[]){
- const {results}=await db.prepare('SELECT document_id,kind,file_name,evidence_reference,sha256 FROM india_tender_vault_originals WHERE tenant_id=? AND opportunity_id=? LIMIT 501')
+ const {results}=await db.prepare('SELECT document_id,kind,file_name,evidence_reference,sha256 FROM rticore_tender_vault_originals WHERE tenant_id=? AND opportunity_id=? LIMIT 501')
   .bind(TENANT,opportunity).all<Original>();
  if(results.length>500)return ['Jumlah dokumen asli melebihi batas verifikasi 500; lakukan pemeriksaan arsip.'];
  const matches=(ref:string,hash:string,name?:string,kind?:string)=>
@@ -28,7 +28,7 @@ export async function tenderVaultGaps(db:D1DB,opportunity:string,requirements:Re
  return gaps;
 }
 export async function authenticateTenderOriginal(db:D1DB,opportunity:string,reference:string,sha:string,filename:string){
- const row=await db.prepare(`SELECT *, '' AS release_id FROM india_document_library WHERE tenant_id=? AND opportunity_id=?
+ const row=await db.prepare(`SELECT *, '' AS release_id FROM rticore_document_library WHERE tenant_id=? AND opportunity_id=?
  AND 'library:'||id=? AND sha256=? AND file_name=?`).bind(TENANT,opportunity,reference,sha.toLowerCase(),filename).first<VaultDoc>();
  if(!row)throw Error('TENDER_VAULT_EVIDENCE: file asli/Opportunity/SHA-256 tidak cocok');
  await openDocument(db,row,'library'); // AES-GCM AAD + SHA-256; fails closed on corruption/missing key.

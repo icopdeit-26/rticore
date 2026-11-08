@@ -15,12 +15,12 @@ const area={
 };
 function referenceDb(mode='normalized'){
  return {prepare(sql){
-  if(sql.includes('india_postal_import_state'))return {first:async()=>({source_version:'uat'})};
-  if(sql.includes('sqlite_master'))return {first:async()=>mode==='compact'?{name:'india_postal_lookup'}:null};
-  if(sql.includes('SELECT 1 AS present FROM india_postal_lookup'))return {first:async()=>({present:1})};
-  if(sql.includes('FROM india_postal_lookup WHERE postal_code=?'))
+  if(sql.includes('rticore_postal_import_state'))return {first:async()=>({source_version:'uat'})};
+  if(sql.includes('sqlite_master'))return {first:async()=>mode==='compact'?{name:'rticore_postal_lookup'}:null};
+  if(sql.includes('SELECT 1 AS present FROM rticore_postal_lookup'))return {first:async()=>({present:1})};
+  if(sql.includes('FROM rticore_postal_lookup WHERE postal_code=?'))
    return {bind(postal){return {first:async()=>postal==='40111'?{areas_json:JSON.stringify([area]),village_count:1}:null}}};
-  if(sql.includes('FROM india_postal_areas WHERE postal_code=?'))
+  if(sql.includes('FROM rticore_postal_areas WHERE postal_code=?'))
    return {bind(postal){return {all:async()=>({results:postal==='40111'?[area]:[]})}}};
   throw Error('Unexpected D1 SQL: '+sql);
  }};
@@ -54,17 +54,17 @@ test('legacy customer without postal reference is still editable',async()=>{
 });
 test('unverified reference fails closed before any query for address',async()=>{
  const db={prepare(sql){
-  if(sql.includes('india_postal_import_state'))return {first:async()=>null};
+  if(sql.includes('rticore_postal_import_state'))return {first:async()=>null};
   throw Error('Should not reach postal table while unverified');
  }};
  await assert.rejects(()=>canonicalPostalFields(db,{hq_postal:'40111',hq_village_code:area.region_code}),/belum siap/);
 });
 test('corrupt compact postal JSON cannot certify customer address',async()=>{
  const db={prepare(sql){
-  if(sql.includes('india_postal_import_state'))return {first:async()=>({source_version:'uat'})};
-  if(sql.includes('sqlite_master'))return {first:async()=>({name:'india_postal_lookup'})};
+  if(sql.includes('rticore_postal_import_state'))return {first:async()=>({source_version:'uat'})};
+  if(sql.includes('sqlite_master'))return {first:async()=>({name:'rticore_postal_lookup'})};
   if(sql.includes('SELECT 1 AS present'))return {first:async()=>({present:1})};
-  if(sql.includes('FROM india_postal_lookup'))return {bind(){return {first:async()=>({areas_json:JSON.stringify([{...area,postal_code:'99999'}]),village_count:1})}}};
+  if(sql.includes('FROM rticore_postal_lookup'))return {bind(){return {first:async()=>({areas_json:JSON.stringify([{...area,postal_code:'99999'}]),village_count:1})}}};
   throw Error('Unexpected query '+sql);
  }};
  await assert.rejects(()=>findPostalAreasByCode(db,'40111'),/tidak konsisten/);
@@ -78,14 +78,14 @@ test('suggestion input accepts postcode prefixes or searchable administrative na
 for(const mode of ['normalized','compact']){
  test(mode+': autocomplete returns unique canonical postal options by postcode and wilayah',async()=>{
   const db={prepare(sql){
-   if(sql.includes('india_postal_import_state'))return {first:async()=>({source_version:'uat'})};
-   if(sql.includes('sqlite_master'))return {first:async()=>mode==='compact'?{name:'india_postal_lookup'}:null};
-   if(sql.includes('SELECT 1 AS present FROM india_postal_lookup'))return {first:async()=>({present:1})};
-   if(sql.includes('FROM india_postal_lookup')){
+   if(sql.includes('rticore_postal_import_state'))return {first:async()=>({source_version:'uat'})};
+   if(sql.includes('sqlite_master'))return {first:async()=>mode==='compact'?{name:'rticore_postal_lookup'}:null};
+   if(sql.includes('SELECT 1 AS present FROM rticore_postal_lookup'))return {first:async()=>({present:1})};
+   if(sql.includes('FROM rticore_postal_lookup')){
     return {bind(param){return {all:async()=>({results:param==='401%'||param==='%Braga%'?
      [{postal_code:'40111',areas_json:JSON.stringify([area])}]:[]})}}};
    }
-   if(sql.includes('FROM india_postal_areas')){
+   if(sql.includes('FROM rticore_postal_areas')){
     return {bind(...params){return {all:async()=>({results:params[0]==='401%'||params[0]==='%Braga%'?
      [area,{...area,region_code:'other'}]:[]})}}};
    }
@@ -101,7 +101,7 @@ for(const mode of ['normalized','compact']){
 test('postcode suggestion search fails closed when reference not ready',async()=>{
  const {searchPostalSuggestions}=mod.exports;
  const db={prepare(sql){
-  if(sql.includes('india_postal_import_state'))return {first:async()=>null};
+  if(sql.includes('rticore_postal_import_state'))return {first:async()=>null};
   throw Error('Should not search unverified reference');
  }};
  await assert.rejects(()=>searchPostalSuggestions(db,'Braga'),/belum siap/);

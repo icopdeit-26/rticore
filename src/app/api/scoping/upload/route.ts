@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   }
   const origin = req.headers.get('origin');
   if ((origin && origin !== new URL(req.url).origin) ||
-      req.headers.get('x-india-document-upload') !== '1') {
+      req.headers.get('x-rticore-document-upload') !== '1') {
     return json({ success: false, message: 'Asal permintaan upload tidak diizinkan.' }, 403);
   }
   if (!(req.headers.get('content-type') || '').toLowerCase().startsWith('multipart/form-data')) {

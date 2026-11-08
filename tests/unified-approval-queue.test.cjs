@@ -48,14 +48,14 @@ test('role-specific queries exclude maker and are read-only',async()=>{
 test('reviewer sees only eligible D1 items and links to canonical module',async()=>{
  const sqls=[];
  authModule.authorizeBoQ=async()=>({ok:true,identity:{
-  role:'approver',email:'checker@example.test',db:{prepare:sql=>{sqls.push(sql);return {bind:(...args)=>({all:async()=>({success:true,results:sql.includes("FROM india_boq")?[{id:'boq-001',kind:'boq',opportunity_id:'opp-42',title:'BoQ · Q-42',created_by:'maker@example.test',created_at:'2026-10-24 01:00:00'}]:[]})})}}}
+  role:'approver',email:'checker@example.test',db:{prepare:sql=>{sqls.push(sql);return {bind:(...args)=>({all:async()=>({success:true,results:sql.includes("FROM rticore_boq")?[{id:'boq-001',kind:'boq',opportunity_id:'opp-42',title:'BoQ · Q-42',created_by:'maker@example.test',created_at:'2026-10-24 01:00:00'}]:[]})})}}}
  }});
  const r=await get({});
  assert.equal(r.status,200);
  assert.equal(r.body.items.length,1);
  assert.equal(r.body.items[0].href,'/boq?opportunity_id=opp-42');
- assert.ok(sqls.every(s=>s.includes('lower(')||s.includes('FROM india_billing')));
- assert.ok(sqls.some(s=>s.includes('FROM india_flexguard_wallets w')));
+ assert.ok(sqls.every(s=>s.includes('lower(')||s.includes('FROM rticore_billing')));
+ assert.ok(sqls.some(s=>s.includes('FROM rticore_flexguard_wallets w')));
 });
 test('approval browser loads real queue, never treats failures as zero pending',()=>{
  assert.match(ui,/fetch\('\/api\/sales\/identity'/);

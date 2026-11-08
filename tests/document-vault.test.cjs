@@ -9,10 +9,10 @@ async function scope(d){await expect(d.flow('scope','presales'),201);}
 test('upload encrypts original bytes; authenticated download is exact and audited',async()=>{const d=seed();try{
  await scope(d);const plain=Buffer.from('%PDF-1.7\nConfidential synthetic original document');
  const x=await expect(d.upload('proposal','sales',plain),201);
- const stored=d.sql.prepare('SELECT * FROM india_document_vault').get();assert.equal(stored.sha256,require('node:crypto').createHash('sha256').update(plain).digest('hex'));
- const cipher=d.sql.prepare('SELECT ciphertext FROM india_document_chunks').get().ciphertext;assert.ok(!Buffer.from(cipher,'base64').includes(plain));
+ const stored=d.sql.prepare('SELECT * FROM rticore_document_vault').get();assert.equal(stored.sha256,require('node:crypto').createHash('sha256').update(plain).digest('hex'));
+ const cipher=d.sql.prepare('SELECT ciphertext FROM rticore_document_chunks').get().ciphertext;assert.ok(!Buffer.from(cipher,'base64').includes(plain));
  const r=await get(d,x.body.id);assert.equal(r.status,200);assert.deepEqual(Buffer.from(await r.arrayBuffer()),plain);assert.match(r.headers.get('cache-control'),/no-store/);assert.match(r.headers.get('content-disposition'),/^attachment;/);assert.equal(r.headers.get('x-content-type-options'),'nosniff');
- assert.equal(d.sql.prepare("SELECT count(*) n FROM india_sales_audit WHERE action='DOCUMENT_DOWNLOADED'").get().n,1);
+ assert.equal(d.sql.prepare("SELECT count(*) n FROM rticore_sales_audit WHERE action='DOCUMENT_DOWNLOADED'").get().n,1);
 }finally{d.close();}});
 test('Sales B, Viewer and unauthenticated requests cannot upload or download Sales A originals',async()=>{const d=seed();try{
  await scope(d);const x=await expect(d.upload('proposal'),201);
@@ -29,7 +29,7 @@ test('empty, oversized, disguised files and unsafe names leave no stored origina
  await expect(d.upload('proposal','sales',Buffer.from('<html>untrusted</html>')),415);
  await expect(d.upload('proposal','sales',Buffer.from('%PDF-1.7'),{filename:'../secret.pdf'}),422);
  await expect(d.upload('proposal','sales',Buffer.alloc(8*1024*1024+1)),413);
- assert.equal(d.sql.prepare('SELECT count(*) n FROM india_document_vault').get().n,0);
+ assert.equal(d.sql.prepare('SELECT count(*) n FROM rticore_document_vault').get().n,0);
 }finally{d.close();}});
 test('DOCX upload checks archive structure and rejects renamed ZIPs',async()=>{const d=seed();try{
  await scope(d);const JSZip=require('jszip'),z=new JSZip();z.file('[Content_Types].xml','<Types/>');z.file('word/document.xml','<document/>');
@@ -38,41 +38,41 @@ test('DOCX upload checks archive structure and rejects renamed ZIPs',async()=>{c
 }finally{d.close();}});
 test('multi-chunk and maximum 8 MiB originals round-trip with exact bytes',async()=>{const d=seed();try{
  await scope(d);const bytes=Buffer.alloc(8*1024*1024,91);bytes.write('%PDF-1.7\n');
- const x=await expect(d.upload('proposal','sales',bytes),201);assert.equal(d.sql.prepare('SELECT chunk_count FROM india_document_vault').get().chunk_count,33);
+ const x=await expect(d.upload('proposal','sales',bytes),201);assert.equal(d.sql.prepare('SELECT chunk_count FROM rticore_document_vault').get().chunk_count,33);
  assert.deepEqual(Buffer.from(await(await get(d,x.body.id)).arrayBuffer()),bytes);
 }finally{d.close();}});
 test('missing encryption key fails closed before any document writes',async()=>{const d=seed();try{
- await scope(d);d.documentKey='';await expect(d.upload('proposal'),503);assert.equal(d.sql.prepare('SELECT count(*) n FROM india_document_vault').get().n,0);
+ await scope(d);d.documentKey='';await expect(d.upload('proposal'),503);assert.equal(d.sql.prepare('SELECT count(*) n FROM rticore_document_vault').get().n,0);
 }finally{d.close();}});
 test('late upload audit failure rolls back manifest and every encrypted chunk',async()=>{const d=seed();try{
- await scope(d);d.sql.exec("CREATE TRIGGER fail_document_audit BEFORE INSERT ON india_sales_audit WHEN NEW.action='DOCUMENT_UPLOADED' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
+ await scope(d);d.sql.exec("CREATE TRIGGER fail_document_audit BEFORE INSERT ON rticore_sales_audit WHEN NEW.action='DOCUMENT_UPLOADED' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
  await expect(d.upload('proposal','sales',Buffer.from('%PDF-1.7\n'+'A'.repeat(600000))),503);
- for(const table of ['india_document_vault','india_document_chunks','india_sales_tx_guards'])assert.equal(d.sql.prepare('SELECT count(*) n FROM '+table).get().n,0);
+ for(const table of ['rticore_document_vault','rticore_document_chunks','rticore_sales_tx_guards'])assert.equal(d.sql.prepare('SELECT count(*) n FROM '+table).get().n,0);
 }finally{d.close();}});
 test('original manifests and encrypted bytes are immutable',async()=>{const d=seed();try{
  await scope(d);await expect(d.upload('proposal'),201);
- for(const t of ['india_document_vault','india_document_chunks'])for(const op of ['DELETE FROM '+t,'UPDATE '+t+' SET '+(t.endsWith('chunks')?"ciphertext='AAAA'":"file_name='changed.pdf'")])assert.throws(()=>d.sql.exec(op),/immutable/);
+ for(const t of ['rticore_document_vault','rticore_document_chunks'])for(const op of ['DELETE FROM '+t,'UPDATE '+t+' SET '+(t.endsWith('chunks')?"ciphertext='AAAA'":"file_name='changed.pdf'")])assert.throws(()=>d.sql.exec(op),/immutable/);
  assert.deepEqual(d.sql.prepare('PRAGMA foreign_key_check').all(),[]);
 }finally{d.close();}});
 test('ciphertext corruption or key change yields no plaintext; evidence cannot be approved',async()=>{for(const mode of ['cipher','key']){const d=seed();try{
  await scope(d);const x=await expect(d.upload('proposal'),201);
- if(mode==='key')d.documentKey=Buffer.alloc(32,8).toString('base64');else{d.sql.exec('DROP TRIGGER india_document_chunks_update');d.sql.exec("UPDATE india_document_chunks SET ciphertext='AAAA'");}
+ if(mode==='key')d.documentKey=Buffer.alloc(32,8).toString('base64');else{d.sql.exec('DROP TRIGGER rticore_document_chunks_update');d.sql.exec("UPDATE rticore_document_chunks SET ciphertext='AAAA'");}
  const r=await get(d,x.body.id);assert.equal(r.status,503);assert.equal((await r.json()).success,false);
  await expect(d.flow('propose','sales',{proposal_reference:x.body.reference,proposal_sha256:x.body.sha256}),503);
  assert.equal(d.release().status,'scoped');
 }finally{d.close();}}});
 test('a failed download audit prevents plaintext response',async()=>{const d=seed();try{
- await scope(d);const x=await expect(d.upload('proposal'),201);d.sql.exec("CREATE TRIGGER fail_download_audit BEFORE INSERT ON india_sales_audit WHEN NEW.action='DOCUMENT_DOWNLOADED' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
+ await scope(d);const x=await expect(d.upload('proposal'),201);d.sql.exec("CREATE TRIGGER fail_download_audit BEFORE INSERT ON rticore_sales_audit WHEN NEW.action='DOCUMENT_DOWNLOADED' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END");
  assert.equal((await get(d,x.body.id)).status,503);
 }finally{d.close();}});
 test('invented archive references and incorrect digest cannot propose or bypass the DB gate',async()=>{const d=seed();try{
  await scope(d);await expect(d.flow('propose','sales',{proposal_reference:'archive/not-stored',proposal_sha256:'a'.repeat(64)}),422);
  const x=await expect(d.upload('proposal'),201);await expect(d.flow('propose','sales',{proposal_reference:x.body.reference,proposal_sha256:'a'.repeat(64)}),422);
- assert.throws(()=>d.sql.exec("UPDATE india_sales_releases SET status='proposed',proposed_by='qa',proposal_reference='archive/fake',proposal_sha256='"+'a'.repeat(64)+"',boq_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',boq_version=1,boq_edit_seq=1"),/stored original/);
+ assert.throws(()=>d.sql.exec("UPDATE rticore_sales_releases SET status='proposed',proposed_by='qa',proposal_reference='archive/fake',proposal_sha256='"+'a'.repeat(64)+"',boq_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',boq_version=1,boq_edit_seq=1"),/stored original/);
 }finally{d.close();}});
 test('stale release uploads cannot commit after a concurrent scope change',async()=>{const d=seed();try{
- await scope(d);d.beforeBatch=()=>d.sql.prepare("UPDATE india_sales_opportunities SET data_json=json_set(data_json,'$.technical_scope','Concurrent scope') WHERE id='opp-qa'").run();
- await expect(d.upload('proposal'),409);assert.equal(d.sql.prepare('SELECT count(*) n FROM india_document_vault').get().n,0);
+ await scope(d);d.beforeBatch=()=>d.sql.prepare("UPDATE rticore_sales_opportunities SET data_json=json_set(data_json,'$.technical_scope','Concurrent scope') WHERE id='opp-qa'").run();
+ await expect(d.upload('proposal'),409);assert.equal(d.sql.prepare('SELECT count(*) n FROM rticore_document_vault').get().n,0);
 }finally{d.close();}});
 test('revised offers retain downloadable originals but cannot reuse their approval evidence',async()=>{const d=seed();try{
  await scope(d);const proof=await d.proof('proposal');const id=proof.proposal_reference.slice(6);
@@ -91,23 +91,23 @@ test('migration 0015 has full DDL/DML rollback and preserves legacy release hist
  // An existing scoped legacy release must be preserved and superseded, with a revalidation audit.
  await expect(d.flow('scope','presales'),201);const old=d.release().id;
  const migration=fs.readFileSync(path.join(__dirname,'../migrations/0015_secure_document_vault.sql'),'utf8');
- d.sql.exec('BEGIN');assert.throws(()=>d.sql.exec(migration+"INSERT INTO india_sales_tx_guards(id,ok) VALUES('injected',0);"),/CHECK/);d.sql.exec('ROLLBACK');
- assert.equal(d.release().id,old);assert.equal(d.sql.prepare("SELECT count(*) n FROM sqlite_master WHERE name='india_document_vault'").get().n,0);
- d.sql.exec(migration);assert.equal(d.release(),undefined);assert.equal(d.sql.prepare('SELECT status FROM india_sales_releases WHERE id=?').get(old).status,'superseded');assert.equal(d.deal().stage,'solution_design');
- assert.ok(d.sql.prepare("SELECT * FROM india_sales_audit WHERE action='DOCUMENT_REVALIDATION_REQUIRED'").get());assert.deepEqual(d.sql.prepare('PRAGMA foreign_key_check').all(),[]);
+ d.sql.exec('BEGIN');assert.throws(()=>d.sql.exec(migration+"INSERT INTO rticore_sales_tx_guards(id,ok) VALUES('injected',0);"),/CHECK/);d.sql.exec('ROLLBACK');
+ assert.equal(d.release().id,old);assert.equal(d.sql.prepare("SELECT count(*) n FROM sqlite_master WHERE name='rticore_document_vault'").get().n,0);
+ d.sql.exec(migration);assert.equal(d.release(),undefined);assert.equal(d.sql.prepare('SELECT status FROM rticore_sales_releases WHERE id=?').get(old).status,'superseded');assert.equal(d.deal().stage,'solution_design');
+ assert.ok(d.sql.prepare("SELECT * FROM rticore_sales_audit WHERE action='DOCUMENT_REVALIDATION_REQUIRED'").get());assert.deepEqual(d.sql.prepare('PRAGMA foreign_key_check').all(),[]);
 }finally{d.close();}});
 
 test('final Won reauthenticates each accepted original and refuses ciphertext corruption after review',async()=>{
  for(const kind of ['proposal','submission','negotiation','po']){
   const d=seed();try{
    await d.awarded();await expect(d.call('sales','POST','finance',{entity:'verify_po',id:'opp-qa',confirmed_documents:true}),200);
-   const doc=d.sql.prepare('SELECT id FROM india_document_vault WHERE kind=?').get(kind);
-   d.sql.exec('DROP TRIGGER india_document_chunks_update');
-   d.sql.prepare("UPDATE india_document_chunks SET ciphertext='AAAA' WHERE document_id=?").run(doc.id);
-   const before=d.sql.prepare("SELECT count(*) n FROM india_sales_audit WHERE action='STAGE'").get().n;
+   const doc=d.sql.prepare('SELECT id FROM rticore_document_vault WHERE kind=?').get(kind);
+   d.sql.exec('DROP TRIGGER rticore_document_chunks_update');
+   d.sql.prepare("UPDATE rticore_document_chunks SET ciphertext='AAAA' WHERE document_id=?").run(doc.id);
+   const before=d.sql.prepare("SELECT count(*) n FROM rticore_sales_audit WHERE action='STAGE'").get().n;
    await expect(d.stage('closed_won'),503);
    assert.equal(d.deal().stage,'pending_po');
-   assert.equal(d.sql.prepare("SELECT count(*) n FROM india_sales_audit WHERE action='STAGE'").get().n,before);
+   assert.equal(d.sql.prepare("SELECT count(*) n FROM rticore_sales_audit WHERE action='STAGE'").get().n,before);
   }finally{d.close();}
  }
 });

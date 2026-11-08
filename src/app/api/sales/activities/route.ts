@@ -10,10 +10,10 @@ const str=(v:unknown,max=200)=>typeof v==='string'?v.trim().slice(0,max+1):'';
 const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const types=['visit','call','meeting','follow_up'];
 type Task={id:string;tenant_id:string;lead_id:string|null;opportunity_id:string|null;owner_email:string;kind:string;status:string;revision:number;start_at:string;due_at:string;reminder_at:string;subject:string};
-async function member(db:D1DB,email:string){return db.prepare('SELECT role,active FROM india_members WHERE email=?').bind(email).first<{role:string;active:number}>();}
+async function member(db:D1DB,email:string){return db.prepare('SELECT role,active FROM rticore_members WHERE email=?').bind(email).first<{role:string;active:number}>();}
 async function target(db:D1DB,kind:string,id:string){
- if(kind==='lead')return db.prepare('SELECT id,assigned_sales_email AS owner_email,status FROM india_marketing_leads WHERE tenant_id=? AND id=?').bind(TENANT,id).first<{id:string;owner_email:string;status:string}>();
- return db.prepare('SELECT id,created_by AS owner_email,stage AS status FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<{id:string;owner_email:string;status:string}>();
+ if(kind==='lead')return db.prepare('SELECT id,assigned_sales_email AS owner_email,status FROM rticore_marketing_leads WHERE tenant_id=? AND id=?').bind(TENANT,id).first<{id:string;owner_email:string;status:string}>();
+ return db.prepare('SELECT id,created_by AS owner_email,stage AS status FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<{id:string;owner_email:string;status:string}>();
 }
 const date=(v:unknown)=>{if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(v))return null;
  const d=new Date(v);return Number.isFinite(d.getTime())?d:null;};
@@ -30,27 +30,27 @@ export async function GET(req:Request){
   const bind=[TENANT,...(selected?[selected]:[])];
   const [tasks,events,legacyLeads,legacyDeals,alerts,slas,owners,managers]=await Promise.all([
    db.prepare(`SELECT t.*,coalesce(l.account_name,a.legal_name,'') AS customer_name,coalesce(l.lead_number,o.title,'') AS target_name
-    FROM india_sales_activity_tasks t LEFT JOIN india_marketing_leads l ON l.id=t.lead_id AND l.tenant_id=t.tenant_id
-    LEFT JOIN india_sales_opportunities o ON o.id=t.opportunity_id AND o.tenant_id=t.tenant_id
-    LEFT JOIN india_sales_accounts a ON a.id=o.company_id AND a.tenant_id=t.tenant_id
+    FROM rticore_sales_activity_tasks t LEFT JOIN rticore_marketing_leads l ON l.id=t.lead_id AND l.tenant_id=t.tenant_id
+    LEFT JOIN rticore_sales_opportunities o ON o.id=t.opportunity_id AND o.tenant_id=t.tenant_id
+    LEFT JOIN rticore_sales_accounts a ON a.id=o.company_id AND a.tenant_id=t.tenant_id
     WHERE ${where} ORDER BY t.due_at ASC LIMIT 500`).bind(...bind).all(),
-   db.prepare(`SELECT e.*,t.subject,t.owner_email,t.lead_id,t.opportunity_id FROM india_sales_activity_events e
-    JOIN india_sales_activity_tasks t ON t.id=e.task_id WHERE ${where} ORDER BY e.at DESC,e.rowid DESC LIMIT 250`).bind(...bind).all(),
+   db.prepare(`SELECT e.*,t.subject,t.owner_email,t.lead_id,t.opportunity_id FROM rticore_sales_activity_events e
+    JOIN rticore_sales_activity_tasks t ON t.id=e.task_id WHERE ${where} ORDER BY e.at DESC,e.rowid DESC LIMIT 250`).bind(...bind).all(),
    db.prepare(`SELECT 'lead:'||a.id AS id,a.id AS task_id,'legacy_'||a.kind AS action,a.created_by AS actor_email,
     a.summary AS detail,a.created_at AS at,l.account_name AS subject,l.assigned_sales_email AS owner_email
-    FROM india_marketing_activities a JOIN india_marketing_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id
+    FROM rticore_marketing_activities a JOIN rticore_marketing_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id
     WHERE a.tenant_id=? ${selected?'AND l.assigned_sales_email=?':''} ORDER BY a.created_at DESC LIMIT 150`).bind(...bind).all<{id:string;task_id:string;action:string;actor_email:string;detail:string;at:string;subject:string;owner_email:string}>(),
    db.prepare(`SELECT 'opportunity:'||a.id AS id,a.id AS task_id,'legacy_'||a.kind AS action,a.created_by AS actor_email,
     a.detail AS detail,a.created_at AS at,a.subject AS subject,o.created_by AS owner_email
-    FROM india_sales_activities a JOIN india_sales_opportunities o ON o.id=a.opportunity_id AND o.tenant_id=a.tenant_id
+    FROM rticore_sales_activities a JOIN rticore_sales_opportunities o ON o.id=a.opportunity_id AND o.tenant_id=a.tenant_id
     WHERE a.tenant_id=? ${selected?'AND o.created_by=?':''} ORDER BY a.created_at DESC LIMIT 150`).bind(...bind).all<{id:string;task_id:string;action:string;actor_email:string;detail:string;at:string;subject:string;owner_email:string}>(),
-   db.prepare('SELECT * FROM india_sales_activity_alerts WHERE tenant_id=? AND recipient_email=? ORDER BY created_at DESC LIMIT 100').bind(TENANT,email).all(),
-   db.prepare(`SELECT s.*,l.account_name,l.lead_number,l.status AS lead_status FROM india_sales_lead_sla s
-    JOIN india_marketing_leads l ON l.id=s.lead_id AND l.tenant_id=s.tenant_id
+   db.prepare('SELECT * FROM rticore_sales_activity_alerts WHERE tenant_id=? AND recipient_email=? ORDER BY created_at DESC LIMIT 100').bind(TENANT,email).all(),
+   db.prepare(`SELECT s.*,l.account_name,l.lead_number,l.status AS lead_status FROM rticore_sales_lead_sla s
+    JOIN rticore_marketing_leads l ON l.id=s.lead_id AND l.tenant_id=s.tenant_id
     WHERE s.tenant_id=? ${selected?'AND s.owner_email=?':''} AND l.status NOT IN ('converted','disqualified')
     ORDER BY s.response_due_at ASC LIMIT 250`).bind(...bind).all(),
-   db.prepare("SELECT email,role FROM india_members WHERE active=1 AND role IN ('sales','admin') ORDER BY email").all(),
-   db.prepare('SELECT sales_email,manager_email FROM india_sales_team_managers WHERE tenant_id=?').bind(TENANT).all<{sales_email:string;manager_email:string}>()
+   db.prepare("SELECT email,role FROM rticore_members WHERE active=1 AND role IN ('sales','admin') ORDER BY email").all(),
+   db.prepare('SELECT sales_email,manager_email FROM rticore_sales_team_managers WHERE tenant_id=?').bind(TENANT).all<{sales_email:string;manager_email:string}>()
   ]);
   const utc=(t:string)=>Date.parse(/^\d{4}-\d{2}-\d{2} /.test(t)?t.replace(' ','T')+'Z':t)||0;
   const timeline=[...events.results,...legacyLeads.results,...legacyDeals.results].sort((a,b)=>utc(String(b.at))-utc(String(a.at))).slice(0,250);
@@ -75,8 +75,8 @@ export async function POST(req:Request){
    const [s,m]=await Promise.all([member(db,sales),member(db,manager)]);
    if(!s||s.role!=='sales'||s.active!==1||!m||m.role!=='admin'||m.active!==1)return error('Sales harus aktif dan Manager harus anggota aktif dengan role Admin',422);
    await db.batch([
-    db.prepare('INSERT INTO india_sales_team_managers(tenant_id,sales_email,manager_email,assigned_by) VALUES (?,?,?,?) ON CONFLICT(tenant_id,sales_email) DO UPDATE SET manager_email=excluded.manager_email,assigned_by=excluded.assigned_by,assigned_at=CURRENT_TIMESTAMP').bind(TENANT,sales,manager,email),
-    db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO rticore_sales_team_managers(tenant_id,sales_email,manager_email,assigned_by) VALUES (?,?,?,?) ON CONFLICT(tenant_id,sales_email) DO UPDATE SET manager_email=excluded.manager_email,assigned_by=excluded.assigned_by,assigned_at=CURRENT_TIMESTAMP').bind(TENANT,sales,manager,email),
+    db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
      .bind(crypto.randomUUID(),TENANT,'activity_manager',sales,'ASSIGN_MANAGER',email,'Escalation owner '+manager)
    ]);
    return reply({success:true,sales_email:sales,manager_email:manager});
@@ -94,16 +94,16 @@ export async function POST(req:Request){
   if(role==='sales'&&t.owner_email.toLowerCase()!==email)return error('Target bukan milik Sales ini',403);
   const assignee=await member(db,t.owner_email);
   if(!assignee||assignee.active!==1||!['admin','sales'].includes(assignee.role))return error('Sales penanggung jawab tidak aktif',409);
-  const policy=await db.prepare('SELECT reminder_minutes FROM india_sales_activity_policy WHERE tenant_id=?').bind(TENANT).first<{reminder_minutes:number}>();
+  const policy=await db.prepare('SELECT reminder_minutes FROM rticore_sales_activity_policy WHERE tenant_id=?').bind(TENANT).first<{reminder_minutes:number}>();
   const reminder=new Date(start.getTime()-(policy?.reminder_minutes??30)*60000).toISOString();
   const id=crypto.randomUUID(),ev=crypto.randomUUID(),audit=crypto.randomUUID();
   await atomicSales(db,
-   scope==='lead'?"EXISTS(SELECT 1 FROM india_marketing_leads WHERE tenant_id=? AND id=? AND assigned_sales_email=? AND status NOT IN ('converted','disqualified'))":"EXISTS(SELECT 1 FROM india_sales_opportunities WHERE tenant_id=? AND id=? AND created_by=? AND stage NOT IN ('closed_won','closed_lost'))",
+   scope==='lead'?"EXISTS(SELECT 1 FROM rticore_marketing_leads WHERE tenant_id=? AND id=? AND assigned_sales_email=? AND status NOT IN ('converted','disqualified'))":"EXISTS(SELECT 1 FROM rticore_sales_opportunities WHERE tenant_id=? AND id=? AND created_by=? AND stage NOT IN ('closed_won','closed_lost'))",
    [TENANT,targetId,t.owner_email],[
-   db.prepare('INSERT INTO india_sales_activity_tasks(id,tenant_id,lead_id,opportunity_id,owner_email,kind,subject,detail,start_at,due_at,reminder_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+   db.prepare('INSERT INTO rticore_sales_activity_tasks(id,tenant_id,lead_id,opportunity_id,owner_email,kind,subject,detail,start_at,due_at,reminder_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id,TENANT,scope==='lead'?targetId:null,scope==='opportunity'?targetId:null,t.owner_email,kind,subject,detail,start.toISOString(),due.toISOString(),reminder,email),
-   db.prepare('INSERT INTO india_sales_activity_events(id,tenant_id,task_id,action,actor_email,detail) VALUES (?,?,?,?,?,?)').bind(ev,TENANT,id,'scheduled',email,subject),
-   db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+   db.prepare('INSERT INTO rticore_sales_activity_events(id,tenant_id,task_id,action,actor_email,detail) VALUES (?,?,?,?,?,?)').bind(ev,TENANT,id,'scheduled',email,subject),
+   db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
     .bind(audit,TENANT,scope==='lead'?'lead':'deal',targetId,'ACTIVITY_SCHEDULED',email,kind+' '+subject)
   ]);
   return reply({success:true,id},201);
@@ -120,13 +120,13 @@ export async function PATCH(req:Request){
  try{
   if(p.action==='read_alert'){
    const key=str(p.alert_key,160);if(key.length<4||key.length>160)return error('ID alert tidak valid',422);
-   await db.prepare('UPDATE india_sales_activity_alerts SET read_at=coalesce(read_at,CURRENT_TIMESTAMP) WHERE alert_key=? AND tenant_id=? AND recipient_email=?')
+   await db.prepare('UPDATE rticore_sales_activity_alerts SET read_at=coalesce(read_at,CURRENT_TIMESTAMP) WHERE alert_key=? AND tenant_id=? AND recipient_email=?')
     .bind(key,TENANT,email).run();
    return reply({success:true});
   }
   const action=str(p.action,30),id=str(p.id,80);
   if(!['complete','cancel','reschedule'].includes(action)||!safeID(id)||!Number.isSafeInteger(p.revision))return error('Aksi, ID atau revisi tidak valid',422);
-  const task=await db.prepare('SELECT * FROM india_sales_activity_tasks WHERE tenant_id=? AND id=?').bind(TENANT,id).first<Task>();
+  const task=await db.prepare('SELECT * FROM rticore_sales_activity_tasks WHERE tenant_id=? AND id=?').bind(TENANT,id).first<Task>();
   if(!task)return error('Aktivitas tidak ditemukan',404);
   if(role==='sales'&&task.owner_email.toLowerCase()!==email)return error('Hanya owner boleh mengubah jadwal',403);
   if(task.status!=='planned'||task.revision!==p.revision)return error('Jadwal berubah atau telah ditutup; refresh',409);
@@ -136,24 +136,24 @@ export async function PATCH(req:Request){
   if(action==='reschedule'){
    const start=date(p.start_at),due=date(p.due_at);
    if(!start||!due||start.getTime()<now.getTime()-86400000||due.getTime()<now.getTime()-60000||due<start||due.getTime()>now.getTime()+366*86400000)return error('Jadwal pengganti tidak valid',422);
-   const policy=await db.prepare('SELECT reminder_minutes FROM india_sales_activity_policy WHERE tenant_id=?').bind(TENANT).first<{reminder_minutes:number}>();
+   const policy=await db.prepare('SELECT reminder_minutes FROM rticore_sales_activity_policy WHERE tenant_id=?').bind(TENANT).first<{reminder_minutes:number}>();
    const remind=new Date(start.getTime()-(policy?.reminder_minutes??30)*60000).toISOString();
-   writes.push(db.prepare("UPDATE india_sales_activity_tasks SET start_at=?,due_at=?,reminder_at=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status='planned' AND revision=?")
+   writes.push(db.prepare("UPDATE rticore_sales_activity_tasks SET start_at=?,due_at=?,reminder_at=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status='planned' AND revision=?")
     .bind(start.toISOString(),due.toISOString(),remind,id,TENANT,task.revision));
   }else{
-   writes.push(db.prepare("UPDATE india_sales_activity_tasks SET status=?,outcome=?,completed_at=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status='planned' AND revision=?")
+   writes.push(db.prepare("UPDATE rticore_sales_activity_tasks SET status=?,outcome=?,completed_at=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND status='planned' AND revision=?")
     .bind(action==='complete'?'completed':'cancelled',details,action==='complete'?now.toISOString():null,id,TENANT,task.revision));
   }
   if(action==='complete'&&task.lead_id&&['call','visit','meeting'].includes(task.kind)){
    // A manually completed customer contact is the first verified SLA response; notes/follow-up do not count.
-   writes.push(db.prepare('UPDATE india_sales_lead_sla SET first_response_at=coalesce(first_response_at,?) WHERE tenant_id=? AND lead_id=? AND first_response_at IS NULL')
+   writes.push(db.prepare('UPDATE rticore_sales_lead_sla SET first_response_at=coalesce(first_response_at,?) WHERE tenant_id=? AND lead_id=? AND first_response_at IS NULL')
     .bind(now.toISOString(),TENANT,task.lead_id));
   }
-  writes.push(db.prepare('INSERT INTO india_sales_activity_events(id,tenant_id,task_id,action,actor_email,detail) VALUES (?,?,?,?,?,?)')
+  writes.push(db.prepare('INSERT INTO rticore_sales_activity_events(id,tenant_id,task_id,action,actor_email,detail) VALUES (?,?,?,?,?,?)')
    .bind(crypto.randomUUID(),TENANT,id,action==='complete'?'completed':action==='cancel'?'cancelled':'rescheduled',email,details||'Jadwal diperbarui'));
-  writes.push(db.prepare('INSERT INTO india_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
+  writes.push(db.prepare('INSERT INTO rticore_sales_audit(id,tenant_id,entity_type,entity_id,action,actor_email,summary) VALUES (?,?,?,?,?,?,?)')
    .bind(crypto.randomUUID(),TENANT,task.lead_id?'lead':'deal',task.lead_id||task.opportunity_id,'ACTIVITY_'+action.toUpperCase(),email,details.slice(0,300)));
-  await atomicSales(db,'EXISTS(SELECT 1 FROM india_sales_activity_tasks WHERE id=? AND tenant_id=? AND revision=? AND status=?)',[id,TENANT,task.revision,'planned'],writes);
+  await atomicSales(db,'EXISTS(SELECT 1 FROM rticore_sales_activity_tasks WHERE id=? AND tenant_id=? AND revision=? AND status=?)',[id,TENANT,task.revision,'planned'],writes);
   return reply({success:true,id,revision:task.revision+1});
  }catch(e){const x=activityError(e);return error(x.message,x.status);}
 }

@@ -1,6 +1,6 @@
--- INDIA 0024: additive Sales targets for the Executive D1 dashboard.
+-- RTICORE 0024: additive Sales targets for the Executive D1 dashboard.
 -- No seeded targets; historical attainment remains undefined until Admin records a target.
-CREATE TABLE india_sales_targets (
+CREATE TABLE rticore_sales_targets (
  tenant_id TEXT NOT NULL,
  period TEXT NOT NULL CHECK(length(period)=7 AND period GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
  owner_email TEXT NOT NULL COLLATE NOCASE,
@@ -10,10 +10,10 @@ CREATE TABLE india_sales_targets (
  updated_by TEXT NOT NULL COLLATE NOCASE,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY(tenant_id,period,owner_email),
- FOREIGN KEY(owner_email) REFERENCES india_members(email)
+ FOREIGN KEY(owner_email) REFERENCES rticore_members(email)
 );
-CREATE INDEX idx_india_sales_targets_owner ON india_sales_targets(tenant_id,owner_email,period);
-CREATE TABLE india_sales_target_events (
+CREATE INDEX idx_rticore_sales_targets_owner ON rticore_sales_targets(tenant_id,owner_email,period);
+CREATE TABLE rticore_sales_target_events (
  id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
  period TEXT NOT NULL,
@@ -24,12 +24,12 @@ CREATE TABLE india_sales_target_events (
  actor_email TEXT NOT NULL COLLATE NOCASE,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  UNIQUE(tenant_id,period,owner_email,version),
- FOREIGN KEY(tenant_id,period,owner_email) REFERENCES india_sales_targets(tenant_id,period,owner_email)
+ FOREIGN KEY(tenant_id,period,owner_email) REFERENCES rticore_sales_targets(tenant_id,period,owner_email)
 );
-CREATE TRIGGER india_targets_events_immutable_update BEFORE UPDATE ON india_sales_target_events
+CREATE TRIGGER rticore_targets_events_immutable_update BEFORE UPDATE ON rticore_sales_target_events
 BEGIN SELECT RAISE(ABORT,'TARGET_EVENT_IMMUTABLE'); END;
-CREATE TRIGGER india_targets_events_immutable_delete BEFORE DELETE ON india_sales_target_events
+CREATE TRIGGER rticore_targets_events_immutable_delete BEFORE DELETE ON rticore_sales_target_events
 BEGIN SELECT RAISE(ABORT,'TARGET_EVENT_IMMUTABLE'); END;
-INSERT OR IGNORE INTO india_schema_file_manifest(path,source_branch)
+INSERT OR IGNORE INTO rticore_schema_file_manifest(path,source_branch)
 VALUES('migrations/0024_executive_sales_targets.sql','executive-sales-dashboard');
-INSERT INTO india_schema_migrations(version) VALUES(24);
+INSERT INTO rticore_schema_migrations(version) VALUES(24);

@@ -1,19 +1,19 @@
-import { getCloudflareContext } from '@opennextjs/cloudflare';
+import {getRuntimeEnv} from '@/lib/runtime-env';
 import type { D1DB } from './boq-auth';
 import type { AIConversationRequest, AIConversationTurn } from './ai-conversation';
 import { AI_PROVIDERS, type ProviderId, type AIProviderRow, type AIProviderPublic,
   publicProvider, isProviderId } from './ai-provider-registry';
 
-type AIEnv = { INDIA_AI_ENCRYPTION_KEY?: string };
+type AIEnv = { RTICORE_AI_ENCRYPTION_KEY?: string };
 const utf8=new TextEncoder();
 const decode=new TextDecoder();
 
 export async function encryptionKey():Promise<CryptoKey>{
  let env:AIEnv;
- try {env=(await getCloudflareContext({async:true})).env as AIEnv;}
+ try {env=(await getRuntimeEnv<AIEnv>());}
  catch {throw new Error('Secret enkripsi Cloudflare belum tersedia.');}
- const configured=env.INDIA_AI_ENCRYPTION_KEY;
- if(!configured)throw new Error('Secret INDIA_AI_ENCRYPTION_KEY belum dikonfigurasi di Worker.');
+ const configured=env.RTICORE_AI_ENCRYPTION_KEY;
+ if(!configured)throw new Error('Secret RTICORE_AI_ENCRYPTION_KEY belum dikonfigurasi di Worker.');
  let bytes:Uint8Array;
  try {bytes=Uint8Array.from(atob(configured),c=>c.charCodeAt(0));}
  catch {throw new Error('Konfigurasi enkripsi tidak valid.');}
@@ -28,7 +28,7 @@ const unbase64=(s:string)=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 export async function encryptProviderKey(id:ProviderId,plain:string):Promise<{iv:string;ciphertext:string}> {
  const key=await encryptionKey();
  const iv=crypto.getRandomValues(new Uint8Array(12));
- const raw=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:utf8.encode('INDIA-AI:'+id)},
+ const raw=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:utf8.encode('RTICORE-AI:'+id)},
   key,utf8.encode(plain));
  return {iv:base64(iv),ciphertext:base64(new Uint8Array(raw))};
 }
@@ -37,16 +37,16 @@ export async function decryptProviderKey(row:AIProviderRow):Promise<string>{
  const key=await encryptionKey();
  try {
   const bytes=await crypto.subtle.decrypt({name:'AES-GCM',iv:unbase64(row.key_iv),
-   additionalData:utf8.encode('INDIA-AI:'+row.provider_id)},key,unbase64(row.key_ciphertext));
+   additionalData:utf8.encode('RTICORE-AI:'+row.provider_id)},key,unbase64(row.key_ciphertext));
   return decode.decode(bytes);
  }catch {throw new Error('Tidak dapat mendekripsi API key. Periksa secret enkripsi.');}
 }
 export async function getProviderRows(db:D1DB):Promise<AIProviderRow[]>{
- const r=await db.prepare('SELECT provider_id,model,priority,enabled,key_iv,key_ciphertext,tested_at,tested_ok,updated_at FROM india_ai_providers ORDER BY priority ASC').all<AIProviderRow>();
+ const r=await db.prepare('SELECT provider_id,model,priority,enabled,key_iv,key_ciphertext,tested_at,tested_ok,updated_at FROM rticore_ai_providers ORDER BY priority ASC').all<AIProviderRow>();
  return r.results;
 }
 export async function readProvider(db:D1DB,id:ProviderId):Promise<AIProviderRow|null>{
- return db.prepare('SELECT provider_id,model,priority,enabled,key_iv,key_ciphertext,tested_at,tested_ok,updated_at FROM india_ai_providers WHERE provider_id=?').bind(id).first<AIProviderRow>();
+ return db.prepare('SELECT provider_id,model,priority,enabled,key_iv,key_ciphertext,tested_at,tested_ok,updated_at FROM rticore_ai_providers WHERE provider_id=?').bind(id).first<AIProviderRow>();
 }
 export async function listProviders(db:D1DB):Promise<AIProviderPublic[]>{
  const all=await getProviderRows(db);
@@ -54,7 +54,7 @@ export async function listProviders(db:D1DB):Promise<AIProviderPublic[]>{
   .sort((a,b)=>a.priority-b.priority);
 }
 export async function auditConfig(db:D1DB,email:string,id:ProviderId,action:string):Promise<void>{
- await db.prepare('INSERT INTO india_ai_config_audit(actor_email,provider_id,action) VALUES(?,?,?)')
+ await db.prepare('INSERT INTO rticore_ai_config_audit(actor_email,provider_id,action) VALUES(?,?,?)')
   .bind(email,id,action).run();
 }
 

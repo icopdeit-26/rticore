@@ -14,18 +14,18 @@ export const financeRole=(role:string)=>['admin','finance'].includes(role);
 export const cents=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e13&&Math.abs(v*100-Math.round(v*100))<0.001?Math.round(v*100):null;
 export const daysBetween=(a:string,b:string)=>Math.floor((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000);
 export async function accessibleDeal(a:BoQIdentity,id:string){
- const d=await a.db.prepare('SELECT * FROM india_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
+ const d=await a.db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
  check(d,'Opportunity tidak ditemukan',404);check(canReadDeal(a.role,a.email,d.created_by),'Akses Opportunity ditolak',403);return d;
 }
-export const getProject=(db:D1DB,id:string)=>db.prepare('SELECT * FROM india_delivery_projects WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first<Project>();
+export const getProject=(db:D1DB,id:string)=>db.prepare('SELECT * FROM rticore_delivery_projects WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first<Project>();
 /** Supporting originals reuse the encrypted Vault; arbitrary references are never accepted as BAST/invoice/payment proof. */
 export async function supportingOriginal(db:D1DB,id:string,opportunity:string){
- const doc=await db.prepare("SELECT *,'' AS release_id FROM india_document_library WHERE tenant_id=? AND id=? AND opportunity_id=? AND kind='supporting' AND (retention_until IS NULL OR retention_until>=? OR legal_hold=1)").bind(TENANT,id,opportunity,jakartaDate()).first<VaultDoc>();
+ const doc=await db.prepare("SELECT *,'' AS release_id FROM rticore_document_library WHERE tenant_id=? AND id=? AND opportunity_id=? AND kind='supporting' AND (retention_until IS NULL OR retention_until>=? OR legal_hold=1)").bind(TENANT,id,opportunity,jakartaDate()).first<VaultDoc>();
  check(doc,'Dokumen supporting asli pada Vault Opportunity yang sama wajib',409);await openDocument(db,doc,'library');return doc;
 }
 export async function projectWrite(a:BoQIdentity,d:FlowDeal,p:Project,expected:unknown,action:string,data:unknown,writes:ReturnType<D1DB['prepare']>[]){
  check(expected===p.version,'Versi proyek berubah; muat ulang',409);
- await atomicSales(a.db,"EXISTS(SELECT 1 FROM india_delivery_projects p JOIN india_sales_opportunities d ON d.id=p.opportunity_id AND d.tenant_id=p.tenant_id WHERE p.id=? AND p.tenant_id=? AND p.version=? AND d.stage='closed_won' AND d.flow_version=?)",[p.id,TENANT,p.version,d.flow_version],[...writes,a.db.prepare('UPDATE india_delivery_projects SET version=version+1 WHERE tenant_id=? AND id=?').bind(TENANT,p.id),operationEvent(a.db,'delivery',p.id,action,a.email,data)]);
+ await atomicSales(a.db,"EXISTS(SELECT 1 FROM rticore_delivery_projects p JOIN rticore_sales_opportunities d ON d.id=p.opportunity_id AND d.tenant_id=p.tenant_id WHERE p.id=? AND p.tenant_id=? AND p.version=? AND d.stage='closed_won' AND d.flow_version=?)",[p.id,TENANT,p.version,d.flow_version],[...writes,a.db.prepare('UPDATE rticore_delivery_projects SET version=version+1 WHERE tenant_id=? AND id=?').bind(TENANT,p.id),operationEvent(a.db,'delivery',p.id,action,a.email,data)]);
 }
 export function publicProject(p:Project,role:string){
  const {budget_json,baseline_json,...out}=p;const baseline=JSON.parse(baseline_json) as Record<string,unknown>;

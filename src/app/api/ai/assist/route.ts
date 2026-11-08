@@ -54,7 +54,7 @@ export async function POST(req:Request){
    content=await invokeAI(row.provider_id,row.model,await decryptProviderKey(row),instruction);
    modelUsed=row.model;providerId=row.provider_id;
   }
-  await db.prepare('INSERT INTO india_sales_ai_audit(id,tenant_id,opportunity_id,purpose,provider_id,model,actor_email) VALUES (?,?,?,?,?,?,?)')
+  await db.prepare('INSERT INTO rticore_sales_ai_audit(id,tenant_id,opportunity_id,purpose,provider_id,model,actor_email) VALUES (?,?,?,?,?,?,?)')
    .bind(crypto.randomUUID(),TENANT,null,String(purpose),providerId,modelUsed,email).run();
   return json({success:true,content,providerUsed:providerId,modelUsed,requiresReview:true});
  }catch{return json({success:false,message:'AI gagal diproses. Cek provider, saldo, jaringan, dan secret enkripsi. Data tidak dimasukkan otomatis ke dokumen.'},503);}

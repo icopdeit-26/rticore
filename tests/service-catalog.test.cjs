@@ -4,7 +4,7 @@ const {Harness,users,expect}=require('./helpers/sales-flow-harness.cjs');
 test('each catalog service persists through Lead registration, conversion, BoQ validation and Post-PO',async()=>{
  const h=new Harness();
  try{
-  h.sql.prepare("INSERT INTO india_members(email,role,active) VALUES(?,'sales',1)").run(users.sales);
+  h.sql.prepare("INSERT INTO rticore_members(email,role,active) VALUES(?,'sales',1)").run(users.sales);
   const catalog=h.load('src/lib/sales-workflow.ts');
   const classification=h.load('src/lib/customer-classification.ts');
   const lead=h.load('src/lib/marketing-lead.ts');
@@ -21,16 +21,16 @@ test('each catalog service persists through Lead registration, conversion, BoQ v
    assert.ok(service.guidance.length>20);
    const input={entity:'lead',request_key:crypto.randomUUID(),account_name:'Synthetic catalog client '+index,source:catalog.LEAD_SOURCES[index%catalog.LEAD_SOURCES.length],service_family:service.name,assigned_sales_email:users.sales,estimated_value_idr:1000000,expected_closing_date:'2026-12-31',contact_name:'Synthetic PIC',qualification};
    const created=await expect(h.call('marketing/leads','POST','marketing',input),201);
-   const stored=h.sql.prepare('SELECT * FROM india_marketing_leads WHERE id=?').get(created.body.id);
+   const stored=h.sql.prepare('SELECT * FROM rticore_marketing_leads WHERE id=?').get(created.body.id);
    assert.equal(stored.service_family,service.name);
    assert.equal(stored.source,input.source);
    assert.equal(JSON.parse(stored.qualification_json).procurement_process,qualification.procurement_process);
    const validated=lead.validateLead(input);
    await expect(h.call('marketing/leads','PATCH','sales',{id:stored.id,version:stored.version,status:'qualified',qualification}),200);
-   const qualified=h.sql.prepare('SELECT version FROM india_marketing_leads WHERE id=?').get(stored.id);
-   const converted=await expect(h.call('marketing/leads','POST','sales',{entity:'convert',id:stored.id,version:qualified.version,opportunity_title:'Synthetic service '+index,customer_fields:{industry,business_type:business}},'',{'x-india-lead-action':'convert'}),201);
-   const row=h.sql.prepare('SELECT * FROM india_sales_opportunities WHERE id=?').get(converted.body.opportunity_id);
-   const acct=h.sql.prepare('SELECT * FROM india_sales_accounts WHERE id=?').get(converted.body.customer_id);
+   const qualified=h.sql.prepare('SELECT version FROM rticore_marketing_leads WHERE id=?').get(stored.id);
+   const converted=await expect(h.call('marketing/leads','POST','sales',{entity:'convert',id:stored.id,version:qualified.version,opportunity_title:'Synthetic service '+index,customer_fields:{industry,business_type:business}},'',{'x-rticore-lead-action':'convert'}),201);
+   const row=h.sql.prepare('SELECT * FROM rticore_sales_opportunities WHERE id=?').get(converted.body.opportunity_id);
+   const acct=h.sql.prepare('SELECT * FROM rticore_sales_accounts WHERE id=?').get(converted.body.customer_id);
    const fields=JSON.parse(row.data_json);
    assert.equal(fields.service_family,service.name);
    assert.equal(fields.lead_source,input.source);
@@ -49,7 +49,7 @@ test('each catalog service persists through Lead registration, conversion, BoQ v
    }
    assert.ok(service.boq.includes(catalog.defaultBoqService(service.name)));
   }
-  assert.equal(h.sql.prepare('SELECT count(*) n FROM india_marketing_leads').get().n,catalog.SERVICE_CATALOG.length);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_marketing_leads').get().n,catalog.SERVICE_CATALOG.length);
  }finally{h.close();}
 });
 test('catalog retains legacy services and rejects unknown Lead categories',()=>{

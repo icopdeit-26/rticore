@@ -1,0 +1,68 @@
+import { parentPort, workerData } from 'node:worker_threads';
+import fs from 'node:fs';
+import path from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+
+const root = workerData?.root || process.cwd();
+const dataDir = workerData?.dataDir || path.join(root, '.pgdata');
+const schemaPath = path.join(root, 'rticore_postgresql_schema.sql');
+
+let pgPromise = null;
+
+async function getPg() {
+  if (!pgPromise) {
+    pgPromise = (async () => {
+      const pg = await PGlite.create(dataDir);
+      try {
+        const check = await pg.query('SELECT COUNT(*) AS n FROM rticore_members');
+        if (Number(check.rows?.[0]?.n ?? 0) === 0 && fs.existsSync(schemaPath)) {
+          await pg.exec(fs.readFileSync(schemaPath, 'utf8'));
+        }
+      } catch {
+        if (fs.existsSync(schemaPath)) {
+          await pg.exec(fs.readFileSync(schemaPath, 'utf8'));
+        }
+      }
+      return pg;
+    })();
+  }
+  return pgPromise;
+}
+
+// Serialize operations so transactions (BEGIN/COMMIT) never interleave
+let queue = Promise.resolve();
+
+parentPort?.on('message', (msg) => {
+  queue = queue.then(async () => {
+    const { id, type, sql, params, statements } = msg;
+    try {
+      const pg = await getPg();
+      if (type === 'query') {
+        const res = await pg.query(sql, params || []);
+        parentPort.postMessage({ id, ok: true, rows: res.rows, rowCount: res.affectedRows ?? 0 });
+      } else if (type === 'exec') {
+        await pg.exec(sql);
+        parentPort.postMessage({ id, ok: true });
+      } else if (type === 'batch') {
+        await pg.exec('BEGIN');
+        try {
+          const out = [];
+          let lastChanges = 0;
+          for (const st of statements) {
+            const sqlText = String(st.sql || '').replace(/\bchanges\s*\(\s*\)/gi, String(lastChanges));
+            const r = await pg.query(sqlText, st.args || []);
+            lastChanges = r.affectedRows ?? 0;
+            out.push({ rows: r.rows, rowCount: lastChanges });
+          }
+          await pg.exec('COMMIT');
+          parentPort.postMessage({ id, ok: true, batchResults: out });
+        } catch (err) {
+          try { await pg.exec('ROLLBACK'); } catch { /* ignore */ }
+          throw err;
+        }
+      }
+    } catch (err) {
+      parentPort.postMessage({ id, ok: false, error: err?.message || String(err) });
+    }
+  });
+});

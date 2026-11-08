@@ -26,14 +26,14 @@ export async function GET(req:Request){
  if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))return deny('Opportunity ID tidak valid');
  const db=auth.identity.db;
  try{
-  const row=await db.prepare('SELECT * FROM india_sales_opportunities WHERE id=? AND tenant_id=?').bind(id,TENANT).first<DealRow>();
+  const row=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE id=? AND tenant_id=?').bind(id,TENANT).first<DealRow>();
   if(!row)return deny('Opportunity tidak ditemukan',404);
   if(!canReadDeal(auth.identity.role,auth.identity.email,row.created_by))return deny('Opportunity tidak tersedia untuk Sales ini',403);
-  const acct=await db.prepare('SELECT * FROM india_sales_accounts WHERE id=? AND tenant_id=?').bind(row.company_id,TENANT).first<AccountRow>();
+  const acct=await db.prepare('SELECT * FROM rticore_sales_accounts WHERE id=? AND tenant_id=?').bind(row.company_id,TENANT).first<AccountRow>();
   if(!acct)return deny('Customer Account tidak ditemukan',404);
   const fields=JSON.parse(row.data_json||'{}') as Record<string,string>;
   const boqId=fields.boq_id||'';
-  const boq=await db.prepare('SELECT * FROM india_boq WHERE id=? AND tenant_id=? AND opportunity_id=?').bind(boqId,TENANT,id).first<BoQRow>();
+  const boq=await db.prepare('SELECT * FROM rticore_boq WHERE id=? AND tenant_id=? AND opportunity_id=?').bind(boqId,TENANT,id).first<BoQRow>();
   if(!boq||boq.status!=='approved')return deny('Quotation hanya dapat diekspor dari BoQ approved yang terkait opportunity.',409);
   if(boq.customer_name.trim().toLowerCase()!==acct.legal_name.trim().toLowerCase()||
    boq.project_name.trim().toLowerCase()!==row.title.trim().toLowerCase()||
@@ -78,7 +78,7 @@ export async function GET(req:Request){
   if(params.get('output')==='preview')return Response.json({success:true,proposal,details:detail,release_id:release.id},{headers:privateHeaders});
   const bytes=createQuotationDocx(proposal,'auto',detail);
   const guard=dealGuard(row);
-  guard.condition+=" AND EXISTS(SELECT 1 FROM india_sales_releases WHERE id=? AND status='approved') AND EXISTS(SELECT 1 FROM india_boq WHERE id=? AND edit_seq=? AND status='approved')";guard.args.push(release.id,boq.id,boq.edit_seq);
+  guard.condition+=" AND EXISTS(SELECT 1 FROM rticore_sales_releases WHERE id=? AND status='approved') AND EXISTS(SELECT 1 FROM rticore_boq WHERE id=? AND edit_seq=? AND status='approved')";guard.args.push(release.id,boq.id,boq.edit_seq);
   await atomicSales(db,guard.condition,guard.args,[salesAudit(db,id,'QUOTATION_EXPORT',auth.identity.email,'DOCX '+boq.quotation_number+' v'+boq.version+' / paket v'+release.version)]);
   const output=new Uint8Array(bytes.length);output.set(bytes);
   return new Response(output.buffer,{status:200,headers:{...privateHeaders,
