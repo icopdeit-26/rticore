@@ -6,6 +6,7 @@ import {vaultDownload} from '@/lib/document-vault-links';
 import {ArrowLeft,FileCheck2,ShieldCheck} from 'lucide-react';
 import {OpportunityPicker} from '@/components/sales/OpportunityPicker';
 import {errorText,readApiJSON} from '@/lib/client-api';
+import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 type Award={id:string;document_kind:string;document_number:string;file_name:string;archive_reference:string;original_sha256:string;
  created_by:string;finance_reviewed_by:string|null;legal_reviewed_by:string|null;finance_review_notes?:string;legal_review_notes?:string};
 const field='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs';
@@ -59,6 +60,7 @@ export default function AwardDesk(){
    <p className="mt-2 text-xs text-slate-500">Dokumen asli disimpan terenkripsi dan hanya dapat diunduh oleh pengguna dengan hak akses Opportunity. Finance dan Legal memeriksa file yang sama secara independen.</p>
   </header>
   {message&&<p role="status" className="whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs">{message}</p>}
+  <LegalWorkspaceGuide role={role} opportunityId={opp} currentStation="PO / SPK Verification"/>
   <div className="grid gap-4 lg:grid-cols-2">
    <section className="space-y-3 rounded-xl border bg-white p-4">
     <h2 className="text-sm font-bold">Registrasi Dokumen Award / PO</h2>

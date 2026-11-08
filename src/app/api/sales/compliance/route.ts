@@ -11,7 +11,7 @@ const text=(x:unknown,max=2000)=>typeof x==='string'&&x.trim().length<=max?x.tri
 const num=(x:unknown,max=1e9)=>typeof x==='number'&&Number.isFinite(x)&&x>0&&x<max;
 const today=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);
 const evidence=(p:Record<string,unknown>)=>text(p.evidence_reference,400).length>=8&&/^[a-f0-9]{64}$/.test(text(p.evidence_sha256,64));
-const roles=['admin','sales','presales','finance','approver'];
+const roles=['admin','sales','presales','finance','approver','legal'];
 type Row={id:string;status:string;version:number;created_by:string;category?:string;vendor_id?:string;valid_until?:string;capacity_units?:number;capacity_unit?:string;quantity?:number;capacity_confirmed?:number;unit?:string;requirement_id?:string;vendor_offer_id?:string};
 export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
@@ -102,7 +102,8 @@ export async function POST(req:Request){
    }
    if(action==='review_clause'){
     if(row.category==='commercial'&&!['admin','finance'].includes(role))return fail('Clause komersial memerlukan Finance/Admin',403);
-    if(row.category!=='commercial'&&!['admin','presales'].includes(role))return fail('Clause teknis/administratif memerlukan Presales/Admin',403);
+    if(row.category==='administrative'&&!['admin','presales','legal'].includes(role))return fail('Clause administratif/hukum memerlukan Legal/Presales/Admin',403);
+    if(row.category!=='commercial'&&row.category!=='administrative'&&!['admin','presales'].includes(role))return fail('Clause teknis/vendor memerlukan Presales/Admin',403);
     const comp=text(p.compliance_status,30);if(!['compliant','partial','non_compliant','not_applicable'].includes(comp))return fail('Status compliance wajib',422);
     if(comp==='compliant'&&row.category==='vendor'){
      const v=await db.prepare("SELECT o.id,o.version,v.version AS vendor_version,v.id AS vendor_id FROM rticore_vendor_offers o JOIN rticore_vendors v ON v.id=o.vendor_id AND v.tenant_id=o.tenant_id WHERE o.id=? AND o.tenant_id=? AND o.opportunity_id=? AND o.status='validated' AND v.status='validated' AND o.valid_until>=? AND v.valid_until>=? AND o.unit=v.capacity_unit AND v.capacity_units>=o.capacity_confirmed").bind(row.vendor_offer_id!,TENANT,d.id,today(),today()).first<{id:string;version:number;vendor_version:number;vendor_id:string}>();

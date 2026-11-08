@@ -5,7 +5,7 @@ export const dynamic='force-dynamic';
 const resp=(body:unknown,status=200)=>Response.json(body,{status,headers:privateHeaders});
 const fail=(message:string,status=400)=>resp({success:false,message},status);
 const sameOrigin=(req:Request)=>!req.headers.get('origin')||req.headers.get('origin')===new URL(req.url).origin;
-const roles=['admin','sales','presales','finance','approver'];
+const roles=['admin','sales','presales','finance','approver','legal'];
 type DealRow={id:string;created_by:string;stage:string;data_json:string};
 type RequirementRow={id:string;created_by:string;kind:string;status:string;file_reference:string;source_content_hash:string};
 async function deal(db:D1DB,id:string){return db.prepare('SELECT id,created_by,stage,data_json FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<DealRow>();}
@@ -61,7 +61,7 @@ export async function POST(req:Request){
    return resp({success:true,decision:'pending'});
   }
   if(p.entity==='requirement'){
-   if(!['admin','sales','presales'].includes(role))return fail('RKS/KAK hanya didaftarkan Sales/Presales/Admin',403);
+   if(!['admin','sales','presales','legal'].includes(role))return fail('RKS/KAK/NDA hanya didaftarkan Sales/Presales/Legal/Admin',403);
    const kind=trim(p.kind,30),title=trim(p.title,250),file_reference=trim(p.file_reference,500),
     file_name=trim(p.file_name,180),source_content_hash=trim(p.source_content_hash,64).toLowerCase(),
     summary=trim(p.requirement_summary,2000);
@@ -83,7 +83,7 @@ export async function POST(req:Request){
 export async function PATCH(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  const {db,role,email}=a.identity;
- if(!['admin','presales','finance','approver'].includes(role))return fail('Reviewer independen diperlukan',403);
+ if(!['admin','presales','finance','approver','legal'].includes(role))return fail('Reviewer independen diperlukan',403);
  if(!sameOrigin(req))return fail('Origin tidak diizinkan',403);
  let p:Record<string,unknown>;try{p=await parse(req);}catch{return fail('Payload tidak valid');}
  if(!safeID(p.opportunity_id))return fail('Opportunity ID tidak valid');

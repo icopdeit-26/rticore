@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import {CommercialHeader,EntryForm,evidenceFields,useOpportunityWorkspace,type FormField} from '@/components/sales/CommercialUI';
+import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 type Vendor={id:string;legal_name:string;status:string;version:number;created_by:string;capacity_units:number;capacity_unit:string;valid_until:string;registration_number:string;contact_email:string;capabilities:string;evidence_reference:string;evidence_sha256:string};
 type Offer={id:string;legal_name:string;scope:string;status:string;version:number;created_by:string;quantity:number;unit:string;unit_price_idr:number;valid_until:string};
 type Clause={id:string;requirement_id:string;clause_reference:string;category:string;requirement_text:string;response_text:string;mandatory:number;status:string;version:number;created_by:string;compliance_status:string;is_gap:number;reviewed_by:string;evidence_reference:string;evidence_sha256:string;vendor_offer_id:string|null};
@@ -18,6 +19,7 @@ export default function CompliancePage(){
  const review=(action:string,row:{id:string;version:number},p:Record<string,unknown>)=>w.mutate({action,id:row.id,version:row.version,...p,...(p.approve?{approve:p.approve==='yes'}:{})});
  return <main className="mx-auto max-w-7xl space-y-5 pb-24"><CommercialHeader title="Tender Compliance & Vendor" description="Jawab persyaratan per klausul, tautkan bukti, dan validasi kemampuan, kapasitas serta harga vendor sebelum melewati gerbang tender." workspace={w}/>{d&&<>
   <div className="grid gap-3 sm:grid-cols-3">{[['Klausul tercatat',d.items.length],['Mandatory belum lolos',d.items.filter(x=>x.mandatory&&x.is_gap).length],['Penawaran tervalidasi',d.offers.filter(x=>x.status==='validated').length]].map(([label,n])=><div className="rounded-2xl border bg-white p-5" key={label}><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-black text-slate-900">{n}</p></div>)}</div>
+  <LegalWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Tender Compliance"/>
   {locked&&!w.busy&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">Mulai revisi paket ke Solution Design untuk memperbarui procurement.</p>}
   <div className="grid items-start gap-4 xl:grid-cols-2"><EntryForm key={w.id+'clause'} title="Tambah klausul RKS/KAK" disabled={locked||!maker} submit="Simpan klausul draft" onSubmit={p=>w.mutate({action:'clause',...p})} fields={[
    {key:'requirement_id',label:'Sumber RKS/KAK draft',type:'select',options:d.requirements.filter(x=>x.status==='draft').map(x=>({value:x.id,label:x.title}))},

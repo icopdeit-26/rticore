@@ -66,11 +66,12 @@ export async function GET(req:Request){
 export async function POST(req:Request){
  const a=await identityDeal(req);if(a.error)return a.error;
  const {db,role,email,id:opp,deal}=a;if(!db||!role||!email||!opp||!deal)return deny('Auth invalid',403);
- if(!['admin','sales','presales','finance'].includes(role))return deny('Role tidak diizinkan mengunggah',403);
+ if(!['admin','sales','presales','finance','legal'].includes(role))return deny('Role tidak diizinkan mengunggah',403);
  if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return deny('Origin ditolak',403);
  const q=new URL(req.url).searchParams,kind=q.get('kind')||'',name=q.get('filename')||'';
  if(!kinds.includes(kind as typeof kinds[number])||!name||name.length>180||/[\x00-\x1f\x7f/\\]/.test(name))return deny('Jenis atau nama dokumen tidak valid',422);
  if(role==='presales'&&!['rks','kak','supporting'].includes(kind))return deny('Presales hanya mengunggah dokumen scoping/tender pendukung',403);
+ if(role==='legal'&&!['nda','supporting'].includes(kind))return deny('Legal hanya mengunggah dokumen NDA atau supporting hukum',403);
  if(deal.stage==='closed_lost'||(deal.stage==='closed_won'&&kind!=='supporting'))return deny('Won hanya menerima supporting delivery; Closed Lost tetap ditutup',409);
  if(role==='finance'&&(deal.stage!=='closed_won'||kind!=='supporting'))return deny('Finance hanya mengunggah supporting delivery setelah Won',403);
  try{

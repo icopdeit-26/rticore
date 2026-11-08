@@ -9,7 +9,7 @@ Lingkup: autentikasi lokal, sesi, role/ACL, navigasi, regresi bisnis otomatis, d
 - P2 — DELETE sesi belum memeriksa mode lokal dan origin. Kini memeriksa keduanya sebelum menghapus cookie.
 - P2 — Audit npm seluruh dependensi melaporkan 5 paket berstatus moderate pada rantai alat build OpenNext/glob/minimatch. Audit dependency produksi: 0 kerentanan. Tidak dilakukan pembaruan paksa atau downgrade otomatis.
 - P2 — Suite penuh belum hijau: sebagian prasyarat lingkungan dan ekspektasi tes sudah tertinggal. Baseline navigasi mengharapkan 40 halaman tetapi aktual 41.
-- P3 — Build memperingatkan deprecation middleware dan import.meta pada unpdf.
+- P3 — Next.js menandai konvensi middleware lama sebagai deprecated; konvensi Proxy baru berbasis Node.js belum didukung resmi oleh adapter Cloudflare. Peringatan import.meta dari unpdf dihilangkan dengan mengeksternalkan paket server-side.
 
 ## Bukti pemeriksaan
 
@@ -21,6 +21,10 @@ Lingkup: autentikasi lokal, sesi, role/ACL, navigasi, regresi bisnis otomatis, d
 - Tampilan login lokal: tidak memuat tombol Cloudflare; akun lokal tersedia. Browser mobile lebar 390 tidak mengalami overflow horizontal pada pemeriksaan login.
 - Log suite penuh tersimpan di .local-data/audit-tests.log (lokal, tidak untuk commit).
 
+## Catatan kompatibilitas build
+
+Next.js 16 menyarankan konvensi Proxy, tetapi pada versi adapter Cloudflare proyek ini jalur tersebut dibundel sebagai Node.js middleware eksperimental. Preview lokal berhasil, namun OpenNext mendokumentasikan jalur Edge middleware sebagai yang didukung. Karena itu project tetap memakai middleware Edge; peringatan deprecation Next.js sengaja dipertahankan sampai adapter mendukung Proxy secara resmi.
+
 ## Batas penggunaan lokal
 
 Pemilihan akun lokal tidak meminta password. Siapa pun yang dapat mengakses aplikasi pada komputer ini dapat memilih akun aktif, termasuk Admin. Ini adalah model kepercayaan komputer lokal, bukan autentikasi multiuser untuk jaringan bersama. Server tetap terikat pada 127.0.0.1; role dan status aktif dibaca server dari database.
@@ -29,4 +33,4 @@ Tidak dilakukan pengiriman pesan, transaksi keuangan, penghapusan data bisnis, a
 
 ## Verifikasi akhir
 
-Build production terbaru berhasil dan server lokal dimulai ulang. Microsoft Edge headless dengan konteks terpisah berhasil login melalui 127.0.0.1: identity HTTP 200 role admin. Setelah logout identity HTTP 401; tidak ada pageerror dan tidak ada tombol Cloudflare pada halaman lokal. Suite penuh belum diulang setelah perbaikan; angka 666/651/15 di atas adalah baseline sebelum perbaikan.
+Build production terbaru berhasil dan server lokal dimulai ulang. Microsoft Edge headless dengan konteks terpisah berhasil login melalui 127.0.0.1: identity HTTP 200 role admin. Setelah logout identity HTTP 401; tidak ada pageerror dan tidak ada tombol Cloudflare pada halaman lokal. Suite penuh setelah perbaikan: 676 tes terdeteksi, 672 lulus, 0 gagal, 4 dilewati karena Python 3 belum tersedia. Windows sedang menjalankan pemasang PostgreSQL sehingga pemasang Python bersamaan gagal dengan file lock. Tes browser memakai Microsoft Edge terpasang.

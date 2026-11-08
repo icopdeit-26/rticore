@@ -3,6 +3,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const fs=require('node:fs'),path=require('node:path');
 const artifactDir=path.join(process.cwd(),'artifacts','browser-uat');
 fs.mkdirSync(artifactDir,{recursive:true});
@@ -26,7 +27,7 @@ test('HTTP gate: unauthenticated CRM, BoQ and AI endpoints fail closed in localh
  }
 });
 test('Browser fixtures: six role-specific Sales interfaces enforce create-button gating on desktop and mobile',async(t)=>{
- const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const browser=await launchBrowser({headless:true,args:['--no-sandbox']});
  try{
   for(const role of roles){
    await t.test('role='+role.name,async()=>{
@@ -72,7 +73,7 @@ test('Browser fixtures: six role-specific Sales interfaces enforce create-button
  }finally{await browser.close();}
 });
 test('Browser unauthenticated account access never enables create actions',async()=>{
- const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const browser=await launchBrowser({headless:true,args:['--no-sandbox']});
  try{
   const page=await browser.newPage({viewport:{width:390,height:844}});
   try{

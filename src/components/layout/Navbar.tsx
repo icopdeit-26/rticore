@@ -287,7 +287,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 )}
                 <Link href="/login"  className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Halaman login RTICORE</Link>
-                <LogoutButton href="/cdn-cgi/access/logout" className="mt-1 flex min-h-11 items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-500" label="Keluar / Logout"/>
+                <LogoutButton className="mt-1 flex min-h-11 items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-500" label="Keluar / Logout"/>
               </div>
             </details>
           </div>

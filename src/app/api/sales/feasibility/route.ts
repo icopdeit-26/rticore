@@ -5,7 +5,7 @@ import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {atomicSales,dealGuard,salesAudit,transactionError,type FlowDeal} from '@/lib/sales-transactions';
 import {costTypes,evaluateFeasibility,validMonth,validatePlan,isoDate,type Allocation,type Cost,type FeasibilityPlan} from '@/lib/solution-feasibility';
 export const dynamic='force-dynamic';
-const roles=['admin','sales','presales','finance','approver'];
+const roles=['admin','sales','presales','finance','approver','legal'];
 const reply=(x:unknown,status=200)=>Response.json(x,{status,headers:privateHeaders});
 const fail=(message:string,status=400)=>reply({success:false,message},status);
 const str=(x:unknown,n=400)=>typeof x==='string'&&x.trim().length<=n?x.trim():'';

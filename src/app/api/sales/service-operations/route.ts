@@ -142,7 +142,7 @@ export async function POST(req:Request){
     check(v.model!=='OTC'||recurring===0,'Kontrak OTC memiliki MRR nol');
     writes.push(db.prepare('UPDATE rticore_service_contracts SET model=?,start_date=?,end_date=?,notice_days=?,recurring_cents=?,renewal_cents=?,probability_pct=?,churn_risk=?,churn_reason=?,configured_by=?,version=version+1 WHERE tenant_id=? AND id=?').bind(String(v.model),v.start_date,v.end_date,Number(v.notice_days),recurring,renewal,Number(v.probability_pct),String(v.churn_risk),txt(v.churn_reason,1500),email,TENANT,c.id));
    }else if(action==='approve_contract'){
-    check(reviewer,'Approval kontrak hanya Finance/Approver/Admin',403);check(c.status==='draft'&&c.configured_by&&c.end_date&&c.renewal_cents,'Lengkapi konfigurasi kontrak',409);check(c.configured_by!==email,'Maker kontrak tidak boleh review sendiri',403);check(txt(v.notes,1500).length>=12,'Catatan review wajib');
+    check(reviewer||role==='legal','Approval kontrak hanya Finance/Legal/Approver/Admin',403);check(c.status==='draft'&&c.configured_by&&c.end_date&&c.renewal_cents,'Lengkapi konfigurasi kontrak',409);check(c.configured_by!==email,'Maker kontrak tidak boleh review sendiri',403);check(txt(v.notes,1500).length>=12,'Catatan review wajib');
     writes.push(db.prepare("UPDATE rticore_service_contracts SET status='active',approved_by=?,version=version+1 WHERE tenant_id=? AND id=?").bind(email,TENANT,c.id));
    }else if(action==='risk'){
     check(financial||role==='sales','Risiko churn hanya Sales/Finance/Admin',403);check(c.status==='active'&&['low','medium','high'].includes(String(v.churn_risk))&&txt(v.notes,1500).length>=12,'Kontrak aktif dan penilaian risiko wajib',409);

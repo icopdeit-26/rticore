@@ -8,7 +8,7 @@ import {tenderVaultGaps,authenticateTenderOriginal} from '@/lib/tender-vault';
 import {buildBidReport,matrixCSV,checklistCSV,reportCSV,validDeadline,shaValid,checklistCategories,milestoneKinds,
  type Bid,type Requirement,type Clause,type Deadline,type Checklist} from '@/lib/bid-readiness';
 export const dynamic='force-dynamic';
-const roles=['admin','sales','presales','finance','approver'];
+const roles=['admin','sales','presales','finance','approver','legal'];
 const reply=(v:unknown,s=200)=>Response.json(v,{status:s,headers:privateHeaders});
 const fail=(message:string,s=400)=>reply({success:false,message},s);
 const string=(x:unknown,max=400)=>typeof x==='string'&&x.length<=max?x.trim():'';
@@ -118,7 +118,7 @@ export async function POST(req:Request){
    if(!row)return fail('Data review tidak tersedia',404);
    if(row.version!==p.version||row.status!=='draft')return fail('Item sudah direview atau berubah versinya',409);
    if(row.created_by.toLowerCase()===email.toLowerCase())return fail('Pembuat tidak boleh melakukan review sendiri',403);
-   const reviewRoles=isDeadline?['admin','approver']:row.category==='technical'?['admin','presales']:['admin','finance','approver'];
+   const reviewRoles=isDeadline?['admin','approver']:row.category==='technical'?['admin','presales']:row.category==='administrative'?['admin','finance','approver','legal']:['admin','finance','approver'];
    if(!reviewRoles.includes(role))return fail('Reviewer tidak memiliki kewenangan kategori ini',403);
    if(isDeadline&&row.milestone==='submission'&&p.approve&&Date.parse(row.due_at!)<=Date.now())
     return fail('Tidak dapat mengesahkan deadline submission yang sudah lewat',409);

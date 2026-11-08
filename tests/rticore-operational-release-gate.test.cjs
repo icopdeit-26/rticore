@@ -1,6 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const crypto=require('node:crypto'),{spawnSync}=require('node:child_process');
+const {findPython}=require('./helpers/python.cjs');
+const python=findPython();
 const root=path.join(__dirname,'..');
 const preflight=path.join(root,'scripts/rticore-operational-gate.mjs');
 const restore=path.join(root,'scripts/rticore-d1-0028-restore-rehearsal.py');
@@ -55,7 +57,7 @@ const baseline=[
 "CREATE TABLE rticore_members(email TEXT PRIMARY KEY,role TEXT,active INTEGER);",
 "INSERT INTO rticore_members VALUES('qa-person@example.invalid','finance',1);",
 ].join('\n');
-test('independent SQL restore, injected rollback and 0028 rehearsal on synthetic backup',()=>{
+test('independent SQL restore, injected rollback and 0028 rehearsal on synthetic backup',{skip:!python&&'Python 3 is required for SQLite restore rehearsal'},()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rticore-release-gate-'));
  try{
   const sql=path.join(dir,'synthetic.sql'),evidence=path.join(dir,'evidence.json');
@@ -64,7 +66,7 @@ test('independent SQL restore, injected rollback and 0028 rehearsal on synthetic
   const params=[restore,sql,'--migration',migration,'--expected-sha256',hash,
    '--source-bookmark','00000019-00000000-0000510e-5b0ebacb47f79d2ee5c6cdb32a4ca579',
    '--output',evidence];
-  const ok=spawnSync('python3',params,{encoding:'utf8',timeout:30000});
+  const ok=spawnSync(python.command,[...python.args,...params],{encoding:'utf8',timeout:30000});
   assert.equal(ok.status,0,ok.stderr);
   const report=JSON.parse(fs.readFileSync(evidence,'utf8'));
   assert.equal(report.result,'PASS');
@@ -73,15 +75,15 @@ test('independent SQL restore, injected rollback and 0028 rehearsal on synthetic
   assert.equal(report.legacy_data_preserved,true);
   assert.equal(report.provider_ciphertext_and_metadata_preserved,true);
   assert.equal(report.backup_sha256,hash);
-  const again=spawnSync('python3',params,{encoding:'utf8',timeout:30000});
+  const again=spawnSync(python.command,[...python.args,...params],{encoding:'utf8',timeout:30000});
   assert.equal(again.status,2);assert.match(again.stderr,/never overwrite/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
-test('independent restore rejects a forged checksum and produces no evidence',()=>{
+test('independent restore rejects a forged checksum and produces no evidence',{skip:!python&&'Python 3 is required for SQLite restore rehearsal'},()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rticore-release-negative-'));
  try{
   const input=path.join(dir,'backup.sql'),evidence=path.join(dir,'report.json');fs.writeFileSync(input,baseline);
-  const r=spawnSync('python3',[restore,input,'--migration',migration,
+  const r=spawnSync(python.command,[...python.args,restore,input,'--migration',migration,
    '--expected-sha256','0'.repeat(64),'--source-bookmark',
    '00000019-00000000-0000510e-5b0ebacb47f79d2ee5c6cdb32a4ca579',
    '--output',evidence],{encoding:'utf8',timeout:30000});

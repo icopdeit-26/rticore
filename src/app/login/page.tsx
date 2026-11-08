@@ -93,7 +93,7 @@ export default function RTICoreLoginPage() {
                 <span className="flex-1 text-center">Masuk dengan Cloudflare Access</span>
                 <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden="true" />
               </a>}
-              <LogoutButton href="/cdn-cgi/access/logout" className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600"/>
+              <LogoutButton className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600"/>
               <p className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-4 text-[11px] leading-5 text-slate-500"><Check className="mt-1 h-3.5 w-3.5 shrink-0 text-teal-600" aria-hidden="true" />{localMode?'Sesi login diproses di komputer ini tanpa layanan cloud.':'RTICORE tidak menyimpan password atau kode OTP pengguna.'}</p>
             </div>
             <p className="mx-auto mt-5 max-w-sm text-center text-xs leading-5 text-slate-500">Belum terdaftar atau role tidak sesuai? Hubungi Administrator RTICORE untuk aktivasi akun dan izin akses.</p>

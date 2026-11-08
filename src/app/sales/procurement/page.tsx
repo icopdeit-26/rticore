@@ -2,6 +2,7 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
 import {ArrowLeft,CheckCircle2,ClipboardCheck,FileSearch,ShieldCheck,UploadCloud} from 'lucide-react';
+import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 type Bid={channel:string;tender_number:string;tender_deadline:string;summary:string;bid_decision:string;decided_by:string|null;proposed_by:string;decision_reason:string};
 type Requirement={id:string;kind:string;title:string;status:string;compliance_status:string;file_reference:string;source_content_hash:string;file_name:string;requirement_summary:string;reviewed_by:string|null;created_by:string};
 const control='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-blue-500';
@@ -77,7 +78,7 @@ export default function SalesProcurement(){
   }catch(e){setMessage(e instanceof Error?e.message:String(e));}
   finally{setUploadBusy(false);}
  };
- const canWrite=['sales','presales','admin'].includes(role);
+ const canWrite=['sales','presales','legal','admin'].includes(role);
  return <main className="mx-auto max-w-6xl space-y-5 pb-24">
   <header className="space-y-2 rounded-xl border bg-white p-4 sm:p-5">
    <Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(opp)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><ArrowLeft size={14}/> Kembali ke Opportunity</Link>
@@ -88,6 +89,7 @@ export default function SalesProcurement(){
    <p className="text-xs text-amber-800">Unggah untuk ekstraksi dan hash saja; referensi arsip sumber harus menunjuk dokumen yang dikelola sesuai kebijakan perusahaan. Tidak ada dokumen yang otomatis dianggap sah.</p>
   </header>
   {message&&<div role="status" className="whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-950">{message}</div>}
+  <LegalWorkspaceGuide role={role} opportunityId={opp} currentStation="Procurement & Supplier"/>
   <div className="grid items-start gap-4 lg:grid-cols-2">
    <section className="space-y-3 rounded-xl border bg-white p-4">
     <div className="flex items-center gap-2"><ClipboardCheck size={18}/><h2 className="font-bold">Bid/No-Bid Request</h2></div>
@@ -133,7 +135,7 @@ export default function SalesProcurement(){
     <p className="break-all text-[11px] text-slate-600">{r.file_name||'Nama file belum tersedia'} · {r.file_reference||'Belum ada lokasi arsip'}</p>
     <p className="text-xs text-slate-600">{r.requirement_summary}</p>
     {r.reviewed_by?<p className="flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 size={14}/> Reviewed: {r.reviewed_by}</p>:null}
-    {r.status==='draft'&&['admin','presales','finance'].includes(role)&&<div className="space-y-2 border-t pt-2">
+    {r.status==='draft'&&['admin','presales','finance','approver','legal'].includes(role)&&<div className="space-y-2 border-t pt-2">
      <select aria-label={'Status '+r.title} className={control} value={compliance[r.id]||'pending'} onChange={e=>setCompliance(v=>({...v,[r.id]:e.target.value}))}>
       {['pending','compliant','partial','non_compliant','not_applicable'].map(s=><option key={s} value={s}>{s}</option>)}</select>
      <textarea aria-label={'Catatan '+r.title} rows={2} className={control} placeholder="Review independen minimal 8 karakter" value={reviewNotes[r.id]||''} onChange={e=>setReviewNotes(v=>({...v,[r.id]:e.target.value}))}/>

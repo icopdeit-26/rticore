@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import VaultPicker from '@/components/sales/VaultPicker';
+import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 type Deal={id:string;title:string;company_name:string;stage:string};
 type Doc={id:string;source:'release'|'library';release_id?:string;kind:string;file_name:string;version:number;sha256:string;byte_length:number;retention_until:string|null;legal_hold:number;created_at:string;created_by:string};
 type Audit={document_id:string;source:string;action:string;actor_email:string;actor_role:string;event_at:string};
@@ -58,7 +59,7 @@ export default function DocumentVaultPage(){
    setNotice('Kebijakan tersimpan dan tercatat pada audit.');setKey(n=>n+1);
   }catch(e){setNotice(e instanceof Error?e.message:String(e));}
  }
- const allowedUpload=(role==='finance'&&kind==='supporting')||['admin','sales'].includes(role)||(role==='presales'&&['rks','kak','supporting'].includes(kind));
+ const allowedUpload=(role==='finance'&&kind==='supporting')||['admin','sales'].includes(role)||(role==='presales'&&['rks','kak','supporting'].includes(kind))||(role==='legal'&&['nda','supporting'].includes(kind));
  return <main className="mx-auto w-full max-w-7xl min-w-0 space-y-5 px-3 py-5 pb-24 sm:px-6">
   <header className="rounded-2xl bg-slate-900 p-5 text-white">
    <p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">RTICORE · Secure Document Management</p>
@@ -88,6 +89,7 @@ export default function DocumentVaultPage(){
    <p className="mt-2 text-xs text-slate-500">Dokumen NDA/RKS/KAK/Quotation dapat diunggah sejak Opportunity dibuat. Dokumen terkait persetujuan penawaran mengikuti release yang aktif.</p>
   </section>}
   {notice&&<p role="status" className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900 break-words">{notice}</p>}
+  <LegalWorkspaceGuide role={role} opportunityId={opp} currentStation="Secure Document Vault"/>
   {opp&&<section className="rounded-2xl border bg-white p-4 shadow-sm">
    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold">Riwayat Dokumen ({documents.length})</h2><button type="button" onClick={()=>void refresh()} className="rounded-lg border px-3 py-2 text-xs font-bold">Refresh</button></div>
    <div className="mt-3 space-y-3">

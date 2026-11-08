@@ -2,6 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import {CommercialHeader,EntryForm,evidenceFields,useOpportunityWorkspace,type FormField} from '@/components/sales/CommercialUI';
+import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 import type {Bid,Requirement,Clause,Checklist,Deadline,Report} from '@/lib/bid-readiness';
 type Data={role:string;identityEmail:string;deal:{id:string;title:string;stage:string;flow_version:number};
  bid:Bid;requirements:Requirement[];clauses:Clause[];checklist:Checklist[];deadlines:Deadline[];report:Report};
@@ -57,6 +58,7 @@ export default function BidReadinessPage(){
     <Link className="mt-3 inline-flex rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-800" href={'/sales/documents?opportunity_id='+encodeURIComponent(w.id)}>Buka Document Vault untuk unggah RKS/KAK dan bukti tender asli</Link>
    </section>
    {edit&&!w.busy&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold">Perubahan paket dibatasi sampai Solution Design. Revisi resmi setelah tahap tersebut harus mengikuti workflow pengembalian stage yang diaudit.</p>}
+   <LegalWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Bid Readiness"/>
    <div className="grid items-start gap-4 xl:grid-cols-2">
     <EntryForm key={w.id+'deadline'} title="Tambahkan milestone / deadline tender" disabled={edit||!canWrite} submit="Simpan draft deadline"
      fields={[{key:'milestone',label:'Jenis milestone',type:'select',options:milestones},
@@ -95,7 +97,7 @@ export default function BidReadinessPage(){
      {canWrite&&<details><summary className="cursor-pointer text-xs font-bold text-blue-800">Revisi / lengkapi bukti (reset review)</summary>
       <EntryForm title="Lengkapi dokumen" fields={updateFields(c,d.clauses)} disabled={edit} submit="Simpan revisi" onSubmit={p=>w.mutate({action:'revise_item',id:c.id,version:c.version,...p})}/></details>}
      {c.status==='draft'&&c.created_by.toLowerCase()!==d.identityEmail.toLowerCase()&&(
-       d.role==='admin'||(c.category==='technical'?d.role==='presales':['finance','approver'].includes(d.role)))&&
+       d.role==='admin'||(c.category==='technical'?d.role==='presales':c.category==='administrative'?['finance','approver','legal'].includes(d.role):['finance','approver'].includes(d.role)))&&
       <EntryForm title="Pemeriksaan dokumen independen" disabled={edit} fields={notes} submit="Simpan pemeriksaan" onSubmit={p=>reviewer('review_item',c.id,c.version,p)}/>}
     </article>)}</div>
    </section>

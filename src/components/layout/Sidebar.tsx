@@ -125,7 +125,7 @@ function NavigationContent({role, onClose, onNavigate, mobile}:{
       </nav>
       <div className="shrink-0 border-t border-slate-100 bg-slate-50 px-5 py-3">
         <p className="text-[11px] font-semibold text-slate-600">RTICORE · Integrated Business Platform</p>
-        <LogoutButton href="/cdn-cgi/access/logout" className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-500" label="Keluar akun / Logout"/>
+        <LogoutButton className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-500" label="Keluar akun / Logout"/>
       </div>
     </div>
   );

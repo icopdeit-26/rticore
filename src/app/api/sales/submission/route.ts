@@ -11,7 +11,7 @@ type DealRow=FlowDeal & {id:string;company_id:string;title:string;stage:string;c
 type BoqRow={id:string;opportunity_id:string|null;version:number;quotation_number:string;status:string;customer_name:string;project_name:string};
 const origin=(r:Request)=>!r.headers.get('origin')||r.headers.get('origin')===new URL(r.url).origin;
 const canSee=(role:string,email:string,owner:string)=>role!=='sales'||email.toLowerCase()===owner.toLowerCase();
-const allowed=['admin','sales','finance','approver','presales'];
+const allowed=['admin','sales','finance','approver','presales','legal'];
 async function deal(db:D1DB,id:string){return db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<DealRow>();}
 async function read(req:Request){const s=await req.text();if(s.length>10000)throw Error('Payload terlalu besar');
  const obj=JSON.parse(s) as Record<string,unknown>;if(!obj||Array.isArray(obj)||typeof obj!=='object')throw Error('Payload invalid');return obj;}

@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
+import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 type Station={href:string;name:string;description:string;roles:readonly string[]};
 type Task={id:string;kind:string;title:string;opportunity_id:string|null;created_at:string;href:string};
 type Queue={items:Task[];truncated:boolean;generated_at:string;included_kinds:string[]};
@@ -53,6 +54,7 @@ export default function CanonicalApprovalLinks(){
   {state==='checking'&&<p role="status" className="text-sm">Memverifikasi sesi identitas pengguna…</p>}
   {state==='denied'&&<p role="alert" className="rounded-lg border border-rose-200 p-4 text-sm text-rose-800">Sesi autentikasi/database belum terverifikasi; tidak ada tindakan approval yang diizinkan.</p>}
   {state==='ready'&&<>
+   {role&&<LegalWorkspaceGuide role={role} currentStation="Approval Center · Lintas Modul" defaultOpen={role==='legal'}/>}
    <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5" aria-label="Antrian persetujuan nyata">
     <div className="flex flex-wrap items-center justify-between gap-3">
      <h2 className="text-sm font-bold text-slate-900">Menunggu review dari transaksi database</h2>

@@ -1,6 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const {spawnSync}=require('node:child_process');
+const {findPython}=require('./helpers/python.cjs');
+const python=findPython();
 const source=fs.readFileSync('src/lib/flexguard-ledger.ts','utf8');
 const transpiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const mod={exports:{}};
@@ -20,8 +22,8 @@ test('role-specific authorizations deny unrelated maker and viewer',()=>{
  assert.equal(canPostFlex('presales','DEBIT'),true);
  assert.equal(canPostFlex('finance','REFUND'),true);
 });
-test('original SQLite migration enforces financial guards, immutable ledger and source',()=>{
- const r=spawnSync('python3',['tests/flexguard-sql-rehearsal.py'],{encoding:'utf8'});
+test('original SQLite migration enforces financial guards, immutable ledger and source',{skip:!python&&'Python 3 is required for SQLite migration rehearsal'},()=>{
+ const r=spawnSync(python.command,[...python.args,'tests/flexguard-sql-rehearsal.py'],{encoding:'utf8'});
  assert.equal(r.status,0,r.stderr||r.stdout);
  assert.match(r.stdout,/PASS/);
 });

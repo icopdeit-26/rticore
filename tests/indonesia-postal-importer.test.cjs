@@ -1,7 +1,9 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process');
-test('postal importer normalizes Papua Barat Daya without fabricating official district codes',()=>{
+const {findPython}=require('./helpers/python.cjs');
+const python=findPython();
+test('postal importer normalizes Papua Barat Daya without fabricating official district codes',{skip:!python&&'Python 3 is required to import the postal importer'},()=>{
  const script=String.raw`
 import importlib.util
 spec=importlib.util.spec_from_file_location("postal","scripts/import-indonesia-postal.py")
@@ -29,7 +31,7 @@ assert bdg[9]=="Kelurahan"
 assert bdg[4]=="32.73"
 print("Importer normalization PASS")
 `;
- const out=spawnSync('python3',['-c',script],{encoding:'utf8'});
+ const out=spawnSync(python.command,[...python.args,'-c',script],{encoding:'utf8'});
  assert.equal(out.status,0,out.stderr||out.stdout);
  assert.match(out.stdout,/PASS/);
 });

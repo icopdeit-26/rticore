@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -33,7 +34,7 @@ let deals = [
 ];
 
 test('Sales stage filter: full labels, counts and interactions on mobile and desktop', async t => {
-  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  const browser = await launchBrowser({ headless: true, args: ['--no-sandbox'] });
   try {
     for (const layout of [
       { name: 'android-375', width: 375, height: 812, mobile: true },
