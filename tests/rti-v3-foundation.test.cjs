@@ -320,7 +320,9 @@ test('Tenant key: storage key equals Parameter Center value; no legacy brand lab
   assert.equal(load('src/lib/sales-workflow').TENANT, params.DEFAULT_PARAMETERS.company.tenant_key);
   for (const m of ['src/lib/tenant', 'src/lib/sales-transactions', 'src/lib/tender-readiness']) assert.equal(load(m).TENANT_KEY, params.DEFAULT_PARAMETERS.company.tenant_key, m);
   const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
-  for (const f of walk(path.join(root, 'src')).filter(f => /\.tsx?$/.test(f) && !f.includes('/lib/rti/'))) {
+  // src/lib/rti is the Parameter Center: affiliate legal names (e.g. affiliated_entities) are data there,
+  // not UI branding. Compare with '/' separators so the exclusion also holds on Windows paths.
+  for (const f of walk(path.join(root, 'src')).filter(f => /\.tsx?$/.test(f) && !f.split(path.sep).join('/').includes('/lib/rti/'))) {
     const src = fs.readFileSync(f, 'utf8');
     assert.doesNotMatch(src, /Technotama|TECHNOTAMA|DefendIT ?360/, f);
     assert.doesNotMatch(src.replace("const LEGACY_TENANT_AAD='defendit360';", ''), /defendit360/i, f);
