@@ -68,12 +68,14 @@ export default function BoQPage(){
      sessionStorage.removeItem('rticore_scoping_boq_draft_v1');
     }catch(e){setMsg(e instanceof Error?e.message:'Draft scoping tidak dapat diimpor.');}
    }
-   void load();void fetch('/api/sales?entity=deals',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.success)setSalesDeals(j.deals||[])}).catch(()=>{});const id=new URLSearchParams(window.location.search).get('opportunity_id');
+   void load();const id=new URLSearchParams(window.location.search).get('opportunity_id');
   if(id)fetch('/api/sales?entity=details&id='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(j=>{
    if(j.success){setForm(f=>({...f,opportunity_id:id,customer_name:j.account.legal_name,project_name:j.deal.title,
     service_type:new URLSearchParams(window.location.search).get('from')==='scoping'?f.service_type:defaultBoqService(j.deal.fields.service_family),line_items:new URLSearchParams(window.location.search).get('from')==='scoping'?f.line_items:f.line_items.map(item=>item.description.trim()?item:{...item,service_type:defaultBoqService(j.deal.fields.service_family)})}));}
   }).catch(()=>{});
   void fetch('/api/boq/catalog',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.success)setCatalog(j.items||[])}).catch(()=>{});},[]);
+ // Opportunity picker: the Sales API refuses Viewer, so read deals only for roles it serves.
+ useEffect(()=>{if(!role||role==='viewer')return;let active=true;void fetch('/api/sales?entity=deals',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(active&&j.success)setSalesDeals(j.deals||[])}).catch(()=>{});return()=>{active=false;};},[role]);
  const choose=(d:Doc)=>{setSelected(d);setForm({...blank(),...d,opportunity_id:d.opportunity_id||''});setCosts(Object.fromEntries((d.cost_items||[]).map(x=>[x.code,String(x.amount)])));setMsg('');};
  const change=(key:string,value:any)=>setForm(p=>({...p,[key]:value}));
  const line=(i:number,key:keyof Item,v:any)=>setForm(p=>({...p,line_items:p.line_items.map((x,j)=>i===j?{...x,[key]:v}:x)}));

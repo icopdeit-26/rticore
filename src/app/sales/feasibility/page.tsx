@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
+import {MenuLink} from '@/components/navigation/MenuLink';
 import {CommercialHeader,EntryForm,useOpportunityWorkspace,type FormField} from '@/components/sales/CommercialUI';
 import {FinanceWorkspaceGuide} from '@/components/sales/FinanceWorkspaceGuide';
 import {GovernanceWorkspaceGuide} from '@/components/sales/GovernanceWorkspaceGuide';
@@ -57,7 +58,7 @@ export default function FeasibilityPage(){
      <div><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Feasibility Assessment</p>
       <h2 className={'mt-1 text-xl font-extrabold '+(report?.ready?'text-emerald-700':'text-amber-800')}>{report?.ready?'APPROVED · FEASIBLE':'BELUM FEASIBLE'}</h2>
       <p className="mt-1 text-xs text-slate-600">Plan: {p?.status||'belum dibuat'} · SQL gate: {report?.sql_gate?'PASS':'BLOCK'} · Reviewer: {p?.reviewed_by||'-'}</p></div>
-     <Link className="rounded-xl border border-blue-200 px-4 py-2 text-xs font-bold text-blue-800" href={'/sales/compliance?opportunity_id='+encodeURIComponent(w.id)}>Lihat quotation & validasi vendor</Link>
+     <MenuLink className="rounded-xl border border-blue-200 px-4 py-2 text-xs font-bold text-blue-800" href={'/sales/compliance?opportunity_id='+encodeURIComponent(w.id)}>Lihat quotation & validasi vendor</MenuLink>
     </div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
      {[['Estimasi kebutuhan',report?.required_pd??0,'PD'],['Alokasi tim',report?.allocated_pd??0,'PD'],['HPP total',money(report?.total_cost_idr??null),''],['Gross margin',report?.margin_pct===null?'Terbatas':String(report?.margin_pct??'-')+'%','']].map(([label,value,unit])=>

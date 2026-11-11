@@ -1,6 +1,7 @@
 'use client';
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
 import Link from 'next/link';
+import {MenuLink} from '@/components/navigation/MenuLink';
 import {CalendarDays,Clock3,PhoneCall,MapPin,Users,AlertTriangle,CheckCircle2,Bell,ArrowRight} from 'lucide-react';
 import {readApiJSON} from '@/lib/client-api';
 type Task={id:string;lead_id:string|null;opportunity_id:string|null;owner_email:string;kind:string;subject:string;detail:string;target_name:string;customer_name:string;start_at:string;due_at:string;status:string;revision:number;outcome:string};
@@ -73,7 +74,7 @@ export default function SalesActivities(){
     <button disabled={busy} onClick={()=>mutate(t,'reschedule')} className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50">Jadwalkan ulang ke waktu pada form</button>
     <button disabled={busy} onClick={()=>mutate(t,'cancel')} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Batalkan</button></div>
    </div>}
-  <Link href={t.lead_id?'/sales/leads?lead_id='+encodeURIComponent(t.lead_id):'/sales/pipeline'} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-700">Buka sumber data <ArrowRight size={13}/></Link>
+  <MenuLink href={t.lead_id?'/sales/leads?lead_id='+encodeURIComponent(t.lead_id):'/sales/pipeline'} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-700">Buka sumber data <ArrowRight size={13}/></MenuLink>
  </article>;
  return <main className="min-w-0 space-y-5 pb-24">
   <header className="flex flex-wrap items-center justify-between gap-3"><div>
@@ -113,7 +114,7 @@ export default function SalesActivities(){
      <h3 className="mt-1 text-sm font-bold">{x.account_name}</h3>
      <p className="mt-1 text-xs text-slate-600">{x.lead_number} · {x.owner_email}</p>
      <p className="mt-2 text-xs">Batas SLA: <b>{fmt(x.response_due_at)} WIB</b></p>
-     <Link href={'/sales/leads?lead_id='+encodeURIComponent(x.lead_id)} className="mt-2 inline-block text-xs font-bold text-blue-700">Buka Lead &amp; jadwalkan kontak →</Link>
+     <MenuLink href={'/sales/leads?lead_id='+encodeURIComponent(x.lead_id)} className="mt-2 inline-block text-xs font-bold text-blue-700">Buka Lead &amp; jadwalkan kontak →</MenuLink>
     </article>)}
     {next.map(x=>taskCard(x))}
    </div>}</section>}
@@ -121,7 +122,7 @@ export default function SalesActivities(){
    <h2 className="flex items-center gap-2 text-sm font-bold text-rose-700"><AlertTriangle size={16}/> Overdue Queue · {overdue.length} aktivitas / {breached.length} SLA Lead</h2>
    {breached.map(x=><article key={x.lead_id} className="rounded-xl border border-rose-200 bg-white p-3 text-xs">
     <b>Lead {x.lead_number} · {x.account_name}</b><p className="mt-1">Owner: {x.owner_email} · SLA {fmt(x.response_due_at)} WIB</p>
-    <Link className="mt-2 inline-block font-bold text-blue-700" href={'/sales/leads?lead_id='+encodeURIComponent(x.lead_id)}>Buka Lead →</Link>
+    <MenuLink className="mt-2 inline-block font-bold text-blue-700" href={'/sales/leads?lead_id='+encodeURIComponent(x.lead_id)}>Buka Lead →</MenuLink>
    </article>)}
    {overdue.length?<div className="grid gap-3 md:grid-cols-2">{overdue.map(x=>taskCard(x))}</div>:!breached.length&&<p className="text-sm text-slate-500">Tidak ada overdue pada filter ini.</p>}
   </section>}

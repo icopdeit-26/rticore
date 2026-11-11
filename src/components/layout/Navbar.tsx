@@ -25,6 +25,7 @@ import {
 import { formatAIChatMessage } from '@/lib/ai-chat-format';
 import { selectConversationHistory, activeChatTopic, type AIConversationTurn } from '@/lib/ai-conversation';
 import {roles} from '@/lib/boq-domain';
+import {canOpenRoute} from '@/lib/enterprise-navigation';
 
 const WELCOME_MESSAGE = {
   sender: 'ai' as const,
@@ -242,8 +243,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Key className="h-4 w-4" />
             </Link>}
 
-            {/* Pending Approvals Notification Link */}
-            <Link
+            {/* Pending Approvals Notification Link: only for roles whose menu includes the Approval Center. */}
+            {role&&canOpenRoute(role,'/approvals')&&<Link
               href="/approvals"
               className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors"
               title={pendingApprovalsCount===null?'Status antrian approval belum terverifikasi':'Approval tertunda: '+pendingApprovalsCount}
@@ -254,7 +255,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {pendingApprovalsCount>99?'99+':pendingApprovalsCount}
                 </span>
               )}
-            </Link>
+            </Link>}
 
             {/* Verified identity stays the same; only Admin may use the server-enforced role preview. */}
             <details className="group relative min-w-0">

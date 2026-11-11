@@ -1,6 +1,7 @@
 'use client';
 import React,{useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
+import {MenuLink} from '@/components/navigation/MenuLink';
 import VaultPicker from '@/components/sales/VaultPicker';
 import {vaultDownload} from '@/lib/document-vault-links';
 import {ArrowLeft,CheckCircle2,Send,ShieldCheck} from 'lucide-react';
@@ -60,7 +61,7 @@ export default function SubmissionPage(){
  };
  return <main className="mx-auto max-w-5xl space-y-5 pb-24">
   <header className="rounded-xl border bg-white p-4 sm:p-5">
-   <Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(opp)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><ArrowLeft size={15}/> Kembali ke Opportunity</Link>
+   <MenuLink href={'/sales/pipeline?opportunity_id='+encodeURIComponent(opp)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><ArrowLeft size={15}/> Kembali ke Opportunity</MenuLink>
    <h1 className="mt-3 flex items-center gap-2 text-xl font-extrabold"><Send size={20}/> Quotation Submission & Evidence</h1>
    <OpportunityPicker value={opp} onChange={select} disabled={busy}/>
    <p className="mt-2 text-xs text-slate-500">Quotation {quote||'belum dicantumkan'}</p>

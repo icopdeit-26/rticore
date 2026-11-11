@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 type Desk='organization'|'ledger'|'procurement'|'cyber-operations'|'treasury'|'hr'|'security-integrations';
 type Field={name:string;label:string;kind?:'number'|'decision'|'text';placeholder?:string};
 type Action={id:string;label:string;fields:Field[]};
@@ -79,10 +79,31 @@ const configs:Record<Desk,{title:string;description:string;query?:string;groups:
  {id:'close',label:'Tutup Case Reviewed',fields:[f('id','Case ID'),f('version','Versi','number')]}
  ]}
 };
+// Maker/checker role per action, mirroring the erpAssert role checks in /api/erp/*. UI hint only:
+// the API still enforces role, capability grant, ownership and independence. Unlisted = any role.
+const ADMIN=['admin'],APPROVER=['approver'],FINANCE=['finance'],PROCURER=['admin','presales'];
+const ACTION_ROLES:Record<string,readonly string[]>={
+ 'organization:review_staff':APPROVER,'organization:review_grant':APPROVER,'organization:review_revoke':APPROVER,'organization:review_policy_change':APPROVER,'organization:review_project_scope':APPROVER,'organization:review_opportunity_scope':APPROVER,
+ 'organization:create_unit':ADMIN,'organization:assign_staff':ADMIN,'organization:request_grant':ADMIN,'organization:request_revoke':ADMIN,'organization:request_policy_change':ADMIN,'organization:request_project_scope':ADMIN,'organization:request_opportunity_scope':ADMIN,
+ 'ledger:account':FINANCE,'ledger:period':FINANCE,'ledger:journal':FINANCE,'ledger:post':FINANCE,'ledger:reverse':FINANCE,'ledger:request_close':FINANCE,'ledger:review':APPROVER,'ledger:review_close':APPROVER,
+ 'procurement:budget':FINANCE,'procurement:supplier_invoice':FINANCE,'procurement:requisition':PROCURER,'procurement:create_po':PROCURER,'procurement:receipt':PROCURER,
+ 'procurement:approve_budget':APPROVER,'procurement:approve_requisition':APPROVER,'procurement:review_po':APPROVER,'procurement:review_invoice':APPROVER,
+ 'treasury:register_bank':FINANCE,'treasury:request_payment':FINANCE,'treasury:approve_payment':APPROVER,'treasury:confirm_settlement':APPROVER,'treasury:record_bank_evidence':ADMIN,
+ 'hr:onboard':ADMIN,'hr:leave_policy':ADMIN,'hr:skill':ADMIN,'hr:asset_register':ADMIN,'hr:asset_assign':ADMIN,'hr:asset_return':ADMIN,'hr:asset_retire':ADMIN,
+ 'hr:activate':APPROVER,'hr:offboard':APPROVER,'hr:approve_policy':APPROVER,'hr:review_leave':APPROVER,
+ 'security-integrations:register':ADMIN,'security-integrations:enable':APPROVER,'security-integrations:queue':['admin','presales','defense_leader'],'security-integrations:send':['admin','presales','defense_leader'],
+ 'cyber-operations:open':['presales','admin','defense_leader','defense_member'],'cyber-operations:assign':['defense_leader','admin'],'cyber-operations:return':['defense_leader','admin'],
+ 'cyber-operations:submit':['defense_leader','defense_member'],'cyber-operations:review':['approver','defense_leader'],'cyber-operations:close':['presales','admin','defense_leader'],
+};
+const allowedFor=(desk:Desk,id:string,role:string|null)=>{const roles=ACTION_ROLES[desk+':'+id];return !roles||(!!role&&roles.includes(role));};
 export default function ERPDesk({desk}:{desk:Desk}){
  const cfg=configs[desk],api='/api/erp/'+(desk==='ledger'?'ledger':desk);
+ const [role,setRole]=useState<string|null>(null),[roleChecked,setRoleChecked]=useState(false);
+ useEffect(()=>{const c=new AbortController();fetch('/api/sales/identity',{cache:'no-store',signal:c.signal}).then(r=>r.ok?r.json():null).then(j=>{if(!c.signal.aborted){setRole(typeof j?.identity?.role==='string'?j.identity.role:null);setRoleChecked(true);}}).catch(()=>{if(!c.signal.aborted)setRoleChecked(true);});return()=>c.abort();},[]);
+ const actions=useMemo(()=>cfg.actions.filter(a=>allowedFor(desk,a.id,role)),[cfg,desk,role]);
  const [key,setKey]=useState(''),[action,setAction]=useState(cfg.actions[0].id),[form,setForm]=useState<Record<string,string>>({}),[data,setData]=useState<Record<string,unknown>|null>(null),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
- const current=cfg.actions.find(a=>a.id===action)!;
+ useEffect(()=>{if(actions.length&&!actions.some(a=>a.id===action)){setAction(actions[0].id);setForm({});}},[actions,action]);
+ const current=actions.find(a=>a.id===action)??actions[0];
  const optionsFor=(name:string)=>CHOICES[name==='kind'?(desk==='organization'?'org_kind':desk==='security-integrations'?'security_kind':'cyber_kind'):name==='category'&&desk==='hr'?'asset_category':name]||[];
  async function load(){
   setBusy(true);try{
@@ -90,11 +111,13 @@ export default function ERPDesk({desk}:{desk:Desk}){
    const r=await fetch(url,{cache:'no-store'});const json=await r.json() as Record<string,unknown>;
    if(!r.ok)throw Error(String(json.message||'Gagal memuat data'));
    setData(json);setMessage('Data telah dibaca ulang dari database.');
-  }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }catch(e){setMessage(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
  }
  async function submit(){
+  if(!current)return;
   setBusy(true);setMessage('');
   try{
+   const action=current.id;
    const payload:Record<string,unknown>={action};
    for(const field of current.fields){const value=(form[field.name]||'').trim();if(!value)continue;payload[field.name]=field.kind==='number'?Number(value):field.kind==='decision'?value==='true':value;}
    if(['create_unit','request_grant','request_revoke','request_policy_change'].includes(action))payload.id=crypto.randomUUID();
@@ -108,13 +131,16 @@ export default function ERPDesk({desk}:{desk:Desk}){
    const json=await r.json() as Record<string,unknown>;if(!r.ok)throw Error(String(json.message||'Transaksi ditolak'));
    setMessage('Transaksi tersimpan. Referensi: '+String(json.id||'perubahan status berhasil')+'. Muat ulang untuk verifikasi.');
    setForm({});
-  }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }catch(e){setMessage(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
  }
- return <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
+ // AppShell already renders the page <main> landmark; a nested <main> is invalid.
+ return <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
   <header className="space-y-2"><p className="text-xs font-semibold uppercase tracking-widest text-cyan-700">RTI · RTICORE ERP</p><h1 className="text-2xl font-bold text-slate-900">{cfg.title}</h1><p className="text-sm text-slate-600">{cfg.description}</p></header>
   <section className="rounded-xl border bg-white p-5 shadow-sm"><h2 className="font-semibold">Data operasional</h2><div className="mt-3 flex flex-wrap gap-2">{cfg.query&&<input aria-label={cfg.query} className="min-w-52 flex-1 rounded-lg border p-3" placeholder={cfg.query+' dari transaksi canonical'} value={key} onChange={e=>setKey(e.target.value)}/>}<button disabled={busy||!!cfg.query&&!key} onClick={()=>void load()} className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">Muat Ulang Database</button></div>
   {data&&cfg.groups.map(group=>{const rows=Array.isArray(data[group])?data[group] as Record<string,unknown>[]:[];const cols=rows[0]?Object.keys(rows[0]).slice(0,6):[];return <div key={group} className="mt-5"><h3 className="mb-2 text-sm font-bold capitalize">{group} ({rows.length})</h3><div className="overflow-x-auto rounded-lg border"><table className="min-w-full text-left text-xs"><thead className="bg-slate-100"><tr>{cols.map(c=><th className="p-2" key={c}>{c}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i} className="border-t">{cols.map(c=><td className="max-w-52 truncate p-2" title={String(r[c]??'')} key={c}>{String(r[c]??'')}</td>)}</tr>)}</tbody></table>{rows.length===0&&<p className="p-3 text-sm text-slate-500">Belum ada record.</p>}</div></div>})}
   </section>
-  <section className="rounded-xl border bg-white p-5 shadow-sm"><h2 className="mb-3 font-semibold">Transaksi dan approval</h2><label htmlFor="erp-action" className="block text-sm text-slate-600">Aksi</label><select id="erp-action" className="mt-1 w-full rounded-lg border p-3" value={action} onChange={e=>{setAction(e.target.value);setForm({});setMessage('');}}>{cfg.actions.map(x=><option value={x.id} key={x.id}>{x.label}</option>)}</select><div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">{current.fields.map(field=><label className="text-sm" key={field.name}><span className="mb-1 block text-slate-700">{field.label}</span>{field.kind==='decision'?<select className="w-full rounded-lg border p-3" value={form[field.name]||''} onChange={e=>setForm({...form,[field.name]:e.target.value})}><option value="">Pilih</option><option value="true">Setujui</option><option value="false">Tolak</option></select>:optionsFor(field.name).length?<select className="w-full rounded-lg border p-3" value={form[field.name]||''} onChange={e=>setForm({...form,[field.name]:e.target.value})}><option value="">Pilih {field.label}</option>{optionsFor(field.name).map(v=><option key={v} value={v}>{v}</option>)}</select>:<input className="w-full rounded-lg border p-3" type={field.kind==='number'?'number':'text'} value={form[field.name]||''} onChange={e=>setForm({...form,[field.name]:e.target.value})} placeholder={field.placeholder||field.name}/>}</label>)}</div><button disabled={busy} onClick={()=>void submit()} className="mt-4 rounded-lg bg-cyan-800 px-5 py-3 font-bold text-white disabled:opacity-40">{busy?'Memproses...':'Simpan / Ajukan Keputusan'}</button><p role="status" className="mt-3 text-sm text-slate-700">{message}</p></section>
- </main>;
+  {roleChecked&&!current?<section className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700"><h2 className="mb-1 font-semibold text-slate-900">Transaksi dan approval</h2>Role Anda ({role||'belum terverifikasi'}) tidak memiliki aksi maker/checker di desk ini. Data tetap dapat dibaca bila API mengizinkan.</section>:current&&
+  <section className="rounded-xl border bg-white p-5 shadow-sm"><h2 className="mb-3 font-semibold">Transaksi dan approval</h2><label htmlFor="erp-action" className="block text-sm text-slate-600">Aksi</label><select id="erp-action" className="mt-1 w-full rounded-lg border p-3" value={current.id} onChange={e=>{setAction(e.target.value);setForm({});setMessage('');}}>{actions.map(x=><option value={x.id} key={x.id}>{x.label}</option>)}</select><div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">{current.fields.map(field=><label className="text-sm" key={field.name}><span className="mb-1 block text-slate-700">{field.label}</span>{field.kind==='decision'?<select className="w-full rounded-lg border p-3" value={form[field.name]||''} onChange={e=>setForm({...form,[field.name]:e.target.value})}><option value="">Pilih</option><option value="true">Setujui</option><option value="false">Tolak</option></select>:optionsFor(field.name).length?<select className="w-full rounded-lg border p-3" value={form[field.name]||''} onChange={e=>setForm({...form,[field.name]:e.target.value})}><option value="">Pilih {field.label}</option>{optionsFor(field.name).map(v=><option key={v} value={v}>{v}</option>)}</select>:<input className="w-full rounded-lg border p-3" type={field.kind==='number'?'number':'text'} value={form[field.name]||''} onChange={e=>setForm({...form,[field.name]:e.target.value})} placeholder={field.placeholder||field.name}/>}</label>)}</div><button disabled={busy} onClick={()=>void submit()} className="mt-4 rounded-lg bg-cyan-800 px-5 py-3 font-bold text-white disabled:opacity-40">{busy?'Memproses...':'Simpan / Ajukan Keputusan'}</button><p role="status" className="mt-3 text-sm text-slate-700">{message}</p></section>}
+  {roleChecked&&!current&&message&&<p role="status" className="text-sm text-slate-700">{message}</p>}
+ </div>;
 }

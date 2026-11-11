@@ -1,6 +1,7 @@
 'use client';
 import React,{useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
+import {MenuLink} from '@/components/navigation/MenuLink';
 import {ArrowRight,CheckCircle2,ClipboardList,Megaphone,Plus,Search,UserRoundCheck} from 'lucide-react';
 import {SERVICE_CATALOG,SERVICE_GROUPS} from '@/lib/sales-workflow';
 import {POSTAL_FIELDS} from '@/lib/indonesia-postal';
@@ -153,8 +154,8 @@ export default function MarketingLeads(){
   </header>
   <div className="flex flex-wrap gap-2">
    <Link href="/sales/campaigns" className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Kelola Campaign &amp; Attribution →</Link>
-   <Link href="/sales/pipeline" className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700">Sales Pipeline →</Link>
-   <Link href="/sales/activities" className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Jadwal &amp; Follow-up →</Link>
+   <MenuLink href="/sales/pipeline" className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700">Sales Pipeline →</MenuLink>
+   <MenuLink href="/sales/activities" className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Jadwal &amp; Follow-up →</MenuLink>
    <Link href="/sales/lead-intelligence" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">Lead Score · Nurturing · Conversion Analysis →</Link>
   </div>
   {message&&<div role="status" className="whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">{message}</div>}
@@ -231,8 +232,8 @@ export default function MarketingLeads(){
    </section>:selected?<section className="min-w-0 space-y-4 rounded-xl border bg-white p-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">{selected.lead.account_name}</h2>
      <p className="text-xs text-slate-500">{selected.lead.lead_number} • {statuses[selected.lead.status]}</p></div>
-     {selected.link&&<Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(selected.link.opportunity_id)}
-      className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white"><CheckCircle2 size={15}/> Buka Opportunity <ArrowRight size={13}/></Link>}</div>
+     {selected.link&&<MenuLink href={'/sales/pipeline?opportunity_id='+encodeURIComponent(selected.link.opportunity_id)}
+      className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white"><CheckCircle2 size={15}/> Buka Opportunity <ArrowRight size={13}/></MenuLink>}</div>
     <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700">Sales Owner: <b>{selected.lead.assigned_sales_email}</b>. Lead Qualified harus memenuhi Need, Budget, Decision Maker dan Procurement. Customer ID diterbitkan saat konversi.</div>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
      {flds.map(([k,label])=><label key={k} className="text-xs font-semibold text-slate-700">{label}

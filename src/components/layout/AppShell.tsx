@@ -12,6 +12,8 @@ const AIWorkbench=dynamic(()=>import('@/components/ai/AIWorkbench').then(module=
 interface AppShellProps { children:React.ReactNode; }
 type Identity={email:string;role:string;assignedRole:string;rolePreview:boolean};
 type Session={status:'checking'|'ready'|'denied';identity:Identity|null};
+// Mirrors the role check in /api/sales/approval-queue.
+const APPROVAL_QUEUE_ROLES=['admin','sales','presales','finance','approver','legal'];
 
 /** Cloudflare Access + D1 decide the assigned role. Optional Admin-only
  * simulation is downscoped on the server for every API, never only in the UI.
@@ -61,8 +63,10 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
     return ()=>controller.abort();
   },[isLoginPage]);
   // The bell count is real, role-scoped D1 data, or null when not verified. Never assume zero on failure.
+  // Only roles the approval-queue API serves ask for it; others would get a 403 on every page.
+  const queueRole=session.status==='ready'&&APPROVAL_QUEUE_ROLES.includes(session.identity?.role??'');
   useEffect(()=>{
-    if(session.status!=='ready'){setPendingApprovalsCount(null);return;}
+    if(!queueRole){setPendingApprovalsCount(null);return;}
     const controller=new AbortController();
     const refresh=async()=>{
       try{
@@ -76,7 +80,7 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
     const onVisible=()=>{if(document.visibilityState==='visible')void refresh();};
     document.addEventListener('visibilitychange',onVisible);
     return ()=>{controller.abort();document.removeEventListener('visibilitychange',onVisible);};
-  },[session.status]);
+  },[queueRole]);
   const role=session.status==='ready'?session.identity?.role??null:null;
   // The sign-in page has its own minimal layout (no authenticated header or navigation).
   if(isLoginPage)return <>{children}</>;
