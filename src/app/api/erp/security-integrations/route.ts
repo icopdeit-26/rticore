@@ -53,14 +53,15 @@ export async function POST(req:Request){
    await erpAtom(a,"EXISTS(SELECT 1 FROM rticore_security_connectors WHERE tenant_id=? AND id=? AND status='disabled' AND version=? AND lower(created_by)!=?)",[TENANT,connector.id,connector.version,email],[db.prepare("UPDATE rticore_security_connectors SET status='enabled',version=version+1,reviewed_by=?,review_notes=? WHERE tenant_id=? AND id=?").bind(email,v.notes as string,TENANT,connector.id)],'cyber',connector.id,'CONNECTOR_ENABLE',{});return erpReply({success:true});
   }
   if(v.action==='queue'){
-   erpAssert(['admin','presales'].includes(role)&&erpId(v.connector_id)&&erpId(v.case_id),'Case dan connector harus valid',403);
+   // SOC Defense Leader escalates reviewed SOC/DFIR cases; Members read connectors and dispatches only.
+   erpAssert(['admin','presales','defense_leader'].includes(role)&&erpId(v.connector_id)&&erpId(v.case_id),'Case dan connector harus valid',403);
    const connector=await db.prepare('SELECT * FROM rticore_security_connectors WHERE tenant_id=? AND id=? AND status=\'enabled\'').bind(TENANT,v.connector_id as string).first<Connector>();
    erpAssert(connector,'Connector belum disetujui',409);await erpGrant(a,'cyber_ops',connector.legal_entity_id);
    const id=crypto.randomUUID();
    await erpAtom(a,'1=1',[],[db.prepare('INSERT INTO rticore_security_dispatches(id,tenant_id,connector_id,case_id,requested_by) VALUES(?,?,?,?,?)').bind(id,TENANT,connector.id,v.case_id as string,email)],'cyber',id,'DISPATCH_QUEUE',{connector_id:connector.id,case_id:v.case_id});return erpReply({success:true,id},201);
   }
   if(v.action==='send'){
-   erpAssert(['admin','presales'].includes(role)&&erpId(v.id),'Dispatch hanya operator terotorisasi',403);
+   erpAssert(['admin','presales','defense_leader'].includes(role)&&erpId(v.id),'Dispatch hanya operator terotorisasi',403);
    const d=await db.prepare("SELECT d.*,k.kind,k.endpoint,k.legal_entity_id,c.project_id,c.kind AS case_kind,c.external_ref,c.severity,c.status AS case_status,c.evidence_document_id FROM rticore_security_dispatches d JOIN rticore_security_connectors k ON k.id=d.connector_id AND k.tenant_id=d.tenant_id JOIN rticore_cyber_cases c ON c.id=d.case_id AND c.tenant_id=d.tenant_id WHERE d.tenant_id=? AND d.id=? AND k.status='enabled'").bind(TENANT,v.id as string).first<Delivery>();
    erpAssert(d&&['pending','retryable','sending'].includes(d.status)&&d.attempts<5,'Dispatch tidak tersedia atau batas retry tercapai',409);
    await erpGrant(a,'cyber_ops',d.legal_entity_id);

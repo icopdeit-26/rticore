@@ -1,15 +1,23 @@
 /** Role- and field-level guards for RTICORE's D1 Sales API. */
-export type SalesRole='admin'|'marketing'|'sales'|'presales'|'finance'|'approver'|'legal'|'project_manager'|'viewer';
+export type SalesRole='admin'|'marketing'|'sales'|'presales'|'finance'|'approver'|'legal'|'project_manager'|'offense_lead'|'offense_member'|'defense_leader'|'defense_member'|'governance_leader'|'governance_member'|'itdev_leader'|'itdev_member'|'viewer';
 const sameEmail=(a:string|undefined|null,b:string|undefined|null)=>
  !!a && !!b && a.trim().toLowerCase()===b.trim().toLowerCase();
-// Project Manager scope is the delivery project it is assigned to (pm_email), not
-// Opportunity ownership. Deny by default here; delivery APIs grant it explicitly
-// through pmOwnsProject() so a forgotten role list never widens PM access.
+// Project Manager scope is the delivery project it is assigned to (pm_email), and Offense
+// Team scope is the Offensive Security project it is allocated to, not Opportunity
+// ownership. Deny by default here; delivery APIs grant it explicitly through
+// pmOwnsProject()/offenseOnProject() so a forgotten role list never widens that access.
+// SOC Defense Team (defense_*) scope is the SOC/DFIR project under its approved cyber_ops grant,
+// granted explicitly through defenseOwnsOpportunity().
+const projectScoped=(role:SalesRole)=>role==='project_manager'||role==='offense_lead'||role==='offense_member'||role==='defense_leader'||role==='defense_member'
+ // Governance Team: GRC project allocation via governanceOnProject() (governance-team.ts).
+ ||role==='governance_leader'||role==='governance_member'
+ // IT Developer Team: Technology project allocation via itdevOnProject() (itdev-team.ts).
+ ||role==='itdev_leader'||role==='itdev_member';
 export const canReadDeal=(role:SalesRole,email:string,creator:string|null|undefined)=>
- role!=='project_manager'&&(role!=='sales'||sameEmail(email,creator));
+ !projectScoped(role)&&(role!=='sales'||sameEmail(email,creator));
 // Customer roster follows the same ownership boundaries as Sales opportunities.
 export const canReadAccount=(role:SalesRole,email:string,creator:string|null|undefined)=>
- role!=='project_manager'&&(role!=='sales'||sameEmail(email,creator));
+ !projectScoped(role)&&(role!=='sales'||sameEmail(email,creator));
 export const canEditAccount=(role:SalesRole,email:string,creator:string|null|undefined)=>
  role==='admin'||(role==='sales'&&sameEmail(email,creator));
 export const canChangeStage=(role:SalesRole,email:string,creator:string|null|undefined)=>

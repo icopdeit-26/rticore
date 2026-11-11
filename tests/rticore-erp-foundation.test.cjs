@@ -83,7 +83,8 @@ test('WP7 P2P canonical offer -> approved PO -> independent receipt -> matched s
  }finally{h.close();}
 });
 test('WP5 VAPT case project isolation and original Vault evidence for independent QA and close',async()=>{
- const h=await won(fixture(45));try{
+ // Full migrations: the cyber case API reads the 0049 SOC assignment table.
+ const h=await won(fixture());try{
   await org(h);const p=project(h);
   h.sql.prepare("UPDATE rticore_delivery_projects SET status='active',start_date='2026-10-01',end_date='2026-12-31',version=version+1 WHERE id=?").run(p.id);
   await scope(h,'project',p.id);

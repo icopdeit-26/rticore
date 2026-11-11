@@ -5,7 +5,7 @@ import React, {useEffect, useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {
-  BriefcaseBusiness, Calculator, ChartNoAxesCombined, ChevronDown, ClipboardCheck,
+  Activity, BriefcaseBusiness, Calculator, ChartNoAxesCombined, ChevronDown, ClipboardCheck,
   Handshake, LayoutDashboard, Megaphone, PanelLeftClose, Search, Settings2,
   ShieldCheck, UsersRound, WalletCards,
   type LucideIcon,
@@ -31,6 +31,7 @@ const GROUP_ICONS: Record<string, LucideIcon> = {
   reporting: ChartNoAxesCombined,
   governance: ShieldCheck,
   administration: Settings2,
+  platform: Activity,
 };
 
 function NavigationContent({role, onClose, onNavigate, mobile}:{
@@ -55,7 +56,7 @@ function NavigationContent({role, onClose, onNavigate, mobile}:{
         <div className="relative flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-1 shadow-inner">
-              <img src="/logo-rti-dark.png" alt="Logo RTI - RiseT Indonesia" className="h-full w-full object-contain" />
+              <img src="/logo-rti-dark.png" alt="Logo RTI - RiseT Indonesia" width={36} height={36} style={{width:36,height:36,objectFit:'contain'}} className="h-full w-full object-contain" />
             </span>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200">RTI</p>

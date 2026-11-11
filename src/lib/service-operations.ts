@@ -2,6 +2,9 @@ import {serviceParameters} from './service-workflow';
 import type {BoQIdentity,D1DB} from './boq-auth';
 import {TENANT} from './sales-workflow';
 import {canReadDeal} from './sales-access';
+import {isOffenseRole,offenseOnProject} from './offense-team';
+import {isGovernanceRole,governanceOnProject} from './governance-team';
+import {isITDevRole,itdevOnProject} from './itdev-team';
 import {atomicSales,type FlowDeal} from './sales-transactions';
 import {operationEvent,jakartaDate,financialSum} from './operations';
 import {openDocument,type VaultDoc} from './document-vault';
@@ -20,8 +23,9 @@ export async function pmOwnsProject(db:D1DB,email:string,opportunityId:string){
 export async function accessibleDeal(a:BoQIdentity,id:string){
  const d=await a.db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
  check(d,'Opportunity tidak ditemukan',404);
- const ok=a.role==='project_manager'?await pmOwnsProject(a.db,a.email,d.id):canReadDeal(a.role,a.email,d.created_by);
- check(ok,a.role==='project_manager'?'Proyek ini tidak ditugaskan kepada Anda sebagai PM':'Akses Opportunity ditolak',403);return d;
+ const offense=isOffenseRole(a.role),governance=isGovernanceRole(a.role),itdev=isITDevRole(a.role);
+ const ok=a.role==='project_manager'?await pmOwnsProject(a.db,a.email,d.id):offense?await offenseOnProject(a.db,a.email,d.id):governance?await governanceOnProject(a.db,a.email,d.id):itdev?await itdevOnProject(a.db,a.email,d.id):canReadDeal(a.role,a.email,d.created_by);
+ check(ok,a.role==='project_manager'?'Proyek ini tidak ditugaskan kepada Anda sebagai PM':offense?'Proyek ini bukan engagement Offensive Security yang dialokasikan kepada Anda':governance?'Proyek ini bukan engagement Governance, Risk & Compliance yang dialokasikan kepada Anda':itdev?'Proyek ini bukan proyek Technology & Implementation yang dialokasikan kepada Anda':'Akses Opportunity ditolak',403);return d;
 }
 export const getProject=(db:D1DB,id:string)=>db.prepare('SELECT * FROM rticore_delivery_projects WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first<Project>();
 /** Supporting originals reuse the encrypted Vault; arbitrary references are never accepted as BAST/invoice/payment proof. */
@@ -39,6 +43,13 @@ export function publicProject(p:Project,role:string){
  const scope=(baseline.scope as {fields?:Record<string,string>}|undefined)?.fields||{};
  const clean=Object.fromEntries(['technical_scope','technical_specifications','scope_quantity','deliverables','delivery_model','project_site','project_pic_name','project_pic_email','implementation_timeline','contract_duration','license_or_sku','service_level','payment_milestones','contract_model'].map(k=>[k,scope[k]||'']));
  const costs=JSON.parse(budget_json) as CostLine[];
+ // Offense and Governance Teams work from the technical scope only: no PO value, payment terms or contract model.
+ // IT Developer Team: same technical-only view.
+ if(isOffenseRole(role)||isGovernanceRole(role)||isITDevRole(role)){
+  const {contract_cents:_value,po_number:_po,...technical}=out;
+  const {payment_milestones:_terms,contract_model:_model,...scopeOnly}=clean;
+  return {...technical,baseline:scopeOnly};
+ }
  return {...out,baseline:{...clean},...(financeRole(role)?{budget:costs,budget_idr:boqTotals([],costs,0).hpp}:{})};
 }
 export type Invoice={id:string;number:string;issue_date:string;due_date:string;amount_cents:number;vat_cents:number;paid_cents:number;status:string;created_by:string;milestone_id:string;document_id:string};

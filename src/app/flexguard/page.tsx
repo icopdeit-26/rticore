@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
+import {FinanceWorkspaceGuide} from '@/components/sales/FinanceWorkspaceGuide';
 import {ProjectManagerWorkspaceGuide} from '@/components/sales/ProjectManagerWorkspaceGuide';
 type Tx={id:string;kind:string;units:number;created_at:string;explanation:string};
 type Wallet={id:string;customer_name:string;contract_id:string;opportunity_id:string;status:string;expires_at:string;entitlement_units:number;balance:{issued:number;available:number;reserved:number;consumed:number;expired:number};events?:Tx[]};
@@ -33,6 +34,7 @@ export default function FlexGuardPage(){
    {role!=='project_manager'&&<Link href="/sales/renewals" className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">Kontrak & Renewal →</Link>}</header>
   {error&&<p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">BLOCKED — {error}</p>}
   {notice&&<p role="status" className="rounded-xl border border-emerald-200 p-3 text-sm">{notice}</p>}
+  <FinanceWorkspaceGuide role={role} opportunityId={active?.opportunity_id} currentStation="FlexGuard Token Wallet"/>
   {role==='project_manager'&&<ProjectManagerWorkspaceGuide role={role} opportunityId={active?.opportunity_id} currentStation="FlexGuard Token Wallet"/>}
   {(role==='admin'||role==='finance')&&<form className="space-y-3 rounded-xl border bg-white p-5" onSubmit={e=>{e.preventDefault();void post({action:'create_wallet',contract_id:contract,entitlement_units:Number(quota)});}}>
    <h2 className="font-bold">Registrasi entitlement dari kontrak FlexGuard approved</h2>

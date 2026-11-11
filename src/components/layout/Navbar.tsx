@@ -109,7 +109,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentRoleInfo = {label: email||'Sesi belum terverifikasi',badge: role||'Login diperlukan'};
   const roleLabels:Record<string,string>={
     admin:'Administrator',marketing:'Marketing',sales:'Sales',presales:'Presales / Solution',
-    finance:'Finance',approver:'Approver',legal:'Legal',project_manager:'Project Manager',viewer:'Viewer',
+    finance:'Finance',approver:'Approver',legal:'Legal',project_manager:'Project Manager',
+    offense_lead:'Offense Team Leader',offense_member:'Offense Team Member',
+    defense_leader:'Defense Team Leader (SOC)',defense_member:'Defense Team Member (SOC Analyst)',
+    governance_leader:'Governance Team Leader',governance_member:'Governance Team Member',
+    itdev_leader:'IT Developer Team Leader',itdev_member:'IT Developer Team Member',viewer:'Viewer',
   };
   const handleRoleSwitch=async(nextRole:string)=>{
     if(assignedRole!=='admin'||!email||roleSwitchBusy||nextRole===role)return;
@@ -183,7 +187,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex min-w-0 items-center gap-1.5">
             <Link href="/" className="flex min-w-0 items-center gap-1.5 transition-transform hover:scale-[1.01]">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200/80 bg-white p-1 shadow-xs">
-                <img src="/logo-rti-light.png" alt="Logo RTI - RiseT Indonesia" className="h-full w-full object-contain" />
+                <img src="/logo-rti-light.png" alt="Logo RTI - RiseT Indonesia" width={32} height={32} style={{width:32,height:32,objectFit:'contain'}} className="h-full w-full object-contain" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">

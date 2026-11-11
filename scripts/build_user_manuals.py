@@ -276,9 +276,9 @@ DETAIL={
  '/sales/executive':('Ringkasan pipeline, forecast, booked sales, revenue dan collection untuk pengawasan keuangan.',
   ['Pilih periode dan filter yang tersedia.','Baca pipeline aktif, weighted forecast, booked sales, revenue diakui dan collection.','Telusuri angka ke Opportunity atau modul sumber.'],
   'Baca saja. Forecast bukan revenue diakui dan collection bukan pengakuan revenue.'),
- '/sales/activities':('Kalender aktivitas, SLA dan follow-up tim Sales.',
-  ['Menu tampil pada navigasi Finance.'],
-  'Pada versi ini API kalender hanya melayani Sales dan Admin, sehingga Finance menerima pesan akses ditolak (HTTP 403). Gunakan Opportunity Pipeline atau minta Sales owner untuk informasi follow-up.'),
+ '/sales/activities':('Kalender aktivitas, SLA dan follow-up tim Sales untuk pemantauan penagihan dan closing.',
+  ['Lihat kalender, next action dan antrean overdue seluruh Sales.','Filter kalender per Sales melalui pilihan Kalender per Sales.'],
+  'Baca saja. Membuat, menjadwalkan ulang atau menyelesaikan aktivitas dilakukan Sales pemilik atau Admin.'),
  '/sales/forecast':('Proyeksi penjualan dan booked sales per periode dengan sumber yang sama dengan Executive Dashboard.',
   ['Pilih periode dan owner Sales.','Lihat forecast tertimbang, booked, revenue diakui dan isu data per deal.'],
   'Baca saja. Estimasi closing tidak sama dengan PO terverifikasi.'),
@@ -489,6 +489,408 @@ FLOWS={
             {},'Minta Admin\nmemeriksa akses','Viewer hanya membaca BoQ yang diizinkan. Tidak membuat, mengubah, mengajukan atau menyetujui transaksi; tidak melihat HPP.')
 }
 
+# Governance Team (migration 0050): governance_leader / governance_member.
+# Scope = Governance, Risk & Compliance delivery projects with an active resource allocation
+# (src/lib/governance-team.ts; API: sales/service-operations, psa/timesheets, sales/document-vault,
+# sales/feasibility (Leader, read-only) and /api/sales deal selector).
+ROLE['governance_leader']='Governance Team Leader'
+ROLE['governance_member']='Governance Team Member'
+_GOV_START=task('Menerima alokasi dan membuka engagement GRC','/sales/delivery',[
+  'Presales mengalokasikan Anda pada Resource & Solution Feasibility: profil engineer dengan email yang sama dengan email login dan alokasi aktif per bulan pada Opportunity GRC.',
+  'Setelah Opportunity Closed Won dan draft proyek tersedia, buka Service Delivery & Projects. Pemilih proyek hanya berisi engagement Governance, Risk & Compliance (Cybersecurity Governance, GRC / Risk, ISO 27001 / 27701, PDP, DPO, IT Audit, IT Governance, ICOFR, BCM / BCP / DRP, Third Party Risk) yang mengalokasikan Anda.',
+  'Periksa ringkasan proyek: layanan, status, versi, PM dan jadwal. Nilai PO, termin pembayaran dan model kontrak sengaja tidak ditampilkan.',
+  'Baca Scope baseline approved: scope teknis, spesifikasi, kuantitas, deliverable, lokasi, PIC, timeline, durasi dan service level. Perubahan scope melalui PM/Presales, bukan di proyek.',
+  'Tunggu PM menyelesaikan kickoff dan mengaktifkan proyek. Selama proyek draft, task GRC belum dapat dikerjakan.'
+ ],'Anggota tim mengetahui engagement, baseline dan jadwal yang menjadi acuan pekerjaan GRC.',
+ 'Proyek di luar kelompok GRC atau tanpa alokasi aktif ditolak (HTTP 403). CRM, BoQ, HPP, nilai PO, invoice dan kontrak tidak tersedia.')
+_GOV_EVIDENCE=task('Menyimpan evidence dan kertas kerja di Document Vault','/sales/documents',[
+  'Buka Secure Document Vault dan pilih engagement GRC Anda.',
+  'Pilih jenis Supporting Document lalu unggah file asli (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB): evidence assessment, kertas kerja, gap report, risk register, remediation plan atau laporan akhir.',
+  'Periksa pesan sukses: versi dan awalan SHA-256 dokumen. Revisi tersimpan sebagai versi baru, file lama tidak ditimpa.',
+  'Unduh dokumen library proyek (RKS/KAK, NDA, supporting) sebagai referensi scope bila diperlukan.'
+ ],'Evidence engagement tersimpan asli, berversi dan dapat dipilih saat task diselesaikan.',
+ 'Unggahan hanya jenis supporting setelah Closed Won. Paket komersial (proposal, negosiasi, PO/SPK), retensi, legal hold dan audit log tidak tersedia.')
+_GOV_TIME=task('Mencatat jam kerja engagement','/psa/timesheets',[
+  'Buka Project Timesheets lalu pilih engagement GRC yang aktif.',
+  'Pilih alokasi aktif milik sendiri, tanggal kerja (tidak di masa depan, di dalam bulan alokasi dan jadwal proyek), menit kelipatan 15 (15-480), billable dan keterangan pekerjaan minimal 12 karakter.',
+  'Klik Simpan dan ajukan review; entri berstatus submitted.',
+  'Pantau riwayat: status approved/rejected, reviewer dan versi entri.'
+ ],'Jam kerja tercatat pada alokasi yang benar dan menunggu review independen.',
+ 'Snapshot biaya/tarif harian tidak ditampilkan. Timesheet tidak diposting otomatis ke GL atau payroll. Pembuat entri tidak dapat mereview entrinya sendiri.')
+WORK['governance_leader']=[_GOV_START,
+ task('Mengerjakan dan menyelesaikan tahapan GRC','/sales/delivery',[
+  'Kerjakan task sesuai urutan prasyarat: Assessment dan evidence, lalu Gap analysis, lalu Remediation dan action plan. Untuk ISO 27001/27701, PDP, DPO, IT Audit, IT Governance, ICOFR, BCM dan Third Party Risk, task berupa Deliverable dan acceptance layanan.',
+  'Isi parameter per tahap: standar/regulasi acuan dan domain/unit (assessment); gap dan referensi kontrol serta prioritas/tingkat risiko (gap); remediation action plan, pemilik action plan dan target penyelesaian (remediation). Tambahkan catatan pelaksanaan minimal 12 karakter dan target selesai.',
+  'Periksa progres yang disimpan Member, lengkapi bila perlu, lalu pilih dokumen supporting dari Vault.',
+  'Centang Tandai selesai dengan evidence (Leader) lalu simpan. Sistem menolak bila tahap prasyarat belum selesai atau dokumen bukan supporting asli pada Opportunity yang sama.',
+  'Pantau tabel Kickoff & service deliverables. Setelah semua tahap selesai, informasikan PM agar proyek dapat ditutup.'
+ ],'Setiap tahapan GRC selesai dengan evidence dan dapat ditelusuri ke Leader yang menyelesaikannya.',
+ 'Kickoff, aktivasi, penutupan proyek, milestone dan BAST tetap milik PM. Task yang sudah done tidak dapat dibuka ulang. Konflik versi (HTTP 409): muat ulang lalu ulangi.'),
+ task('Mereview timesheet anggota tim','/psa/timesheets',[
+  'Buka Project Timesheets dan pilih engagement GRC yang dialokasikan kepada Anda; seluruh entri tim pada proyek tersebut tampil.',
+  'Periksa tanggal, durasi, billable dan keterangan terhadap progres task pada Service Delivery.',
+  'Tulis catatan review minimal 12 karakter lalu klik Setujui atau Tolak pada entri submitted milik anggota lain.',
+  'Ajukan jam kerja sendiri seperti anggota tim; entri Anda direview Finance, Approver, PM proyek atau Leader lain.'
+ ],'Jam kerja tim tervalidasi oleh Leader sebelum dipakai untuk analisis utilisasi.',
+ 'Leader hanya mereview proyek GRC yang mengalokasikannya dan tidak dapat menyetujui entri sendiri. Biaya tidak ditampilkan.'),
+ task('Membaca Feasibility engagement GRC','/sales/feasibility',[
+  'Buka Resource & Solution Feasibility lalu pilih Opportunity GRC yang masih terbuka (ditandai sebagai perencanaan pada pemilih).',
+  'Baca plan, alokasi engineer per bulan (person-days), kapasitas dan gap readiness.',
+  'Sampaikan masukan komposisi tim, kompetensi auditor/konsultan dan jadwal kepada Presales.'
+ ],'Leader memahami rencana resource sebelum engagement dimulai.',
+ 'Hanya baca: plan dan alokasi oleh Presales/Admin, costing oleh Finance, review oleh Finance/Approver. HPP, tarif, revenue dan margin disembunyikan. Opportunity non-GRC atau Closed Lost ditolak.'),
+ _GOV_EVIDENCE]
+WORK['governance_member']=[_GOV_START,
+ task('Mengerjakan tahapan GRC dan menyimpan progres','/sales/delivery',[
+  'Pilih task GRC yang pending pada proyek aktif: Assessment dan evidence, Gap analysis, Remediation dan action plan, atau Deliverable dan acceptance layanan.',
+  'Isi catatan pelaksanaan minimal 12 karakter, parameter layanan (standar/regulasi, domain/unit, gap dan kontrol, prioritas risiko, action plan, pemilik, target) dan target selesai.',
+  'Klik Simpan. Progres tersimpan dan task tetap pending.',
+  'Unggah evidence ke Vault, lalu informasikan Governance Team Leader agar task diselesaikan dengan evidence tersebut.'
+ ],'Progres dan parameter assessment tersimpan untuk QA dan penyelesaian oleh Leader.',
+ 'Member tidak dapat menandai task selesai (HTTP 403) dan tidak mengelola kickoff, aktivasi, milestone atau BAST.'),
+ _GOV_TIME,_GOV_EVIDENCE]
+_GOV_DETAIL_DELIVERY=lambda leader:('Eksekusi engagement Governance, Risk & Compliance setelah Closed Won dan aktivasi proyek oleh PM, pada proyek yang mengalokasikan Anda.',
+  ['Pemilih proyek hanya menampilkan engagement GRC dengan alokasi resource aktif atas email Anda.','Ringkasan proyek dan Scope baseline approved teknis; nilai PO, termin dan model kontrak tidak ditampilkan.',
+   'Task Assessment dan evidence, Gap analysis, Remediation dan action plan (atau Deliverable dan acceptance layanan) dengan parameter layanan per tahap; prasyarat berurutan.']
+  +(['Menandai task selesai dengan dokumen supporting Vault setelah memeriksa progres Member.'] if leader else ['Menyimpan progres (catatan, parameter, target); penyelesaian task dilakukan Leader.']),
+  'Kickoff, aktivasi, penutupan, milestone/BAST, invoice, pembayaran, kontrak dan renewal bukan kewenangan Governance Team. Proyek lain ditolak (HTTP 403).')
+_GOV_DETAIL_TIME=lambda leader:('Pencatatan jam kerja engagement GRC'+(' dan review timesheet tim.' if leader else '.'),
+  ['Ajukan jam kerja sendiri pada alokasi aktif: menit kelipatan 15 (15-480), billable, keterangan minimal 12 karakter, tanggal tidak di masa depan.']
+  +(['Lihat seluruh entri tim pada engagement GRC Anda dan Setujui/Tolak entri submitted dengan catatan minimal 12 karakter.'] if leader else ['Lihat status review entri milik sendiri.']),
+  'Entri sendiri tidak dapat direview sendiri. Snapshot biaya tidak ditampilkan. Tidak diposting otomatis ke GL atau payroll.')
+_GOV_DETAIL_DOCS=('Penyimpanan evidence engagement GRC asli terenkripsi.',
+  ['Unggah dokumen supporting setelah Closed Won (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB); versi dan SHA-256 tercatat.','Baca dan unduh dokumen library proyek (RKS/KAK, NDA, supporting).','Gunakan dokumen sebagai evidence penyelesaian task GRC.'],
+  'Paket komersial (proposal, negosiasi, PO/SPK) tidak tersedia. Retensi, legal hold dan audit log dikelola Admin/Legal.')
+DETAIL['governance_leader']={'/sales/delivery':_GOV_DETAIL_DELIVERY(True),'/psa/timesheets':_GOV_DETAIL_TIME(True),'/sales/documents':_GOV_DETAIL_DOCS,
+ '/sales/feasibility':('Membaca rencana resource Opportunity GRC yang masih terbuka (read-only).',
+  ['Plan, alokasi engineer per bulan (person-days), kapasitas dan gap readiness.','Bahan masukan komposisi tim dan jadwal kepada Presales.'],
+  'Tidak dapat mengubah plan, alokasi, costing atau review. HPP, tarif, revenue dan margin disembunyikan. Hanya Opportunity GRC yang belum Closed Lost.')}
+DETAIL['governance_member']={'/sales/delivery':_GOV_DETAIL_DELIVERY(False),'/psa/timesheets':_GOV_DETAIL_TIME(False),'/sales/documents':_GOV_DETAIL_DOCS}
+AUTHORITY['governance_leader']=[
+ ('Dialokasikan pada engagement GRC','Presales/Admin pada Feasibility; Leader tidak mengalokasikan dirinya sendiri'),
+ ('Menandai task GRC selesai dengan evidence','Wajib dokumen supporting asli di Vault, proyek aktif dan prasyarat tahap sebelumnya'),
+ ('Mereview timesheet tim','Hanya engagement GRC yang mengalokasikan Leader; entri sendiri direview Finance/Approver, PM atau Leader lain'),
+ ('Mengunggah evidence supporting','Retensi dan legal hold diatur Admin/Legal'),
+ ('Membaca Feasibility GRC','Read-only; perubahan oleh Presales/Admin dan Finance, review oleh Finance/Approver')]
+AUTHORITY['governance_member']=[
+ ('Menyimpan progres task GRC','Penyelesaian dengan evidence oleh Governance Team Leader'),
+ ('Mengajukan timesheet','Governance Team Leader, PM proyek, Finance atau Approver; bukan pembuat'),
+ ('Mengunggah evidence supporting','Dipakai Leader sebagai evidence; retensi dan legal hold diatur Admin/Legal')]
+FLOWS['governance_leader']=(['Dialokasikan Presales pada engagement GRC','PM selesaikan kickoff; proyek aktif','Assessment dan evidence','Gap analysis dan prioritas risiko','Evidence dan prasyarat lengkap?','Tandai selesai; remediation plan','Review timesheet tim; serahkan ke PM'],
+ {0:'Presales / Admin',1:'Project Manager'},'Lengkapi evidence\natau progres Member','Leader menyelesaikan task GRC dengan evidence Vault. Penutupan proyek, milestone dan BAST dilanjutkan PM; invoice oleh Finance.')
+FLOWS['governance_member']=(['Dialokasikan Presales pada engagement GRC','PM selesaikan kickoff; proyek aktif','Kerjakan assessment / gap / remediation','Simpan progres dan unggah evidence','Progres siap diperiksa Leader?','Leader menandai task selesai','Ajukan timesheet; Leader mereview'],
+ {0:'Presales / Admin',1:'Project Manager',5:'Governance Team Leader',6:'Governance Team Leader'},'Perbaiki catatan\natau evidence','Member menyimpan progres dan evidence; penyelesaian task dan review timesheet dilakukan Leader.')
+
+# Offense Team (migration 0048): offense_lead / offense_member.
+# Scope = Offensive Security delivery projects (VAPT, Red Team / Adversary Simulation, Attack Surface
+# Management) with an active resource allocation (src/lib/offense-team.ts; API: sales/service-operations,
+# psa/timesheets, sales/document-vault; sales/feasibility read-only for the Leader).
+ROLE['offense_lead']='Offense Team Leader'
+ROLE['offense_member']='Offense Team Member'
+_OFF_START=task('Membuka engagement yang dialokasikan','/sales/delivery',[
+  'Presales mengalokasikan Anda pada rencana Resource & Solution Feasibility (email engineer harus sama dengan email login). Tanpa alokasi aktif, daftar engagement kosong.',
+  'Setelah Opportunity Closed Won dan draft proyek tersedia, buka Service Delivery & Projects. Pemilih proyek hanya berisi engagement Offensive Security (VAPT, Red Team / Adversary Simulation, Attack Surface Management) yang mengalokasikan Anda.',
+  'Baca Scope baseline approved: scope teknis, spesifikasi, kuantitas aset, deliverable, model delivery, lokasi, PIC, timeline dan service level. Nilai PO, termin dan budget tidak ditampilkan.',
+  'Buka Secure Document Vault untuk membaca RKS/KAK, NDA dan dokumen otorisasi/rules of engagement. Lakukan pengujian hanya pada aset dan testing window yang tercatat.',
+  'Task engagement baru dapat dikerjakan setelah PM menyelesaikan checklist kickoff dan mengaktifkan proyek.'
+ ],'Anda mengetahui scope, otorisasi dan jadwal engagement sebelum pengujian dimulai.',
+ 'Kickoff, aktivasi, milestone/BAST dan penutupan proyek dikelola PM/Presales. Engagement di luar alokasi Anda ditolak (HTTP 403).')
+_OFF_VAULT=task('Menyimpan evidence engagement','/sales/documents',[
+  'Buka Secure Document Vault dan pilih engagement Anda.',
+  'Pilih jenis Supporting Document lalu unggah file asli: hasil scan, bukti temuan terotorisasi, laporan VAPT atau hasil retest (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB). Unggahan hanya setelah Closed Won.',
+  'Periksa pesan sukses: versi dan awalan SHA-256 dokumen. File historis tidak ditimpa saat revisi.',
+  'Jangan menyimpan kredensial, data pribadi pelanggan atau payload berbahaya mentah di luar yang disepakati rules of engagement.'
+ ],'Evidence engagement tersimpan asli, berversi dan dapat ditelusuri.',
+ 'Paket komersial (proposal, negosiasi, PO/SPK) tidak tersedia. Retensi, legal hold dan audit log dikelola Admin/Legal.')
+WORK['offense_lead']=[_OFF_START,
+ task('Memimpin pengujian dan menyelesaikan task','/sales/delivery',[
+  'Kerjakan task sesuai urutan prasyarat: VAPT scope (aset, testing window, metodologi/RoE), VAPT testing (aset diuji, temuan dan tingkat risiko), VAPT report (versi laporan final, penerima), VAPT retest (scope retest, hasil dan residual risk).',
+  'Periksa progres yang disimpan anggota tim pada catatan dan parameter task; lengkapi bila perlu (catatan minimal 12 karakter dan target selesai).',
+  'Pastikan evidence asli sudah diunggah ke Vault, lalu pilih dokumen tersebut dan centang Tandai selesai dengan evidence (Leader).',
+  'Sistem menolak penyelesaian bila tahap sebelumnya belum selesai atau dokumen bukan supporting asli Opportunity yang sama.',
+  'Setelah seluruh task engagement selesai, informasikan PM agar milestone/BAST dan penutupan proyek diproses.'
+ ],'Setiap tahap engagement selesai dengan evidence dan siap diserahkan ke PM.',
+ 'Task kickoff dan task non-VAPT dikelola PM/Presales. Task done tidak dapat dibuka ulang. Konflik versi (HTTP 409): muat ulang lalu ulangi.'),
+ task('Mereview timesheet tim','/psa/timesheets',[
+  'Buka Project Timesheets dan pilih engagement. Seluruh entri tim pada engagement Offensive yang mengalokasikan Anda ditampilkan.',
+  'Periksa tanggal, durasi, alokasi, penanda billable dan keterangan pekerjaan terhadap rencana pengujian.',
+  'Isi catatan review minimal 12 karakter, lalu pilih Setujui atau Tolak untuk entri submitted milik anggota tim.',
+  'Catat jam kerja Anda sendiri pada alokasi aktif (menit kelipatan 15, maksimal 480, keterangan minimal 12 karakter); entri Anda direview Finance, Approver atau PM proyek.'
+ ],'Jam kerja tim terverifikasi oleh Leader secara independen.',
+ 'Leader tidak mereview entri sendiri dan tidak melihat snapshot biaya. Timesheet tidak otomatis menjadi payroll atau jurnal GL.'),
+ task('Membaca rencana kapasitas (Feasibility)','/sales/feasibility',[
+  'Buka Resource & Solution Feasibility dan pilih Opportunity Offensive Security yang masih terbuka.',
+  'Baca estimasi kebutuhan person-days (aset x PD per aset x (1 + retest%) + PM/QA), rentang tanggal delivery, status plan dan reviewer.',
+  'Periksa Resource Capacity Calendar: alokasi engineer per bulan dan pemakaian kapasitas lintas proyek.',
+  'Sampaikan usulan komposisi tim, skill dan kapasitas kepada Presales; alokasi dibuat Presales/Admin.'
+ ],'Leader mengetahui beban tim sebelum engagement baru dimulai.',
+ 'Baca saja. HPP, tarif engineer, cost line, penawaran supplier dan margin tidak ditampilkan; Leader tidak membuat atau mereview plan.'),
+ _OFF_VAULT]
+WORK['offense_member']=[_OFF_START,
+ task('Melaksanakan pengujian dan menyimpan progres','/sales/delivery',[
+  'Kerjakan pengujian sesuai scope, testing window dan rules of engagement yang tercatat.',
+  'Pada task VAPT yang pending, isi catatan pelaksanaan minimal 12 karakter, parameter layanan (aset diuji, temuan dan tingkat risiko, hasil retest) dan target selesai, lalu simpan progres.',
+  'Unggah evidence ke Vault, lalu informasikan Offense Team Leader agar task diselesaikan dengan evidence tersebut.',
+  'Pantau status task pada tabel Kickoff & service deliverables.'
+ ],'Progres pengujian tercatat dan siap diperiksa Leader.',
+ 'Member tidak menandai task selesai. Task kickoff dan non-VAPT dikelola PM/Presales.'),
+ task('Mencatat jam kerja','/psa/timesheets',[
+  'Buka Project Timesheets dan pilih engagement Anda.',
+  'Pilih alokasi aktif milik Anda, isi tanggal (tidak di masa depan dan di dalam jadwal proyek), menit kelipatan 15 (15-480), penanda billable dan keterangan minimal 12 karakter.',
+  'Klik Simpan dan ajukan review, lalu pastikan status submitted muncul pada riwayat.',
+  'Entri ditinjau Offense Team Leader, PM proyek, Finance atau Approver. Entri yang ditolak dapat diajukan ulang sesuai koreksi.'
+ ],'Jam kerja pengujian tercatat terhadap alokasi engagement.',
+ 'Hanya entri milik sendiri yang terlihat; snapshot biaya tidak ditampilkan.'),
+ _OFF_VAULT]
+_OFF_DETAIL_DELIVERY=lambda leader:('Eksekusi teknis engagement Offensive Security setelah Closed Won dan aktivasi proyek oleh PM, pada proyek yang mengalokasikan Anda.',
+  ['Pemilih proyek hanya menampilkan engagement VAPT, Red Team / Adversary Simulation dan Attack Surface Management yang mengalokasikan Anda.','Baca Scope baseline approved tanpa nilai PO, termin pembayaran atau model kontrak.',
+   'Perbarui task VAPT scope, testing, report dan retest: catatan minimal 12 karakter, parameter layanan dan target selesai.']+
+  (['Tandai task selesai dengan dokumen supporting asli dari Vault; prasyarat tahap sebelumnya ditegakkan sistem.'] if leader else ['Simpan progres; penyelesaian task dengan evidence dilakukan Offense Team Leader.']),
+  'Kickoff, aktivasi, penutupan, milestone/BAST, invoice, pembayaran, kontrak dan renewal bukan kewenangan Offense Team. Proyek lain ditolak (HTTP 403).')
+_OFF_DETAIL_TIME=lambda leader:('Pencatatan jam kerja engagement'+(' dan review timesheet tim.' if leader else '.'),
+  ['Ajukan jam kerja sendiri pada alokasi aktif: menit kelipatan 15 (15-480), billable, keterangan minimal 12 karakter; tanggal tidak di masa depan.']+
+  (['Lihat seluruh entri tim pada engagement Offensive yang mengalokasikan Anda; Setujui/Tolak entri submitted milik orang lain dengan catatan minimal 12 karakter.'] if leader else ['Lihat riwayat dan status entri milik sendiri.']),
+  ('Entri sendiri direview Finance/Approver atau PM proyek.' if leader else 'Review oleh Offense Team Leader, PM proyek, Finance atau Approver.')+' Snapshot biaya tidak ditampilkan. Tidak diposting otomatis ke GL atau payroll.')
+_OFF_DETAIL_DOCS=('Penyimpanan evidence engagement asli terenkripsi.',
+  ['Unggah dokumen supporting setelah Closed Won (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB); versi dan SHA-256 tercatat.','Baca dan unduh dokumen library engagement (RKS/KAK, NDA, rules of engagement, supporting).','Dokumen menjadi pilihan evidence saat Leader menyelesaikan task.'],
+  'Paket komersial (proposal, negosiasi, PO/SPK) tidak tersedia. Retensi, legal hold dan audit log dikelola Admin/Legal.')
+DETAIL['offense_lead']={'/sales/delivery':_OFF_DETAIL_DELIVERY(True),'/psa/timesheets':_OFF_DETAIL_TIME(True),'/sales/documents':_OFF_DETAIL_DOCS,
+ '/sales/feasibility':('Rencana kapasitas engagement Offensive Security yang masih terbuka (baca saja).',
+  ['Lihat estimasi person-days, tanggal delivery, status plan, reviewer dan gap kesiapan.','Lihat alokasi engineer per bulan dan pemakaian kapasitas lintas proyek.','Lihat engineer aktif, skills dan kapasitas PD per bulan.'],
+  'Tidak membuat plan, alokasi, resource atau cost line dan tidak mereview plan. HPP, tarif engineer, cost line, penawaran supplier dan margin tidak ditampilkan.')}
+DETAIL['offense_member']={'/sales/delivery':_OFF_DETAIL_DELIVERY(False),'/psa/timesheets':_OFF_DETAIL_TIME(False),'/sales/documents':_OFF_DETAIL_DOCS}
+AUTHORITY['offense_lead']=[
+ ('Dialokasikan pada engagement','Alokasi dibuat Presales/Admin pada Feasibility; Leader tidak mengalokasikan dirinya sendiri'),
+ ('Menyelesaikan task VAPT','Wajib dokumen supporting asli di Vault dan prasyarat tahap sebelumnya; proyek diaktifkan PM'),
+ ('Mereview timesheet tim','Hanya engagement yang mengalokasikan Leader; bukan entri sendiri'),
+ ('Mengajukan timesheet sendiri','Finance, Approver atau PM proyek'),
+ ('Mengunggah evidence supporting','Retensi dan legal hold diatur Admin/Legal')]
+AUTHORITY['offense_member']=[
+ ('Menyimpan progres task VAPT','Penyelesaian dengan evidence oleh Offense Team Leader'),
+ ('Mengajukan timesheet','Offense Team Leader, PM proyek, Finance atau Approver; bukan pembuat'),
+ ('Mengunggah evidence supporting','Dipakai Leader sebagai evidence; retensi dan legal hold diatur Admin/Legal')]
+FLOWS['offense_lead']=(['Dialokasikan Presales pada engagement Offensive','PM selesaikan kickoff; proyek aktif','Scope, RoE dan pengujian tim','Laporan VAPT dan retest','Evidence dan prasyarat lengkap?','Tandai task selesai dengan evidence','Review timesheet tim; serahkan ke PM'],
+ {0:'Presales / Admin',1:'Project Manager'},'Lengkapi evidence\natau progres Member','Leader menyelesaikan task VAPT dengan evidence Vault. Penutupan proyek, milestone dan BAST dilanjutkan PM; invoice oleh Finance.')
+FLOWS['offense_member']=(['Dialokasikan Presales pada engagement Offensive','PM selesaikan kickoff; proyek aktif','Uji aset sesuai scope dan RoE','Simpan progres dan unggah evidence','Progres siap diperiksa Leader?','Leader menandai task selesai','Ajukan timesheet; Leader mereview'],
+ {0:'Presales / Admin',1:'Project Manager',5:'Offense Team Leader',6:'Offense Team Leader'},'Perbaiki catatan\natau evidence','Member menyimpan progres dan evidence; penyelesaian task dan review timesheet dilakukan Leader.')
+
+# SOC Defense Team / Blue Team (migration 0049): defense_leader / defense_member.
+# Scope = ERP capability cyber_ops: approved staff placement + approved cyber_ops grant on the legal unit
+# of an approved SOC/DFIR project scope (src/lib/defense-team.ts; API: erp/cyber-operations,
+# erp/security-integrations, psa/timesheets, sales/document-vault, sales?entity=deals).
+ROLE['defense_leader']='Defense Team Leader (SOC)'
+ROLE['defense_member']='Defense Team Member (SOC Analyst)'
+_DEF_ACCESS=task('Menyiapkan akses SOC Defense','/erp/cyber-operations',[
+  'Minta Admin mengajukan penempatan staff Anda pada unit organisasi dan capability cyber_ops pada legal entity proyek SOC/DFIR (Organization & ERP Access). Approver lain harus menyetujui keduanya.',
+  'Pastikan proyek SOC/MDR, DFIR, Incident Response atau Managed Security memiliki scope legal entity yang sudah disetujui (Ajukan/Review Scope Project).',
+  'Buka Cybersecurity Operations. Board SOC Defense menampilkan tabel proyek dalam grant Anda beserta Project ID. Jika tabel kosong, grant atau scope belum disetujui.',
+  'Gunakan Project ID dari tabel saat membuka case baru, dan Case ID/versi dari board saat memproses case.'
+ ],'Board SOC Defense menampilkan proyek yang dapat Anda tangani.',
+ 'Role saja tidak membuka data apa pun: tanpa grant cyber_ops yang disetujui pihak independen, API menolak (HTTP 403). CRM, BoQ, harga, billing dan desk ERP lain tidak tersedia.')
+_DEF_OPEN=task('Membuka case insiden SOC/DFIR','/erp/cyber-operations',[
+  'Pada form Transaksi dan approval pilih Buka Case.',
+  'Isi Project ID, referensi case unik (ID alert/ticket SIEM, 3-120 karakter), jenis soc_incident (proyek SOC/MDR) atau dfir_incident (proyek DFIR/IR/Managed Security), judul 8-240 karakter, severity dan klasifikasi restricted/confidential.',
+  'Klik Simpan lalu Muat Ulang Database; case baru berstatus open versi 1.',
+  'Proyek harus berstatus aktif dan family-nya sesuai jenis case; referensi yang sama pada proyek dan jenis yang sama ditolak.'
+ ],'Case tercatat dengan pembuat, waktu dan severity, siap ditriage Leader.',
+ 'Defense Team tidak membuka vapt_finding (milik tim Offense/Presales). Case tidak dapat dihapus atau diubah judul/severity-nya setelah dibuat.')
+_DEF_VAULT=task('Menyimpan evidence investigasi di Vault','/sales/documents',[
+  'Buka Secure Document Vault; pemilih Opportunity hanya berisi proyek SOC/DFIR dalam grant Anda.',
+  'Pilih jenis Supporting Document lalu unggah file asli: export log, timeline, screenshot konsol, laporan insiden atau memo containment (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB). Unggahan hanya setelah Closed Won.',
+  'Catat ID dokumen yang tampil pada daftar dokumen; ID inilah yang diisi pada form kirim investigasi atau review QA.',
+  'Jangan mengunggah kredensial, token atau data pribadi mentah di luar yang disepakati kontrak layanan.'
+ ],'Evidence asli tersimpan terenkripsi, berversi dan ber-SHA-256.',
+ 'Paket komersial (proposal, negosiasi, PO/SPK), retensi, legal hold dan audit log tidak tersedia; dikelola Admin/Legal.')
+_DEF_TIME=task('Mencatat jam kerja SOC','/psa/timesheets',[
+  'Buka Project Timesheets dan pilih proyek tempat Anda memiliki alokasi resource aktif.',
+  'Pilih alokasi, isi tanggal (tidak di masa depan), menit kelipatan 15 (15-480), penanda billable dan uraian monitoring/triage/investigasi minimal 12 karakter.',
+  'Klik Simpan dan ajukan review; status submitted muncul pada riwayat.'
+ ],'Jam kerja analis tercatat terhadap alokasi proyek.',
+ 'Hanya entri sendiri; review oleh PM proyek, Finance atau Approver. Snapshot biaya tidak ditampilkan.')
+WORK['defense_leader']=[_DEF_ACCESS,_DEF_OPEN,
+ task('Triage dan menugaskan investigasi','/erp/cyber-operations',[
+  'Buka Board SOC Defense, bagian Antrean Tim. Case diurutkan dari critical, high, medium, low sampai informational.',
+  'Pada case open yang belum ditugaskan, pilih analis Defense Team aktif lalu klik Tugaskan. Analis wajib memiliki grant cyber_ops pada legal entity proyek.',
+  'Untuk memindahkan case ke analis lain sebelum disubmit, pilih analis baru lalu klik Tugaskan Ulang.',
+  'Status penugasan berubah menjadi assigned dan case muncul di Antrean Saya milik analis.'
+ ],'Setiap case open memiliki analis penanggung jawab.',
+ 'Hanya case soc_incident/dfir_incident berstatus open. Investigasi yang sudah disubmit harus dikembalikan dulu sebelum ditugaskan ulang. Konflik versi (HTTP 409): muat ulang.'),
+ task('QA investigasi: kembalikan atau review','/erp/cyber-operations',[
+  'Pada case berstatus submitted, baca catatan investigasi analis dan unduh evidence dari Vault.',
+  'Jika belum memadai, isi alasan minimal 12 karakter lalu klik Kembalikan ke Analis; status menjadi returned dan catatan tampil di antrean analis.',
+  'Jika memadai, isi catatan QA minimal 12 karakter lalu klik Setujui (reviewed) atau Tolak (rejected). Evidence analis dipakai otomatis; untuk case tanpa penugasan isi ID dokumen supporting Vault.',
+  'Sistem menolak bila Anda pembuat case, analis yang menyelidiki, atau investigasi belum disubmit.'
+ ],'Case memiliki keputusan QA independen dengan evidence asli.',
+ 'Reviewer ≠ pembuat case ≠ analis. Keputusan review tidak dapat diubah.'),
+ task('Menutup case dan eskalasi ke SIEM/EDR','/erp/security-integrations',[
+  'Pada Antrean Tim, klik Tutup Case untuk case reviewed yang direview orang lain; sistem memvalidasi ulang evidence asli.',
+  'Untuk eskalasi, buka SIEM / EDR Integrations, masukkan Legal Entity ID dan Muat Ulang Database untuk melihat konektor enabled.',
+  'Pilih Antrekan Cyber Case (Connector ID + Case ID), lalu Kirim Outbound dengan Dispatch ID. Periksa status delivered/retryable dan HTTP code.',
+  'Dispatch gagal dapat dikirim ulang hingga 5 percobaan; payload hanya berisi metadata case, tanpa kredensial.'
+ ],'Case selesai tercatat closed dan, bila perlu, terkirim ke SIEM/EDR.',
+ 'Penutup ≠ reviewer. Registrasi konektor oleh Admin dan aktivasi oleh Approver; endpoint wajib HTTPS dalam allowlist.'),
+ _DEF_VAULT,_DEF_TIME]
+WORK['defense_member']=[_DEF_ACCESS,_DEF_OPEN,
+ task('Menyelidiki dan mengirim hasil investigasi','/erp/cyber-operations',[
+  'Buka Board SOC Defense, bagian Antrean Saya; berisi case open yang ditugaskan kepada Anda.',
+  'Lakukan investigasi pada konsol SIEM/EDR pelanggan sesuai kontrak; unggah evidence ke Vault dan catat ID dokumennya (tautan Unggah bukti tersedia per case).',
+  'Isi catatan investigasi 12-2.000 karakter: ringkasan temuan, timeline, IOC, aset terdampak dan tindakan containment/rekomendasi, lalu isi ID dokumen Vault.',
+  'Klik Kirim Investigasi; status penugasan menjadi submitted dan menunggu QA Leader.',
+  'Jika dikembalikan (returned), baca catatan Leader, perbaiki lalu kirim ulang.'
+ ],'Hasil investigasi lengkap dengan evidence siap di-review Leader.',
+ 'Hanya analis yang ditugaskan yang dapat mengirim. Member tidak menugaskan, me-review atau menutup case.'),
+ task('Memantau eskalasi SIEM/EDR','/erp/security-integrations',[
+  'Buka SIEM / EDR Integrations, isi Legal Entity ID lalu Muat Ulang Database.',
+  'Periksa konektor (siem/edr, status) dan dispatch case (status, attempt, HTTP code terakhir).',
+  'Laporkan dispatch rejected atau retryable berulang kepada Defense Team Leader.'
+ ],'Analis mengetahui status eskalasi case ke SIEM/EDR.',
+ 'Baca saja; antre dan kirim outbound oleh Leader, Presales atau Admin.'),
+ _DEF_VAULT,_DEF_TIME]
+_DEF_DETAIL_OPS=lambda leader:('Board SOC Defense dan register case insiden SOC/DFIR dengan alur penugasan, investigasi, QA dan penutupan.',
+  ['Tabel proyek SOC/DFIR dalam grant cyber_ops beserta Project ID, customer, layanan dan status.','Buka case soc_incident/dfir_incident: referensi unik, judul, severity, klasifikasi.','Antrean Saya: case open yang ditugaskan kepada Anda, termasuk catatan pengembalian Leader.']+
+  (['Antrean Tim terurut severity: tugaskan/tugaskan ulang analis, kembalikan investigasi, review QA (reviewed/rejected) dan tutup case reviewed.'] if leader else ['Kirim hasil investigasi (catatan 12-2.000 karakter + ID dokumen Vault) dan kirim ulang setelah dikembalikan.']),
+  'Hanya case SOC/DFIR; vapt_finding milik tim Offense/Presales. Maker-checker: reviewer bukan pembuat atau analis; penutup bukan reviewer. Case dan penugasan tidak dapat dihapus; konflik versi HTTP 409.')
+_DEF_DETAIL_SIEM=lambda leader:('Konektor SIEM/EDR per legal entity dan riwayat dispatch case.',
+  ['Lihat konektor (nama, jenis siem/edr, status, pembuat, reviewer).','Lihat dispatch (case, status, attempt, HTTP code, waktu).']+
+  (['Antrekan case ke konektor enabled dan kirim outbound (Idempotency-Key, maksimal 5 percobaan).'] if leader else []),
+  'Registrasi konektor oleh Admin, aktivasi oleh Approver independen. Endpoint HTTPS dalam allowlist; token di Secrets, tidak pernah tampil.'+('' if leader else ' Member hanya membaca.'))
+_DEF_DETAIL_TIME=('Pencatatan jam kerja analis SOC pada alokasi resource aktif.',
+  ['Ajukan entri sendiri: tanggal, menit kelipatan 15 (15-480), billable, uraian minimal 12 karakter.','Lihat riwayat dan status entri sendiri.'],
+  'Review oleh PM proyek, Finance atau Approver. Snapshot biaya tidak ditampilkan; tidak diposting otomatis ke GL atau payroll.')
+_DEF_DETAIL_DOCS=('Evidence investigasi asli terenkripsi pada Opportunity proyek SOC/DFIR dalam grant.',
+  ['Unggah dokumen supporting setelah Closed Won (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB); versi dan SHA-256 tercatat.','Unduh dokumen library proyek.','ID dokumen dipakai pada kirim investigasi dan review QA.'],
+  'Paket komersial, retensi, legal hold dan audit log tidak tersedia.')
+DETAIL['defense_leader']={'/erp/cyber-operations':_DEF_DETAIL_OPS(True),'/erp/security-integrations':_DEF_DETAIL_SIEM(True),'/psa/timesheets':_DEF_DETAIL_TIME,'/sales/documents':_DEF_DETAIL_DOCS}
+DETAIL['defense_member']={'/erp/cyber-operations':_DEF_DETAIL_OPS(False),'/erp/security-integrations':_DEF_DETAIL_SIEM(False),'/psa/timesheets':_DEF_DETAIL_TIME,'/sales/documents':_DEF_DETAIL_DOCS}
+AUTHORITY['defense_leader']=[
+ ('Membuka case SOC/DFIR','Leader lain atau Approver me-review; pembuat tidak me-review case sendiri'),
+ ('Menugaskan / mengembalikan investigasi','Analis yang ditugaskan wajib anggota Defense aktif dengan grant cyber_ops; pengembali bukan analis'),
+ ('Review QA case','Investigasi wajib submitted; reviewer bukan pembuat case dan bukan analis'),
+ ('Menutup case reviewed','Penutup bukan reviewer; evidence asli divalidasi ulang'),
+ ('Antre/kirim dispatch SIEM/EDR','Konektor diregistrasi Admin dan diaktifkan Approver independen'),
+ ('Mengajukan timesheet sendiri','PM proyek, Finance atau Approver')]
+AUTHORITY['defense_member']=[
+ ('Membuka case SOC/DFIR','Defense Team Leader atau Approver me-review secara independen'),
+ ('Mengirim hasil investigasi','Defense Team Leader mengembalikan atau me-review; analis tidak me-review case sendiri'),
+ ('Mengunggah evidence supporting','Dipakai sebagai bukti QA; retensi dan legal hold diatur Admin/Legal'),
+ ('Mengajukan timesheet','PM proyek, Finance atau Approver')]
+FLOWS['defense_leader']=(['Grant cyber_ops disetujui Admin + Approver','Alert SIEM menjadi case open','Triage severity; tugaskan analis','Analis menyelidiki dan submit evidence','Investigasi memadai?','Review QA: reviewed / rejected','Tutup case; eskalasi SIEM/EDR'],
+ {0:'Admin / Approver',3:'Defense Team Member'},'Kembalikan ke analis\ndengan alasan','Leader melakukan triage, QA independen dan penutupan. Reviewer bukan pembuat case maupun analis; penutup bukan reviewer.')
+FLOWS['defense_member']=(['Grant cyber_ops disetujui Admin + Approver','Buka case insiden SOC/DFIR','Leader menugaskan case kepada Anda','Investigasi; unggah evidence ke Vault','Investigasi lengkap?','Kirim investigasi untuk QA','Leader me-review dan menutup case'],
+ {0:'Admin / Approver',2:'Defense Team Leader',6:'Defense Team Leader'},'Lengkapi temuan,\nIOC atau evidence','Member menyelidiki case yang ditugaskan dan mengirim temuan dengan evidence asli; review QA dan penutupan dilakukan Leader.')
+
+# IT Developer Team (migration 0051): itdev_leader / itdev_member.
+# Delivery scope = Technology & Implementation projects with an active resource allocation
+# (src/lib/itdev-team.ts; API: sales/service-operations, psa/timesheets, sales/document-vault,
+# sales/feasibility (Leader, read-only), /api/sales deal selector). Platform scope = read-only
+# /api/platform/diagnostics (health for both; technical audit trail for the Leader).
+ROLE['itdev_leader']='IT Developer Team Leader'
+ROLE['itdev_member']='IT Developer Team Member'
+_DEV_START=task('Menerima alokasi dan membuka proyek implementasi','/sales/delivery',[
+  'Presales mengalokasikan Anda pada Resource & Solution Feasibility: profil engineer dengan email yang sama dengan email login dan alokasi aktif per bulan pada Opportunity Technology & Implementation.',
+  'Setelah Opportunity Closed Won dan draft proyek tersedia, buka Service Delivery & Projects. Pemilih proyek hanya berisi proyek Technology & Implementation (Cybersecurity Technology, SIEM / SOAR, IAM / PAM, Network / Endpoint, Cloud Security, Data Security / DLP, DevSecOps / Secure Code Review, OT / ICS, Security Hardening) yang mengalokasikan Anda.',
+  'Periksa ringkasan proyek: layanan, status, versi, PM dan jadwal. Nilai PO, termin pembayaran dan model kontrak sengaja tidak ditampilkan.',
+  'Baca Scope baseline approved: scope teknis, spesifikasi, kuantitas, SKU/lisensi, deliverable, model delivery, lokasi, PIC, timeline, durasi dan service level. Perubahan scope melalui PM/Presales.',
+  'Tunggu PM menyelesaikan kickoff dan mengaktifkan proyek. Selama proyek draft, task implementasi belum dapat dikerjakan.'
+ ],'Engineer mengetahui proyek, baseline teknis dan jadwal yang menjadi acuan implementasi.',
+ 'Proyek di luar kelompok Technology & Implementation atau tanpa alokasi aktif ditolak (HTTP 403). CRM, BoQ, HPP, nilai PO, invoice dan kontrak tidak tersedia.')
+_DEV_EVIDENCE=task('Menyimpan evidence implementasi di Document Vault','/sales/documents',[
+  'Buka Secure Document Vault dan pilih proyek implementasi Anda.',
+  'Pilih jenis Supporting Document lalu unggah file asli (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB): bukti lisensi/entitlement, desain dan konfigurasi, as-built, hasil UAT, laporan secure code review atau berita handover support.',
+  'Periksa pesan sukses: versi dan awalan SHA-256 dokumen. Revisi tersimpan sebagai versi baru, file lama tidak ditimpa.',
+  'Jangan mengunggah kredensial, private key, token atau konfigurasi berisi secret pelanggan; samarkan nilai rahasia sebelum diunggah.'
+ ],'Evidence implementasi tersimpan asli, berversi dan dapat dipilih saat task diselesaikan.',
+ 'Unggahan hanya jenis supporting setelah Closed Won. Paket komersial (proposal, negosiasi, PO/SPK), retensi, legal hold dan audit log dokumen tidak tersedia.')
+_DEV_TIME=task('Mencatat jam kerja implementasi','/psa/timesheets',[
+  'Buka Project Timesheets lalu pilih proyek implementasi yang aktif.',
+  'Pilih alokasi aktif milik sendiri, tanggal kerja (tidak di masa depan, di dalam bulan alokasi dan jadwal proyek), menit kelipatan 15 (15-480), billable dan keterangan pekerjaan minimal 12 karakter.',
+  'Klik Simpan dan ajukan review; entri berstatus submitted.',
+  'Pantau riwayat: status approved/rejected, reviewer dan versi entri.'
+ ],'Jam kerja tercatat pada alokasi yang benar dan menunggu review independen.',
+ 'Snapshot biaya/tarif harian tidak ditampilkan. Timesheet tidak diposting otomatis ke GL atau payroll. Pembuat entri tidak dapat mereview entrinya sendiri.')
+_DEV_HEALTH=task('Memeriksa kesehatan platform RTICORE','/platform/diagnostics',[
+  'Buka Platform Diagnostics (13 · Platform & Developer Tools). Halaman memeriksa platform saat dibuka; klik Periksa ulang untuk pemeriksaan baru.',
+  'Baca tile status: Database (OK dan latensi ms), Skema migrasi (reconciled/incomplete), Migrasi terakhir, Transaction guard tertunda, AI provider aktif/teruji dan Production gate.',
+  'Periksa tabel User aktif per role (jumlah saja, tanpa email) dan Ledger migrasi (versi dan waktu diterapkan) untuk memastikan migrasi terbaru, termasuk 0051, sudah diterapkan.',
+  'Bila ada status merah (database gagal, skema incomplete, guard tertunda), catat waktu dan nilai tile lalu laporkan ke Admin bersama langkah reproduksi.'
+ ],'Kondisi platform diketahui sebelum troubleshooting, UAT atau persiapan rilis.',
+ 'Read-only: tidak ada tombol ubah. Parameter, Opsi, API Key, Registrasi User dan status production gate HOLD tetap dikelola Admin melalui maker-checker; API key tidak pernah ditampilkan.')
+WORK['itdev_leader']=[_DEV_START,
+ task('Mengerjakan dan menyelesaikan tahapan implementasi','/sales/delivery',[
+  'Kerjakan task sesuai urutan prasyarat: SKU, lisensi dan entitlement, lalu Implementasi dan acceptance test, lalu Support, warranty dan eskalasi. Untuk family Technology lain (SIEM/SOAR, IAM/PAM, Cloud, DLP, DevSecOps, OT/ICS, Hardening), task berupa Deliverable dan acceptance layanan.',
+  'Isi parameter per tahap: SKU/entitlement/jumlah lisensi dan masa berlaku (lisensi); konfigurasi dan versi solusi serta hasil UAT/acceptance test (implementasi); periode support/warranty, SLA support dan kontak eskalasi (support). Tambahkan catatan pelaksanaan minimal 12 karakter dan target selesai.',
+  'Periksa progres yang disimpan Member, lengkapi bila perlu, lalu pilih dokumen supporting dari Vault.',
+  'Centang Tandai selesai dengan evidence (Leader) lalu simpan. Sistem menolak bila tahap prasyarat belum selesai atau dokumen bukan supporting asli pada Opportunity yang sama.',
+  'Pantau tabel Kickoff & service deliverables. Setelah semua tahap selesai, informasikan PM agar proyek dapat ditutup.'
+ ],'Setiap tahapan implementasi selesai dengan evidence dan dapat ditelusuri ke Leader yang menyelesaikannya.',
+ 'Kickoff, aktivasi, penutupan proyek, milestone dan BAST tetap milik PM. Task yang sudah done tidak dapat dibuka ulang. Konflik versi (HTTP 409): muat ulang lalu ulangi.'),
+ task('Mereview timesheet anggota tim','/psa/timesheets',[
+  'Buka Project Timesheets dan pilih proyek implementasi yang dialokasikan kepada Anda; seluruh entri tim pada proyek tersebut tampil.',
+  'Periksa tanggal, durasi, billable dan keterangan terhadap progres task pada Service Delivery.',
+  'Tulis catatan review minimal 12 karakter lalu klik Setujui atau Tolak pada entri submitted milik anggota lain.',
+  'Ajukan jam kerja sendiri seperti anggota tim; entri Anda direview Finance, Approver, PM proyek atau Leader lain.'
+ ],'Jam kerja tim tervalidasi oleh Leader sebelum dipakai untuk analisis utilisasi.',
+ 'Leader hanya mereview proyek Technology yang mengalokasikannya dan tidak dapat menyetujui entri sendiri. Biaya tidak ditampilkan.'),
+ task('Membaca Feasibility proyek Technology','/sales/feasibility',[
+  'Buka Resource & Solution Feasibility lalu pilih Opportunity Technology & Implementation yang masih terbuka (ditandai sebagai perencanaan pada pemilih).',
+  'Baca plan, alokasi engineer per bulan (person-days), kapasitas, gap readiness serta kebutuhan SKU/lisensi dan cakupan penawaran vendor (tanpa harga).',
+  'Sampaikan masukan sizing, komposisi engineer, prasyarat lingkungan pelanggan dan jadwal implementasi kepada Presales.'
+ ],'Leader memahami rencana resource dan kebutuhan teknis sebelum implementasi dimulai.',
+ 'Hanya baca: plan dan alokasi oleh Presales/Admin, costing oleh Finance, review oleh Finance/Approver. HPP, tarif, harga vendor, revenue dan margin disembunyikan. Opportunity non-Technology atau Closed Lost ditolak.'),
+ _DEV_EVIDENCE,_DEV_HEALTH,
+ task('Menelusuri audit trail teknis','/platform/diagnostics',[
+  'Pada Platform Diagnostics gulir ke bagian Audit trail teknis (khusus Leader dan Admin).',
+  'Baca event terbaru: waktu, area (delivery, timesheet, member, admin_options, report), aksi, entitas dan aktor. Gunakan Sebelumnya/Berikutnya untuk halaman 100 baris.',
+  'Klik Ekspor CSV untuk melampirkan bukti pada laporan insiden, investigasi bug atau bukti UAT.',
+  'Cocokkan event dengan keluhan pengguna (misalnya task tidak tersimpan atau perubahan role) sebelum melapor ke Admin.'
+ ],'Leader dapat menelusuri siapa melakukan apa dan kapan pada area teknis tanpa membuka data bisnis.',
+ 'Hanya metadata event; isi event, nilai pengaturan, harga, katalog, numbering, biaya aktual dan Sales audit tidak ditampilkan. Member menerima HTTP 403 untuk audit.')]
+WORK['itdev_member']=[_DEV_START,
+ task('Mengerjakan tahapan implementasi dan menyimpan progres','/sales/delivery',[
+  'Pilih task implementasi yang pending pada proyek aktif: SKU, lisensi dan entitlement; Implementasi dan acceptance test; Support, warranty dan eskalasi; atau Deliverable dan acceptance layanan.',
+  'Isi catatan pelaksanaan minimal 12 karakter, parameter layanan (SKU/lisensi, masa berlaku, konfigurasi dan versi, hasil UAT, periode dan SLA support) dan target selesai.',
+  'Klik Simpan. Progres tersimpan dan task tetap pending.',
+  'Unggah evidence ke Vault, lalu informasikan IT Developer Leader agar task diselesaikan dengan evidence tersebut.'
+ ],'Progres dan parameter implementasi tersimpan untuk QA dan penyelesaian oleh Leader.',
+ 'Member tidak dapat menandai task selesai (HTTP 403) dan tidak mengelola kickoff, aktivasi, milestone atau BAST.'),
+ _DEV_TIME,_DEV_EVIDENCE,_DEV_HEALTH]
+_DEV_DETAIL_DELIVERY=lambda leader:('Eksekusi implementasi Technology & Implementation setelah Closed Won dan aktivasi proyek oleh PM, pada proyek yang mengalokasikan Anda.',
+  ['Pemilih proyek hanya menampilkan proyek Technology dengan alokasi resource aktif atas email Anda.','Ringkasan proyek dan Scope baseline approved teknis; nilai PO, termin dan model kontrak tidak ditampilkan.',
+   'Task SKU/lisensi, Implementasi dan acceptance test, Support dan eskalasi (atau Deliverable layanan) dengan parameter per tahap; prasyarat berurutan.']
+  +(['Menandai task selesai dengan dokumen supporting Vault setelah memeriksa progres Member.'] if leader else ['Menyimpan progres (catatan, parameter, target); penyelesaian task dilakukan Leader.']),
+  'Kickoff, aktivasi, penutupan, milestone/BAST, invoice, pembayaran, kontrak dan renewal bukan kewenangan IT Developer Team. Proyek lain ditolak (HTTP 403).')
+_DEV_DETAIL_TIME=lambda leader:('Pencatatan jam kerja implementasi'+(' dan review timesheet tim.' if leader else '.'),
+  ['Ajukan jam kerja sendiri pada alokasi aktif: menit kelipatan 15 (15-480), billable, keterangan minimal 12 karakter, tanggal tidak di masa depan.']
+  +(['Lihat seluruh entri tim pada proyek Technology Anda dan Setujui/Tolak entri submitted dengan catatan minimal 12 karakter.'] if leader else ['Lihat status review entri milik sendiri.']),
+  'Entri sendiri tidak dapat direview sendiri. Snapshot biaya tidak ditampilkan. Tidak diposting otomatis ke GL atau payroll.')
+_DEV_DETAIL_DOCS=('Penyimpanan evidence implementasi asli terenkripsi.',
+  ['Unggah dokumen supporting setelah Closed Won (PDF, DOCX, PNG, JPEG atau EML, maksimal 8 MB); versi dan SHA-256 tercatat.','Baca dan unduh dokumen library proyek (RKS/KAK, NDA, supporting).','Gunakan dokumen sebagai evidence penyelesaian task implementasi.'],
+  'Paket komersial (proposal, negosiasi, PO/SPK) tidak tersedia. Retensi, legal hold dan audit log dokumen dikelola Admin/Legal.')
+_DEV_DETAIL_PLATFORM=lambda leader:('Diagnostik platform RTICORE read-only untuk troubleshooting dan kesiapan rilis.',
+  ['Health: status dan latensi database, rekonsiliasi ledger migrasi dan manifest skema, transaction guard tertunda.','Jumlah user aktif per role (tanpa email), kesiapan AI provider (tanpa API key) dan status production gate.']
+  +(['Audit trail teknis: metadata event delivery, timesheet, member, admin_options dan report dengan paging dan ekspor CSV.'] if leader else []),
+  'Tidak ada jalur tulis. Parameter, Opsi, API Key, Registrasi User, nilai pengaturan, harga dan Sales audit tidak tersedia.'+('' if leader else ' Audit trail teknis khusus Leader dan Admin (HTTP 403).'))
+DETAIL['itdev_leader']={'/sales/delivery':_DEV_DETAIL_DELIVERY(True),'/psa/timesheets':_DEV_DETAIL_TIME(True),'/sales/documents':_DEV_DETAIL_DOCS,'/platform/diagnostics':_DEV_DETAIL_PLATFORM(True),
+ '/sales/feasibility':('Membaca rencana resource Opportunity Technology & Implementation yang masih terbuka (read-only).',
+  ['Plan, alokasi engineer per bulan (person-days), kapasitas dan gap readiness.','Kebutuhan SKU/lisensi dan cakupan penawaran vendor tanpa harga.','Bahan masukan sizing, komposisi engineer dan jadwal kepada Presales.'],
+  'Tidak dapat mengubah plan, alokasi, costing atau review. HPP, tarif, harga vendor, revenue dan margin disembunyikan. Hanya Opportunity Technology yang belum Closed Lost.')}
+DETAIL['itdev_member']={'/sales/delivery':_DEV_DETAIL_DELIVERY(False),'/psa/timesheets':_DEV_DETAIL_TIME(False),'/sales/documents':_DEV_DETAIL_DOCS,'/platform/diagnostics':_DEV_DETAIL_PLATFORM(False)}
+AUTHORITY['itdev_leader']=[
+ ('Dialokasikan pada proyek Technology','Presales/Admin pada Feasibility; Leader tidak mengalokasikan dirinya sendiri'),
+ ('Menandai task implementasi selesai dengan evidence','Wajib dokumen supporting asli di Vault, proyek aktif dan prasyarat tahap sebelumnya'),
+ ('Mereview timesheet tim','Hanya proyek Technology yang mengalokasikan Leader; entri sendiri direview Finance/Approver, PM atau Leader lain'),
+ ('Mengunggah evidence supporting','Retensi dan legal hold diatur Admin/Legal'),
+ ('Membaca Feasibility dan audit trail teknis','Read-only; perubahan konfigurasi platform hanya oleh Admin dengan reviewer Admin lain')]
+AUTHORITY['itdev_member']=[
+ ('Menyimpan progres task implementasi','Penyelesaian dengan evidence oleh IT Developer Leader'),
+ ('Mengajukan timesheet','IT Developer Leader, PM proyek, Finance atau Approver; bukan pembuat'),
+ ('Mengunggah evidence supporting','Dipakai Leader sebagai evidence; retensi dan legal hold diatur Admin/Legal'),
+ ('Melaporkan temuan health platform','Ditindaklanjuti Admin; Member tidak mengubah konfigurasi')]
+FLOWS['itdev_leader']=(['Dialokasikan Presales pada proyek Technology','PM selesaikan kickoff; proyek aktif','Lisensi, implementasi dan UAT tim','Support handover dan evidence','Evidence dan prasyarat lengkap?','Tandai task selesai dengan evidence','Review timesheet; cek health & audit'],
+ {0:'Presales / Admin',1:'Project Manager'},'Lengkapi evidence\natau progres Member','Leader menyelesaikan task implementasi dengan evidence Vault dan memantau platform. Penutupan proyek, milestone dan BAST dilanjutkan PM; invoice oleh Finance; konfigurasi platform oleh Admin.')
+FLOWS['itdev_member']=(['Dialokasikan Presales pada proyek Technology','PM selesaikan kickoff; proyek aktif','Kerjakan lisensi / implementasi / support','Simpan progres dan unggah evidence','Progres siap diperiksa Leader?','Leader menandai task selesai','Ajukan timesheet; Leader mereview'],
+ {0:'Presales / Admin',1:'Project Manager',5:'IT Developer Leader',6:'IT Developer Leader'},'Perbaiki catatan\natau evidence','Member menyimpan progres dan evidence serta memeriksa health platform; penyelesaian task dan review timesheet dilakukan Leader.')
+
 class RoleFlow(Flowable):
     def __init__(self,role):
         super().__init__();self.role=role;self.width=501;self.height=526
@@ -564,7 +966,7 @@ for role,name in ROLE.items():
         auth=Table(rows,colWidths=[250,251],repeatRows=1,hAlign='LEFT')
         auth.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#dceef2')),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f3f6fa')]),('BOTTOMPADDING',(0,0),(-1,-1),6),('TOPPADDING',(0,0),(-1,-1),6),('LINEBELOW',(0,0),(-1,0),.7,colors.HexColor('#83b5c2'))]))
         story.append(auth)
-    if role not in ('viewer','project_manager'): story+=section('Khusus menu ERP','Organization, General Ledger, Treasury, HR, Procurement/AP dan Cybersecurity memerlukan pengendalian tambahan. Penempatan staff dan capability grant pada legal-unit harus disetujui secara independen. Jika ditolak, minta Admin/Approver memeriksa grant; role umum tidak otomatis membuka operasi ERP.')
+    if role not in ('viewer','project_manager','offense_lead','offense_member','governance_leader','governance_member','itdev_leader','itdev_member'): story+=section('Khusus menu ERP','Organization, General Ledger, Treasury, HR, Procurement/AP dan Cybersecurity memerlukan pengendalian tambahan. Penempatan staff dan capability grant pada legal-unit harus disetujui secara independen. Jika ditolak, minta Admin/Approver memeriksa grant; role umum tidak otomatis membuka operasi ERP.')
     story += [PageBreak(),p('Diagram alur / '+name,'HeadRT'),p('Baca dari atas ke bawah. Kotak biru menandai keterlibatan role lain; belah ketupat adalah keputusan. Cabang Tidak memerlukan koreksi sebelum pemeriksaan ulang.','SmallRT'),RoleFlow(role),p(FLOWS[role][3],'SmallRT')]
     for idx,(title,path,steps,result,check) in enumerate(WORK[role],1):
         story += [PageBreak(),p(f'03.{idx} / {title}','HeadRT'),p('Mulai dari: '+path,'SubRT'),p('Langkah penggunaan','SubRT')]

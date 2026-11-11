@@ -36,7 +36,13 @@ let pgPromise = null;
 async function getPg() {
   if (!pgPromise) {
     pgPromise = (async () => {
-      const pg = await PGlite.create(dataDir);
+      let pg;
+      try {
+        pg = await PGlite.create(dataDir);
+      } catch {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+        pg = await PGlite.create(dataDir);
+      }
       try {
         const check = await pg.query('SELECT COUNT(*) AS n FROM rticore_members');
         if (Number(check.rows?.[0]?.n ?? 0) === 0 && fs.existsSync(schemaPath)) {
@@ -48,11 +54,14 @@ async function getPg() {
         }
       }
       await ensureTriggers(pg);
+      await pg.exec('CHECKPOINT');
       return pg;
     })();
   }
   return pgPromise;
 }
+
+const MUTATING_SQL = /^\s*(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|REPLACE|TRUNCATE)\b/i;
 
 // Serialize operations so transactions (BEGIN/COMMIT) never interleave
 let queue = Promise.resolve();
@@ -64,9 +73,13 @@ parentPort?.on('message', (msg) => {
       const pg = await getPg();
       if (type === 'query') {
         const res = await pg.query(sql, params || []);
+        if (MUTATING_SQL.test(String(sql || ''))) {
+          await pg.exec('CHECKPOINT');
+        }
         parentPort.postMessage({ id, ok: true, rows: res.rows, rowCount: res.affectedRows ?? 0 });
       } else if (type === 'exec') {
         await pg.exec(sql);
+        await pg.exec('CHECKPOINT');
         parentPort.postMessage({ id, ok: true });
       } else if (type === 'batch') {
         await pg.exec('BEGIN');
@@ -80,6 +93,7 @@ parentPort?.on('message', (msg) => {
             out.push({ rows: r.rows, rowCount: lastChanges });
           }
           await pg.exec('COMMIT');
+          await pg.exec('CHECKPOINT');
           parentPort.postMessage({ id, ok: true, batchResults: out });
         } catch (err) {
           try { await pg.exec('ROLLBACK'); } catch { /* ignore */ }

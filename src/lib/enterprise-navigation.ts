@@ -15,7 +15,16 @@ export type RTICoreNavGroup = {
   readonly label: string;
   readonly items: readonly RTICoreNavItem[];
 };
-const ALL: BoQRole[] = ['admin','marketing','sales','presales','finance','approver','legal','project_manager','viewer'];
+const ALL: BoQRole[] = ['admin','marketing','sales','presales','finance','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer'];
+// IT Developer Team (0051): scoped by the APIs to allocated Technology & Implementation projects;
+// Leader also reads Technology Feasibility. Both read platform diagnostics (Leader: + technical audit).
+const ITDEV: BoQRole[] = ['itdev_leader','itdev_member'];
+// Offense Team (0048): scoped by the APIs to allocated Offensive Security projects; Leader also reads Offensive Feasibility.
+const OFFENSE: BoQRole[] = ['offense_lead','offense_member'];
+// Governance Team (0050): scoped by the APIs to allocated GRC projects; Leader also reads GRC Feasibility.
+const GOVERNANCE: BoQRole[] = ['governance_leader','governance_member'];
+// SOC Defense Team: scoped by the APIs to SOC/DFIR projects under an approved cyber_ops grant.
+const DEFENSE: BoQRole[] = ['defense_leader','defense_member'];
 const COMMERCIAL: BoQRole[] = ['admin','sales','presales','finance','approver','legal'];
 const SALES: BoQRole[] = ['admin','sales','approver','finance'];
 const PRESALES: BoQRole[] = ['admin','presales','approver','finance','legal'];
@@ -45,7 +54,7 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
     item('Smart Scoping & Sizing','/scoping',['admin','presales','sales']),
     item('Tender Compliance','/sales/compliance',TENDER),
     item('Bid Readiness','/sales/bid-readiness',TENDER),
-    item('Resource & Solution Feasibility','/sales/feasibility',TENDER),
+    item('Resource & Solution Feasibility','/sales/feasibility',[...TENDER,'governance_leader','offense_lead','itdev_leader']),
   ]},
   {id:'commercial',label:'05 · Commercial, Pricing & Approval',items:[
     item('BoQ Management','/boq',[...COMMERCIAL,'viewer']),
@@ -55,8 +64,8 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
   ]},
   {id:'delivery',label:'06 · Project Delivery & Operations',items:[
     // project_manager: scoped by the API to projects where it is the assigned PM.
-    item('Service Delivery & Projects','/sales/delivery',['admin','presales','project_manager','finance','approver']),
-    item('Project Timesheets','/psa/timesheets',['admin','presales','project_manager','finance','approver']),
+    item('Service Delivery & Projects','/sales/delivery',['admin','presales','project_manager','finance','approver',...OFFENSE,...GOVERNANCE,...ITDEV]),
+    item('Project Timesheets','/psa/timesheets',['admin','presales','project_manager','finance','approver',...OFFENSE,...GOVERNANCE,...DEFENSE,...ITDEV]),
     item('Official Post-PO Forms','/post-po',['admin','sales','presales','finance','approver','legal']),
   ]},
   {id:'cash',label:'07 · Contract-to-Cash & Renewal',items:[
@@ -73,16 +82,20 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
     item('Enterprise Reports','/reports',['admin','marketing','sales','finance','approver']),
   ]},
   {id:'governance',label:'10 · Document Center & Governance',items:[
-    item('Secure Document Vault','/sales/documents',[...COMMERCIAL,'project_manager']),
+    item('Secure Document Vault','/sales/documents',[...COMMERCIAL,'project_manager',...OFFENSE,...GOVERNANCE,...DEFENSE,...ITDEV]),
+  ]},
+  {id:'platform',label:'13 · Platform & Developer Tools',items:[
+    // Read-only: no settings, keys or user registry. Audit section is Leader/Admin only (API-enforced).
+    item('Platform Diagnostics','/platform/diagnostics',['admin',...ITDEV]),
   ]},
   {id:'enterprise_erp',label:'12 · ERP Finance, Procurement & Cybersecurity',items:[
     item('Organization & ERP Access','/erp/organization',['admin','approver']),
     item('General Ledger & Journal','/erp/general-ledger',['finance','approver']),
     item('Treasury & Payments','/erp/treasury',['admin','finance','approver']),
     item('Human Resources & Workforce','/erp/hr',['admin','approver']),
-    item('SIEM / EDR Integrations','/erp/security-integrations',['admin','presales','approver']),
+    item('SIEM / EDR Integrations','/erp/security-integrations',['admin','presales','approver',...DEFENSE]),
     item('Procurement & Accounts Payable','/erp/procurement',['admin','presales','finance','approver']),
-    item('Cybersecurity Operations','/erp/cyber-operations',['admin','presales','approver']),
+    item('Cybersecurity Operations','/erp/cyber-operations',['admin','presales','approver',...DEFENSE]),
   ]},
   {id:'administration',label:'11 · Administrasi · Khusus Admin',items:[
     item('Registrasi User','/boq/users',['admin']),
@@ -112,6 +125,9 @@ export function canOpenRoute(role:string|null|undefined,href:string):boolean{
   return !!role&&owner.roles.includes(role as BoQRole);
 }
 
+// Role whose daily work is not the first menu item lands on its own desk.
+export const LANDING:Readonly<Record<string,string>>={defense_leader:'/erp/cyber-operations',defense_member:'/erp/cyber-operations',offense_lead:'/sales/delivery',offense_member:'/sales/delivery',governance_leader:'/sales/delivery',governance_member:'/sales/delivery'};
 export function firstAccessibleHref(role:string|null|undefined):string|null {
+  if(role&&LANDING[role]&&canOpenRoute(role,LANDING[role]))return LANDING[role];
   return navigationForRole(role)[0]?.items[0]?.href??null;
 }

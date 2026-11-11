@@ -1,6 +1,10 @@
 'use client';
 import React,{useCallback,useEffect,useState} from 'react';
 import {ProjectManagerWorkspaceGuide} from '@/components/sales/ProjectManagerWorkspaceGuide';
+import {GovernanceWorkspaceGuide} from '@/components/sales/GovernanceWorkspaceGuide';
+import {OffenseTeamWorkspaceGuide} from '@/components/sales/OffenseTeamWorkspaceGuide';
+import {ITDevWorkspaceGuide} from '@/components/sales/ITDevWorkspaceGuide';
+import {DefenseTeamGuide} from '@/components/erp/DefenseTeamWorkspace';
 
 type Project={id:string;title:string;status:string};
 type Allocation={id:string;allocation_month:string;person_days:number;display_name:string};
@@ -9,12 +13,12 @@ const control='min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 
 export default function TimesheetsPage(){
  const [projects,setProjects]=useState<Project[]>([]),[project,setProject]=useState(''),[allocations,setAllocations]=useState<Allocation[]>([]),[items,setItems]=useState<Entry[]>([]);
  const [allocation,setAllocation]=useState(''),[date,setDate]=useState(''),[minutes,setMinutes]=useState(480),[billable,setBillable]=useState(true),[description,setDescription]=useState('');
- const [pmProjects,setPmProjects]=useState<string[]>([]);
+ const [pmProjects,setPmProjects]=useState<string[]>([]),[role,setRole]=useState('');
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[reviewer,setReviewer]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[reviewNotes,setReviewNotes]=useState('');
  const load=useCallback(async(id:string)=>{
   const r=await fetch('/api/psa/timesheets'+(id?'?project_id='+encodeURIComponent(id):''),{cache:'no-store',credentials:'same-origin'});
   const j=await r.json();if(!r.ok||!j.success)throw Error(j.message||'Gagal memuat timesheet');
-  setProjects(j.projects||[]);setAllocations(j.allocations||[]);setItems(j.items||[]);setReviewer(j.reviewer===true);setPmProjects(Array.isArray(j.pm_projects)?j.pm_projects:[]);
+  setProjects(j.projects||[]);setAllocations(j.allocations||[]);setItems(j.items||[]);setReviewer(j.reviewer===true);setPmProjects(Array.isArray(j.pm_projects)?j.pm_projects:[]);setRole(typeof j.role==='string'?j.role:'');
  },[]);
  useEffect(()=>{void load(project).catch(e=>setError(String(e))).finally(()=>setLoading(false));},[load,project]);
  const action=async(payload:Record<string,unknown>)=>{
@@ -28,6 +32,10 @@ export default function TimesheetsPage(){
  return <main className="mx-auto max-w-6xl space-y-5 pb-20">
   <header className="rounded-2xl bg-gradient-to-r from-slate-950 to-indigo-900 p-6 text-white"><p className="text-xs font-bold uppercase tracking-widest text-cyan-200">PSA · Workforce</p><h1 className="mt-2 text-2xl font-bold">Timesheet Proyek</h1><p className="mt-2 text-sm text-slate-200">Catat waktu pada alokasi aktif. Finance, Approver atau PM proyek meninjau secara independen; biaya belum diposting ke GL.</p></header>
   {pmProjects.length>0&&<ProjectManagerWorkspaceGuide role="project_manager" currentStation="Project Timesheets"/>}
+  {(role==='governance_leader'||role==='governance_member')&&<GovernanceWorkspaceGuide role={role} currentStation="Project Timesheets"/>}
+  {(role==='offense_lead'||role==='offense_member')&&<OffenseTeamWorkspaceGuide role={role} currentStation="Project Timesheets" defaultOpen={!loading&&projects.length===0}/>}
+  {(role==='itdev_leader'||role==='itdev_member')&&<ITDevWorkspaceGuide role={role} currentStation="Project Timesheets" defaultOpen={!loading&&projects.length===0}/>}
+  {(role==='defense_leader'||role==='defense_member')&&<DefenseTeamGuide role={role} currentStation="Project Timesheets"/>}
   {loading&&<p role="status">Memuat daftar proyek…</p>}{error&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}{message&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{message}</p>}
   <label className="block text-sm font-semibold">Proyek <select className={'mt-2 '+control} value={project} onChange={e=>{setProject(e.target.value);setAllocation('');}}><option value="">Pilih proyek</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.status}</option>)}</select></label>
   {project&&<>

@@ -11,6 +11,10 @@ import { ACCOUNT_KEYS, DEAL_KEYS, TENANT, SALES_STAGES, stageTransition, require
  type SalesDeal, type SalesAccount, type SalesStage, synchronizeBillingAddress } from '@/lib/sales-workflow';
 import {atomicSales,currentRelease,dealGuard,salesAudit,transactionError,poSnapshot,type FlowDeal} from '@/lib/sales-transactions';
 import {canonicalPostalFields} from '@/lib/indonesia-postal';
+import {isOffenseRole,offenseDeals} from '@/lib/offense-team';
+import {isGovernanceRole,governanceDeals} from '@/lib/governance-team';
+import {isITDevRole,itdevDeals} from '@/lib/itdev-team';
+import {isDefenseRole,defenseProjects} from '@/lib/defense-team';
 export const dynamic='force-dynamic';
 const answer=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:privateHeaders});
 const fail=(message:string,status=400)=>answer({success:false,message},status);
@@ -53,6 +57,36 @@ export async function GET(req:Request){
    const rows=await db.prepare('SELECT d.id,d.title,d.stage,d.flow_version,a.legal_name AS company_name FROM rticore_delivery_projects p JOIN rticore_sales_opportunities d ON d.id=p.opportunity_id AND d.tenant_id=p.tenant_id JOIN rticore_sales_accounts a ON a.id=d.company_id AND a.tenant_id=d.tenant_id WHERE p.tenant_id=? AND lower(p.pm_email)=? ORDER BY p.created_at DESC LIMIT 250').bind(TENANT,auth.identity.email.toLowerCase()).all<{id:string;title:string;stage:string;flow_version:number;company_name:string}>();
    return answer({success:true,deals:rows.results,role:auth.identity.role});
   }catch{return fail('Daftar proyek PM belum tersedia; periksa migrasi delivery',503);}
+ }
+ if(isOffenseRole(auth.identity.role)){
+  // Offense Team: allocated Offensive Security projects (+ open Offensive Opportunities for the Leader's
+  // read-only Feasibility). No CRM, account, value or deal detail.
+  if(entity!=='deals')return fail('Offense Team hanya dapat membuka daftar engagement yang dialokasikan',403);
+  try{return answer({success:true,deals:await offenseDeals(db,auth.identity.email,auth.identity.role),role:auth.identity.role});}
+  catch{return fail('Daftar engagement Offense belum tersedia; periksa migrasi 0048',503);}
+ }
+ if(isGovernanceRole(auth.identity.role)){
+  // Governance Team: allocated GRC projects (+ open GRC Opportunities for the Leader's
+  // read-only Feasibility). No CRM, account, value or deal detail.
+  if(entity!=='deals')return fail('Governance Team hanya dapat membuka daftar engagement yang dialokasikan',403);
+  try{return answer({success:true,deals:await governanceDeals(db,auth.identity.email,auth.identity.role),role:auth.identity.role});}
+  catch{return fail('Daftar engagement Governance belum tersedia; periksa migrasi 0050',503);}
+ }
+ if(isITDevRole(auth.identity.role)){
+  // IT Developer Team: allocated Technology & Implementation projects (+ open Technology
+  // Opportunities for the Leader's read-only Feasibility). No CRM, account, value or deal detail.
+  if(entity!=='deals')return fail('IT Developer Team hanya dapat membuka daftar proyek implementasi yang dialokasikan',403);
+  try{return answer({success:true,deals:await itdevDeals(db,auth.identity.email,auth.identity.role),role:auth.identity.role});}
+  catch{return fail('Daftar proyek IT Developer belum tersedia; periksa migrasi 0051',503);}
+ }
+ if(isDefenseRole(auth.identity.role)){
+  // SOC Defense Team: SOC/DFIR projects under its approved cyber_ops grant (Vault selector).
+  // No CRM, account, value or deal detail.
+  if(entity!=='deals')return fail('Defense Team hanya dapat membuka daftar proyek SOC/DFIR dalam grant cyber_ops',403);
+  try{
+   const deals=(await defenseProjects(auth.identity)).map(p=>({id:p.opportunity_id,title:p.deal_title,stage:p.stage,flow_version:p.flow_version,company_name:p.company_name||''}));
+   return answer({success:true,deals,role:auth.identity.role});
+  }catch{return fail('Daftar proyek Defense belum tersedia; periksa migrasi 0049',503);}
  }
  if(!allowed(auth.identity.role,servicePerms))return fail('Hak akses data Sales tidak tersedia untuk role ini',403);
  try{

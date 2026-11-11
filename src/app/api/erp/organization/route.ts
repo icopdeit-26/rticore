@@ -42,7 +42,7 @@ export async function POST(req:Request){
 
 
   if(v.action==='request_policy_change'){
-   erpAssert(role==='admin'&&erpId(v.id)&&['admin','marketing','sales','presales','finance','approver','legal','viewer'].includes(String(v.policy_role))&&['finance_gl','finance_ap','procurement','cyber_ops','resource','hr','audit'].includes(String(v.capability))&&typeof v.allowed==='boolean'&&erpText(v.reason,12,800),'Perubahan role matrix harus valid',403);
+   erpAssert(role==='admin'&&erpId(v.id)&&['admin','marketing','sales','presales','finance','approver','legal','defense_leader','defense_member','viewer'].includes(String(v.policy_role))&&['finance_gl','finance_ap','procurement','cyber_ops','resource','hr','audit'].includes(String(v.capability))&&typeof v.allowed==='boolean'&&erpText(v.reason,12,800),'Perubahan role matrix harus valid',403);
    const previous=await db.prepare('SELECT allowed FROM rticore_erp_role_capability_matrix WHERE role=? AND capability=?').bind(v.policy_role as string,v.capability as string).first<{allowed:number}>();
    const old=previous?.allowed||0,next=v.allowed?1:0;
    erpAssert(old!==next,'Kebijakan tidak berubah');

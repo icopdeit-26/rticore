@@ -31,7 +31,7 @@ export async function GET(req:Request){
   if(!visible(role,email,deal))return deny('Deal bukan milik Sales Anda',403);
   const r=await db.prepare('SELECT * FROM rticore_sales_award_documents WHERE tenant_id=? AND opportunity_id=? ORDER BY created_at DESC LIMIT 50').bind(TENANT,id).all<AwardDoc>();
   const poNumber=JSON.parse(deal.data_json||'{}').po_number||'';
-  return res({success:true,role,po_number:poNumber,documents:r.results,hasDualVerifiedPO:r.results.some(x=>validAwardForWon(x,poNumber))});
+  return res({success:true,role,identityEmail:email,po_number:poNumber,documents:r.results,hasDualVerifiedPO:r.results.some(x=>validAwardForWon(x,poNumber))});
  }catch{return deny('Award/PO registry belum tersedia. Migrasi 0008 wajib.',503);}
 }
 export async function POST(req:Request){

@@ -32,7 +32,7 @@ export async function GET(req:Request){
    db.prepare('SELECT * FROM rticore_sales_bids WHERE tenant_id=? AND opportunity_id=?').bind(TENANT,id).first(),
    db.prepare('SELECT id,kind,title,file_reference,file_name,source_content_hash,requirement_summary,compliance_status,status,review_notes,created_by,reviewed_by,reviewed_at,created_at FROM rticore_sales_requirements WHERE tenant_id=? AND opportunity_id=? ORDER BY created_at DESC LIMIT 100').bind(TENANT,id).all()
   ]);
-  return resp({success:true,bid,requirements:requirements.results,role});
+  return resp({success:true,bid,requirements:requirements.results,role,identityEmail:email});
  }catch{return fail('Registry Tender/RKS belum disiapkan. Terapkan migrasi 0006.',503);}
 }
 export async function POST(req:Request){

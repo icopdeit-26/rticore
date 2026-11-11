@@ -7,6 +7,7 @@ import {ArrowLeft,FileCheck2,ShieldCheck} from 'lucide-react';
 import {OpportunityPicker} from '@/components/sales/OpportunityPicker';
 import {errorText,readApiJSON} from '@/lib/client-api';
 import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
+import {FinanceWorkspaceGuide} from '@/components/sales/FinanceWorkspaceGuide';
 type Award={id:string;document_kind:string;document_number:string;file_name:string;archive_reference:string;original_sha256:string;
  created_by:string;finance_reviewed_by:string|null;legal_reviewed_by:string|null;finance_review_notes?:string;legal_review_notes?:string};
 const field='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs';
@@ -16,7 +17,18 @@ async function api(method:'GET'|'POST'|'PATCH',url:string,body?:Record<string,un
  const j=await readApiJSON(r);if(!r.ok||!j.success)throw Error(j.message||'Transaksi gagal');return j;
 }
 export default function AwardDesk(){
- const [opp,setOpp]=useState(''),[role,setRole]=useState(''),[po,setPo]=useState('');
+ const [opp,setOpp]=useState(''),[role,setRole]=useState(''),[po,setPo]=useState(''),[me,setMe]=useState('');
+ // Mirrors awardReviewAllowed(): Finance check by Finance/Approver, Legal check only by role Legal,
+ // never by the registrar, and Finance and Legal reviewers must be different people.
+ const reviewKind=role==='legal'?'legal':['finance','approver'].includes(role)?'finance':null;
+ const reviewBlock=(x:Award):string|null=>{
+  if(!reviewKind)return null;
+  if(reviewKind==='finance'?x.finance_reviewed_by:x.legal_reviewed_by)return null;
+  if(x.created_by.toLowerCase()===me)return 'Anda mendaftarkan dokumen ini; review harus dilakukan pengguna lain.';
+  const other=reviewKind==='finance'?x.legal_reviewed_by:x.finance_reviewed_by;
+  if(other&&other.toLowerCase()===me)return 'Anda sudah mereview sisi '+(reviewKind==='finance'?'Legal':'Finance')+'; review ini harus oleh orang berbeda.';
+  return '';
+ };
  const [docs,setDocs]=useState<Award[]>([]),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  const [message,setMessage]=useState('');
  const [form,setForm]=useState({document_kind:'po',document_number:'',file_name:'',archive_reference:'',original_sha256:''});
@@ -24,7 +36,7 @@ export default function AwardDesk(){
  const refresh=useCallback(async(id:string)=>{
   try{
    const j=await api('GET','/api/sales/award?opportunity_id='+encodeURIComponent(id));
-   setDocs(j.documents||[]);setReady(!!j.hasDualVerifiedPO);setRole(j.role||'');setPo(j.po_number||'');
+   setDocs(j.documents||[]);setReady(!!j.hasDualVerifiedPO);setRole(j.role||'');setMe(String(j.identityEmail||'').toLowerCase());setPo(j.po_number||'');
    setForm(p=>({...p,document_number:p.document_number||j.po_number||''}));
   }catch(e){setMessage(errorText(e));}
  },[]);
@@ -61,6 +73,7 @@ export default function AwardDesk(){
   </header>
   {message&&<p role="status" className="whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs">{message}</p>}
   <LegalWorkspaceGuide role={role} opportunityId={opp} currentStation="PO / SPK Verification"/>
+  <FinanceWorkspaceGuide role={role} opportunityId={opp} currentStation="PO / SPK Verification"/>
   <div className="grid gap-4 lg:grid-cols-2">
    <section className="space-y-3 rounded-xl border bg-white p-4">
     <h2 className="text-sm font-bold">Registrasi Dokumen Award / PO</h2>
@@ -82,7 +95,8 @@ export default function AwardDesk(){
      <p className="break-all text-[11px] text-slate-500">{vaultDownload(x.archive_reference)?<a href={vaultDownload(x.archive_reference)!} className="font-semibold text-blue-700 underline">Unduh dokumen asli</a>:x.archive_reference}</p>
      <p className="text-xs">Finance: {x.finance_reviewed_by||'Belum diverifikasi'} · Legal: {x.legal_reviewed_by||'Belum diverifikasi'}</p>
      <p className="text-[11px] text-slate-500">Didaftarkan oleh {x.created_by}</p>
-     {((role==='finance'||role==='approver')&&!x.finance_reviewed_by||role==='legal'&&!x.legal_reviewed_by)&&<div className="space-y-2 border-t pt-2">
+     {!!reviewBlock(x)&&<p className="border-t pt-2 text-[11px] text-slate-600">{reviewBlock(x)}</p>}
+     {reviewBlock(x)===''&&<div className="space-y-2 border-t pt-2">
       <label className="block text-xs font-semibold">Catatan pemeriksaan asli<textarea rows={2} className={'mt-1 '+field} value={notes[x.id+'-'+(role==='legal'?'legal':'finance')]||''}
        onChange={e=>setNotes(v=>({...v,[x.id+'-'+(role==='legal'?'legal':'finance')]:e.target.value}))}/></label>
       <button disabled={busy||(notes[x.id+'-'+(role==='legal'?'legal':'finance')]||'').trim().length<15}

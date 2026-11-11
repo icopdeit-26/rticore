@@ -121,7 +121,8 @@ test('HR onboarding, leave policy and custodial asset return before offboarding'
  }finally{h.close();}
 });
 test('Cyber connector requires allowlisted secret and independent approval, delivering no source credentials',async()=>{
- const h=await won(fixture(45));const previous=globalThis.fetch;try{
+ // Full migrations: the cyber case API reads the 0049 SOC assignment table.
+ const h=await won(fixture());const previous=globalThis.fetch;try{
  await setup(h);const p=project(h);h.sql.prepare("UPDATE rticore_delivery_projects SET status='active',start_date='2026-10-01',end_date='2026-12-31',version=version+1 WHERE id=?").run(p.id);
  await legalScope(h,'project',p.id);
  grant(h,users.admin,'cyber_ops');grant(h,users.approver,'cyber_ops');

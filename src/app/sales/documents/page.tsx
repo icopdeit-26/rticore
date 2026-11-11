@@ -3,6 +3,10 @@ import {useCallback,useEffect,useState} from 'react';
 import VaultPicker from '@/components/sales/VaultPicker';
 import {LegalWorkspaceGuide} from '@/components/sales/LegalWorkspaceGuide';
 import {ProjectManagerWorkspaceGuide} from '@/components/sales/ProjectManagerWorkspaceGuide';
+import {GovernanceWorkspaceGuide} from '@/components/sales/GovernanceWorkspaceGuide';
+import {OffenseTeamWorkspaceGuide} from '@/components/sales/OffenseTeamWorkspaceGuide';
+import {ITDevWorkspaceGuide} from '@/components/sales/ITDevWorkspaceGuide';
+import {DefenseTeamGuide} from '@/components/erp/DefenseTeamWorkspace';
 type Deal={id:string;title:string;company_name:string;stage:string};
 type Doc={id:string;source:'release'|'library';release_id?:string;kind:string;file_name:string;version:number;sha256:string;byte_length:number;retention_until:string|null;legal_hold:number;created_at:string;created_by:string};
 type Audit={document_id:string;source:string;action:string;actor_email:string;actor_role:string;event_at:string};
@@ -15,7 +19,7 @@ export default function DocumentVaultPage(){
  const [kind,setKind]=useState('nda'),[documents,setDocuments]=useState<Doc[]>([]),[audits,setAudits]=useState<Audit[]>([]);
  const [uploading,setUploading]=useState(false),[notice,setNotice]=useState(''),[auditOpen,setAuditOpen]=useState(false);
  const [retention,setRetention]=useState<Record<string,string>>({}),[reasons,setReasons]=useState<Record<string,string>>({});
- const [key,setKey]=useState(0);
+ const [key,setKey]=useState(0),[me,setMe]=useState('');
  useEffect(()=>{
   const abort=new AbortController();
   void fetch('/api/sales?entity=deals',{cache:'no-store',signal:abort.signal}).then(r=>r.json()).then(j=>{
@@ -35,7 +39,7 @@ export default function DocumentVaultPage(){
     ['admin','legal'].includes(role)&&auditOpen?fetch('/api/sales/document-vault?'+q+'&audit=1',{cache:'no-store'}).then(r=>r.json()):Promise.resolve({success:true,events:[]})
    ]);
    if(!a.success)throw Error(a.message||'Dokumen tidak tersedia');
-   setDocuments(a.documents||[]);if(b.success)setAudits(b.events||[]);
+   setDocuments(a.documents||[]);setMe(String(a.identityEmail||'').toLowerCase());if(b.success)setAudits(b.events||[]);
   }catch(e){setNotice(e instanceof Error?e.message:String(e));}
  },[opp,role,auditOpen]);
  useEffect(()=>{void refresh();},[refresh,key]);
@@ -60,7 +64,10 @@ export default function DocumentVaultPage(){
    setNotice('Kebijakan tersimpan dan tercatat pada audit.');setKey(n=>n+1);
   }catch(e){setNotice(e instanceof Error?e.message:String(e));}
  }
- const allowedUpload=(['finance','project_manager'].includes(role)&&kind==='supporting')||['admin','sales'].includes(role)||(role==='presales'&&['rks','kak','supporting'].includes(kind))||(role==='legal'&&['nda','supporting'].includes(kind));
+ // Mirrors API: Closed Lost is locked; after Won only supporting documents; Finance only supporting after Won.
+ const stage=deals.find(x=>x.id===opp)?.stage||'';
+ const stageAllows=stage!=='closed_lost'&&(stage!=='closed_won'||kind==='supporting');
+ const allowedUpload=stageAllows&&((['finance','project_manager','offense_lead','offense_member','governance_leader','governance_member','defense_leader','defense_member','itdev_leader','itdev_member'].includes(role)&&kind==='supporting'&&stage==='closed_won')||['admin','sales'].includes(role)||(role==='presales'&&['rks','kak','supporting'].includes(kind))||(role==='legal'&&['nda','supporting'].includes(kind)));
  return <main className="mx-auto w-full max-w-7xl min-w-0 space-y-5 px-3 py-5 pb-24 sm:px-6">
   <header className="rounded-2xl bg-slate-900 p-5 text-white">
    <p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">RTICORE · Secure Document Management</p>
@@ -77,6 +84,10 @@ export default function DocumentVaultPage(){
    <p className="mt-2 text-xs text-slate-500">Data tampil sesuai hak akses sesi terverifikasi dan kepemilikan Opportunity. Role aktif: {role||'—'}.</p>
   </section>
   {role==='project_manager'&&<ProjectManagerWorkspaceGuide role={role} opportunityId={opp} currentStation="Secure Document Vault"/>}
+  {(role==='governance_leader'||role==='governance_member')&&<GovernanceWorkspaceGuide role={role} opportunityId={opp} currentStation="Secure Document Vault"/>}
+  {(role==='offense_lead'||role==='offense_member')&&<OffenseTeamWorkspaceGuide role={role} opportunityId={opp} currentStation="Secure Document Vault"/>}
+  {(role==='itdev_leader'||role==='itdev_member')&&<ITDevWorkspaceGuide role={role} opportunityId={opp} currentStation="Secure Document Vault"/>}
+  {(role==='defense_leader'||role==='defense_member')&&<DefenseTeamGuide role={role} currentStation="Secure Document Vault"/>}
   {opp&&<section className="rounded-2xl border bg-white p-4 shadow-sm">
    <h2 className="font-bold text-slate-900">Simpan Dokumen Asli</h2>
    <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -87,6 +98,7 @@ export default function DocumentVaultPage(){
       <input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg,.eml" disabled={!allowedUpload||uploading} className={'mt-2 '+input} onChange={e=>{void upload(e.target.files?.[0]||null);e.target.value='';}}/>
     </label>}
    </div>
+   {library.has(kind)&&!allowedUpload&&<p className="mt-2 text-xs text-amber-800">{stage==='closed_lost'?'Opportunity Closed Lost terkunci untuk unggahan.':stage==='closed_won'&&kind!=='supporting'?'Setelah Closed Won hanya dokumen supporting yang dapat ditambahkan.':role==='finance'?'Finance mengunggah dokumen supporting setelah Opportunity Closed Won.':role==='offense_lead'||role==='offense_member'?'Offense Team mengunggah dokumen supporting engagement (evidence, laporan VAPT, hasil retest) setelah Closed Won.':role==='project_manager'?'Project Manager mengunggah dokumen supporting delivery (evidence, laporan, BAST) proyeknya.':role==='legal'?'Legal mengunggah NDA atau dokumen supporting hukum.':role==='presales'?'Presales mengunggah RKS, KAK atau dokumen supporting.':'Role Anda tidak dapat mengunggah jenis dokumen ini.'}</p>}
    {!library.has(kind)&&<div className="mt-3"><VaultPicker opportunityId={opp} kind={kind} onSelect={()=>setKey(n=>n+1)}/></div>}
    <p className="mt-2 text-xs text-slate-500">Dokumen NDA/RKS/KAK/Quotation dapat diunggah sejak Opportunity dibuat. Dokumen terkait persetujuan penawaran mengikuti release yang aktif.</p>
   </section>}
@@ -111,7 +123,8 @@ export default function DocumentVaultPage(){
        <p className="mt-1 text-slate-500">Retensi: {doc.retention_until||'Perlu ditetapkan'}</p>
       </div>
      </div>
-     {['admin','legal'].includes(role)&&<div className="mt-3 space-y-2 border-t pt-3">
+     {['admin','legal'].includes(role)&&doc.created_by.toLowerCase()===me&&<p className="mt-3 border-t pt-3 text-xs text-slate-500">Anda mengunggah dokumen ini. Retensi dan legal hold harus diubah oleh Legal/Admin lain.</p>}
+     {['admin','legal'].includes(role)&&doc.created_by.toLowerCase()!==me&&<div className="mt-3 space-y-2 border-t pt-3">
       <input className={input} placeholder="Alasan perubahan (minimal 15 karakter)" aria-label={'Alasan untuk '+doc.file_name} value={reasons[k]||''} onChange={e=>setReasons(x=>({...x,[k]:e.target.value}))}/>
       <div className="flex flex-wrap gap-2">
        {role==='admin'&&<><input type="date" className="rounded-lg border px-2 py-1 text-xs" aria-label="Retensi sampai" value={retention[k]||''} onChange={e=>setRetention(x=>({...x,[k]:e.target.value}))}/><button type="button" onClick={()=>void change(doc,'retention')} className="rounded-lg border px-3 py-1 text-xs font-semibold">Simpan retensi</button></>}

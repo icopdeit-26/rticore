@@ -231,11 +231,37 @@ ON CONFLICT DO NOTHING;
 
 // Constraint/view changes that rticore_postgresql_schema.sql (CREATE ... IF NOT EXISTS)
 // cannot apply to a database created by an older schema. Idempotent.
-// Mirrors migration 0047 (project_manager login role).
+// Mirrors migrations 0047-0051 (PM, Offense, Defense, Governance and IT Developer login roles).
 export const SCHEMA_UPGRADE_SQL=`-- Schema upgrades for databases created before the current rticore_postgresql_schema.sql.
 ALTER TABLE rticore_members DROP CONSTRAINT IF EXISTS rticore_members_role_check;
 ALTER TABLE rticore_members ADD CONSTRAINT rticore_members_role_check
- CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer'));
+ CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer'));
+ALTER TABLE rticore_erp_role_policy_changes DROP CONSTRAINT IF EXISTS rticore_erp_role_policy_changes_role_check;
+ALTER TABLE rticore_erp_role_policy_changes ADD CONSTRAINT rticore_erp_role_policy_changes_role_check
+ CHECK(role IN ('admin','marketing','sales','presales','finance','approver','legal','defense_leader','defense_member','viewer'));
+ALTER TABLE rticore_erp_role_capability_matrix DROP CONSTRAINT IF EXISTS rticore_erp_role_capability_matrix_check;
+ALTER TABLE rticore_erp_role_capability_matrix DROP CONSTRAINT IF EXISTS rticore_erp_role_capability_matrix_role_check;
+ALTER TABLE rticore_erp_role_capability_matrix ADD CONSTRAINT rticore_erp_role_capability_matrix_role_check
+ CHECK(role IN ('admin','marketing','sales','presales','finance','approver','legal','defense_leader','defense_member','viewer'));
+INSERT INTO rticore_erp_role_capability_matrix(role,capability,allowed) VALUES
+ ('defense_leader','cyber_ops',1),('defense_member','cyber_ops',1)
+ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS rticore_cyber_case_assignments (
+ tenant_id TEXT NOT NULL,case_id TEXT NOT NULL,
+ assignee_email TEXT NOT NULL ,assigned_by TEXT NOT NULL ,
+ status TEXT NOT NULL DEFAULT 'assigned' CHECK(status IN ('assigned','submitted','returned')),
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version>0),
+ investigation_notes TEXT CHECK(investigation_notes IS NULL OR length(investigation_notes) BETWEEN 12 AND 2000),
+ evidence_document_id TEXT,
+ leader_notes TEXT CHECK(leader_notes IS NULL OR length(leader_notes) BETWEEN 12 AND 800),
+ assigned_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ submitted_at TEXT,updated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ PRIMARY KEY(tenant_id,case_id),
+ FOREIGN KEY(tenant_id,case_id) REFERENCES rticore_cyber_cases(tenant_id,id),
+ CHECK(status!='submitted' OR (investigation_notes IS NOT NULL AND evidence_document_id IS NOT NULL AND submitted_at IS NOT NULL)),
+ CHECK(status!='returned' OR leader_notes IS NOT NULL)
+, rowid BIGSERIAL);
+CREATE INDEX IF NOT EXISTS rticore_cyber_assignment_queue ON rticore_cyber_case_assignments(tenant_id,assignee_email,status);
 CREATE OR REPLACE VIEW rticore_delivery_planned_pm AS
  SELECT f.tenant_id,f.opportunity_id,min(e.email) pm_email,f.start_date,f.end_date
  FROM rticore_feasibility_plans f JOIN rticore_resource_allocations a ON a.tenant_id=f.tenant_id AND a.opportunity_id=f.opportunity_id AND a.status='active' AND lower(trim(a.work_role)) IN ('pm','project manager','project_manager')

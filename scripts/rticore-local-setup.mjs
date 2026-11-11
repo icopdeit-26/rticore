@@ -13,7 +13,28 @@ const root=path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/
 const args=process.argv.slice(2);
 const opt=name=>{const i=args.indexOf('--'+name);return i>=0?args[i+1]:undefined;};
 const flag=name=>args.includes('--'+name);
-const ROLES=['admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer'];
+const ROLES=['admin','marketing','finance','presales','sales','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer'];
+const DEFAULT_LOCAL_MEMBERS=[
+  ['admin@rticore.local','admin'],
+  ['admin2@rticore.local','admin'],
+  ['marketing@rticore.local','marketing'],
+  ['sales.a@rticore.local','sales'],
+  ['sales.b@rticore.local','sales'],
+  ['presales@rticore.local','presales'],
+  ['finance@rticore.local','finance'],
+  ['approver@rticore.local','approver'],
+  ['legal@rticore.local','legal'],
+  ['pm@rticore.local','project_manager'],
+  ['offense.lead@rticore.local','offense_lead'],
+  ['offense.member@rticore.local','offense_member'],
+  ['defense.leader@rticore.local','defense_leader'],
+  ['defense.member@rticore.local','defense_member'],
+  ['governance.leader@rticore.local','governance_leader'],
+  ['governance.member@rticore.local','governance_member'],
+  ['itdev.leader@rticore.local','itdev_leader'],
+  ['itdev.member@rticore.local','itdev_member'],
+  ['viewer@rticore.local','viewer'],
+];
 
 // 1. .env.local
 const envFile=path.join(root,'.env.local');
@@ -64,6 +85,9 @@ for(const file of files){
 console.log('Database: '+dbFile+' ('+count+' migrasi baru, '+(applied.size+count)+'/'+files.length+' total)');
 
 // 3. members (SQLite backup)
+for(const [email,role] of DEFAULT_LOCAL_MEMBERS){
+  db.prepare("INSERT INTO rticore_members(email,role,active,created_by) VALUES(?,?,1,'RTICORE_LOCAL_SETUP') ON CONFLICT(email) DO NOTHING").run(email,role);
+}
 if(flag('uat-users')){
   db.exec(fs.readFileSync(path.join(root,'scripts/uat/dummy-users.sql'),'utf8'));
   console.log('Akun uji UAT (*.invalid) ditambahkan.');
@@ -76,7 +100,8 @@ if(admin){
   db.prepare("INSERT INTO rticore_members(email,role,active,created_by) VALUES(?,?,1,'RTICORE_LOCAL_SETUP') ON CONFLICT(email) DO UPDATE SET role=excluded.role,active=1").run(email,role);
   console.log('Akun aktif: '+email+' ('+role+')');
 }
-const members=db.prepare('SELECT COUNT(*) n FROM rticore_members WHERE active=1').get().n;
+const sqliteMembers=db.prepare('SELECT email,role,active FROM rticore_members WHERE active=1').all();
+const members=sqliteMembers.length;
 db.close();
 
 // 4. PostgreSQL local database (.pgdata or DATABASE_URL)
@@ -85,10 +110,29 @@ if(fs.existsSync(pgSchemaFile)){
   const pgSchema=fs.readFileSync(pgSchemaFile,'utf8');
   const pgDataDir=path.join(root,'.pgdata');
   const {PGlite}=await import('@electric-sql/pglite');
-  const pg=new PGlite(pgDataDir);
+  let pg;
+  try{
+    pg=await PGlite.create(pgDataDir);
+  }catch{
+    console.log('Memulihkan direktori PostgreSQL lokal (.pgdata) yang terputus tidak bersih...');
+    fs.rmSync(pgDataDir,{recursive:true,force:true});
+    pg=await PGlite.create(pgDataDir);
+  }
   await pg.exec(pgSchema);
   const {ensureTriggers}=await import('./postgres-worker.mjs');
   await ensureTriggers(pg);
+  for(const [email,role] of DEFAULT_LOCAL_MEMBERS){
+    await pg.query(
+      "INSERT INTO rticore_members(email,role,active,created_by) VALUES($1,$2,1,'RTICORE_LOCAL_SETUP') ON CONFLICT(email) DO NOTHING",
+      [email,role]
+    );
+  }
+  for(const row of sqliteMembers){
+    await pg.query(
+      "INSERT INTO rticore_members(email,role,active,created_by) VALUES($1,$2,$3,'RTICORE_LOCAL_SETUP') ON CONFLICT(email) DO UPDATE SET role=EXCLUDED.role,active=EXCLUDED.active",
+      [String(row.email).toLowerCase(),String(row.role),Number(row.active??1)]
+    );
+  }
   if(admin){
     const email=admin.trim().toLowerCase(),role=(opt('role')||'admin').trim();
     await pg.query(
@@ -96,6 +140,7 @@ if(fs.existsSync(pgSchemaFile)){
       [email,role]
     );
   }
+  await pg.exec('CHECKPOINT');
   const pgMembers=await pg.query('SELECT COUNT(*) AS n FROM rticore_members WHERE active=1');
   const pgTables=await pg.query("SELECT COUNT(*) AS n FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'rticore_%'");
   const pgTriggers=await pg.query("SELECT COUNT(*) AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace s ON s.oid=c.relnamespace WHERE NOT t.tgisinternal AND s.nspname='public'");

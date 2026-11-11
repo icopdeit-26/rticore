@@ -13,11 +13,11 @@ const load=(name)=>{
   return m.exports;
 };
 const {roles,can}=load('boq-domain');
-const {RTICORE_NAVIGATION,navigationForRole,firstAccessibleHref}=load('enterprise-navigation');
+const {RTICORE_NAVIGATION,navigationForRole,firstAccessibleHref,LANDING}=load('enterprise-navigation');
 const access=load('sales-access');
 const {fixture,users}=require('./helpers/service-operations-fixture.cjs');
 const items=RTICORE_NAVIGATION.flatMap(group=>group.items.map(item=>({...item,group:group.id})));
-const roleSet=['admin','marketing','sales','presales','finance','approver','legal','viewer'];
+const roleSet=['admin','marketing','sales','presales','finance','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer'];
 const actionRoles={
  create:['admin','finance','presales','sales'],
  read_cost:['admin','finance'],
@@ -27,12 +27,14 @@ const actionRoles={
  approve:['admin','approver'],
  manage_members:['admin']
 };
-test('canonical baseline: eight identities, 41 unique navigable pages and 12 business groups',()=>{
+test('canonical baseline: all identities, 42 unique navigable pages and 13 business groups',()=>{
  assert.deepEqual([...roles].sort(),[...roleSet].sort());
  // 41 = previous 40 + Admin-only "Model Scoping & Harga" (/settings/scoping-model).
- assert.equal(items.length,41);
+ // 42 = + "Platform Diagnostics" (/platform/diagnostics, group 13) for Admin and IT Developer Team (0051).
+ assert.equal(items.length,42);
  assert.deepEqual(items.find(x=>x.href==='/settings/scoping-model')?.roles,['admin']);
- assert.equal(RTICORE_NAVIGATION.length,12);
+ assert.deepEqual(items.find(x=>x.href==='/platform/diagnostics')?.roles,['admin','itdev_leader','itdev_member']);
+ assert.equal(RTICORE_NAVIGATION.length,13);
  assert.equal(new Set(items.map(x=>x.href)).size,items.length);
  for(const item of items){
   assert.match(item.href,/^\/[a-z0-9/-]+$/);
@@ -42,14 +44,17 @@ test('canonical baseline: eight identities, 41 unique navigable pages and 12 bus
  }
 });
 for(const role of roleSet){
- test('negative navigation ACL matrix for '+role+' across all 41 menus',()=>{
+ test('negative navigation ACL matrix for '+role+' across all '+items.length+' menus',()=>{
   const visible=navigationForRole(role).flatMap(g=>g.items);
   const hrefs=new Set(visible.map(x=>x.href));
   for(const item of items){
    assert.equal(hrefs.has(item.href),item.roles.includes(role),role+' permission '+item.href);
   }
   assert.equal(visible.length,items.filter(x=>x.roles.includes(role)).length);
-  assert.equal(firstAccessibleHref(role),visible[0]?.href||null);
+  // Team roles may land on their own desk (LANDING map), which must be one of their menus.
+  const landing=LANDING[role]||visible[0]?.href||null;
+  assert.ok(landing===null||hrefs.has(landing),role+' landing is a visible menu');
+  assert.equal(firstAccessibleHref(role),landing);
  });
  test('negative BoQ capability matrix for '+role+' across all 7 actions',()=>{
   for(const [action,allowed] of Object.entries(actionRoles))

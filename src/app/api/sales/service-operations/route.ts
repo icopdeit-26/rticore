@@ -6,11 +6,20 @@ import {TENANT,safeID} from '@/lib/sales-workflow';
 import {atomicSales} from '@/lib/sales-transactions';
 import {operationEvent,txt,jakartaDate,financialSum,periodOK} from '@/lib/operations';
 import {validISODate} from '@/lib/lead-intelligence';
+import {isOffenseRole,OFFENSE_TASKS} from '@/lib/offense-team';
+import {isGovernanceRole,GOVERNANCE_TASKS} from '@/lib/governance-team';
+import {isITDevRole,ITDEV_TASKS} from '@/lib/itdev-team';
 import {accessibleDeal,getProject,publicProject,financeRole,supportingOriginal,projectWrite,check,cents,cashSummary,renewalState,ServiceError,validatedParameters,type Contract,type Invoice} from '@/lib/service-operations';
 export const dynamic='force-dynamic';
 const reply=(x:unknown,status=200)=>Response.json(x,{status,headers:privateHeaders});
 const fail=(message:string,status=422)=>reply({success:false,message},status);
-const roles=['admin','sales','presales','finance','approver','legal','project_manager'];
+const roles=['admin','sales','presales','finance','approver','legal','project_manager','offense_lead','offense_member','governance_leader','governance_member','itdev_leader','itdev_member'];
+// IT Developer Team (0051): same model on its allocated Technology & Implementation project for
+// the implementation tasks (license/entitlement, implementation & UAT, support handover, deliverable).
+// Offense Team (0048): read its allocated Offensive project; write only the VAPT engagement
+// tasks. Member saves progress; Leader completes the task with Vault evidence.
+// Governance Team (0050): same model on its allocated GRC project for the GRC tasks
+// (assessment & evidence, gap analysis, remediation action plan).
 // Delivery execution (tasks, kickoff, monthly report, activation, milestones, BAST review).
 // project_manager reaches only its own project: accessibleDeal() enforces pm_email.
 const DELIVERY=['admin','presales','project_manager'];
@@ -23,6 +32,9 @@ export async function GET(req:Request){
  const u=new URL(req.url),id=u.searchParams.get('opportunity_id');
  if(!id&&u.searchParams.get('view')==='renewals'){
   if(role==='project_manager')return fail('Daftar renewal lintas kontrak tidak tersedia untuk Project Manager',403);
+  if(isOffenseRole(role))return fail('Daftar renewal lintas kontrak tidak tersedia untuk Offense Team',403);
+  if(isGovernanceRole(role))return fail('Daftar renewal lintas kontrak tidak tersedia untuk Governance Team',403);
+  if(isITDevRole(role))return fail('Daftar renewal lintas kontrak tidak tersedia untuk IT Developer Team',403);
   try{const rows=await db.prepare("SELECT c.*,p.opportunity_id,p.title,a.customer_number,a.legal_name FROM rticore_service_contracts c JOIN rticore_delivery_projects p ON p.id=c.project_id AND p.tenant_id=c.tenant_id JOIN rticore_sales_opportunities d ON d.id=p.opportunity_id AND d.tenant_id=p.tenant_id JOIN rticore_sales_accounts a ON a.id=c.customer_id AND a.tenant_id=c.tenant_id WHERE c.tenant_id=? AND (?!='sales' OR lower(d.created_by)=?) ORDER BY c.end_date LIMIT 501").bind(TENANT,role,email).all<Contract>();
    const items=rows.results.slice(0,500).map(c=>renewalState(c));return reply({success:true,role,identityEmail:email,items,truncated:rows.results.length>500,mrr_idr:financialSum(items.map(c=>c.mrr_idr)),weighted_renewal_90d_idr:financialSum(items.filter(c=>c.days_to_expiry!==null&&c.days_to_expiry>=0&&c.days_to_expiry<=90).map(c=>c.weighted_renewal_idr))});
   }catch(e){return error(e);}
@@ -31,6 +43,11 @@ export async function GET(req:Request){
  try{
   const d=await accessibleDeal(a.identity,id),p=await getProject(db,id);
   if(!p)return reply({success:true,role,identityEmail:email,deal:{id:d.id,title:d.title,stage:d.stage,flow_version:d.flow_version},project:null,tasks:[],milestones:[],invoices:[],payments:[],contract:null});
+  if(isOffenseRole(role)||isGovernanceRole(role)||isITDevRole(role)){
+   // Technical view only: baseline scope and service tasks; no milestone value, billing, contract or revenue.
+   const tasks=await db.prepare('SELECT id,project_id,code,title,status,detail,due_date,period,document_id,completed_by FROM rticore_delivery_tasks WHERE tenant_id=? AND project_id=? ORDER BY period,code').bind(TENANT,p.id).all();
+   return reply({success:true,role,identityEmail:email,deal:{id:d.id,title:d.title,stage:d.stage,flow_version:d.flow_version},project:publicProject(p,role),tasks:tasks.results,...(isGovernanceRole(role)?{governance_tasks:GOVERNANCE_TASKS}:isITDevRole(role)?{itdev_tasks:ITDEV_TASKS}:{offense_tasks:OFFENSE_TASKS}),milestones:[],invoices:[],payments:[],contract:null,assignments:[],revenue_entries:[],revenue_links:[]});
+  }
   const [tasks,milestones,invoices,payments,c,assignments,revenues,links,cost]=await Promise.all([
    db.prepare('SELECT * FROM rticore_delivery_tasks WHERE tenant_id=? AND project_id=? ORDER BY period,code').bind(TENANT,p.id).all(),
    db.prepare('SELECT * FROM rticore_delivery_milestones WHERE tenant_id=? AND project_id=? ORDER BY rowid').bind(TENANT,p.id).all(),
@@ -56,6 +73,12 @@ export async function POST(req:Request){
  try{
   const d=await accessibleDeal(a.identity,v.opportunity_id);check(d.stage==='closed_won','Delivery memerlukan Closed Won dengan PO tervalidasi',409);
   const action=txt(v.action,40),p=await getProject(db,d.id);
+  const offense=isOffenseRole(role);
+  check(!offense||action==='task','Offense Team hanya memperbarui task engagement (VAPT scope, testing, report, retest)',403);
+  const governance=isGovernanceRole(role);
+  check(!governance||action==='task','Governance Team hanya memperbarui task engagement GRC (assessment, gap analysis, remediation)',403);
+  const itdev=isITDevRole(role);
+  check(!itdev||action==='task','IT Developer Team hanya memperbarui task implementasi (lisensi, implementasi & UAT, support, deliverable)',403);
   if(action==='handover'){
    check(['admin','presales'].includes(role),'Pembuatan draft untuk Won lama hanya Admin/Presales',403);
    if(p)return reply({success:true,id:p.id,already_exists:true});
@@ -77,9 +100,27 @@ export async function POST(req:Request){
    writes.push(db.prepare('UPDATE rticore_delivery_projects SET pm_email=?,start_date=?,end_date=?,version=version+1 WHERE id=? AND tenant_id=?').bind(v.pm_email.toLowerCase(),v.start_date,v.end_date,p.id,TENANT));
    await atomicSales(db,'EXISTS(SELECT 1 FROM rticore_delivery_projects WHERE tenant_id=? AND id=? AND version=?)',[TENANT,p.id,p.version],[...writes,operationEvent(db,'delivery',p.id,'ASSIGN',email,{pm_email:v.pm_email,start_date:v.start_date,end_date:v.end_date})]);return reply({success:true});
   }else if(action==='task'){
-   check(technical,'Workflow layanan hanya Admin/Presales/PM proyek',403);check(p.status!=='completed','Proyek sudah selesai',409);check(safeID(v.id)&&txt(v.detail,2000).length>=12&&validISODate(v.due_date),'Task, parameter/evidence dan deadline wajib');
+   check(technical||offense||governance||itdev,'Workflow layanan hanya Admin/Presales/PM proyek/Offense, Governance atau IT Developer Team proyek',403);check(p.status!=='completed','Proyek sudah selesai',409);check(safeID(v.id)&&txt(v.detail,2000).length>=12&&validISODate(v.due_date),'Task, parameter/evidence dan deadline wajib');
    const task=await db.prepare('SELECT code,status FROM rticore_delivery_tasks WHERE id=? AND tenant_id=? AND project_id=?').bind(v.id as string,TENANT,p.id).first<{code:string;status:string}>();check(task&&task.status==='pending','Task sudah selesai/tidak tersedia',409);
    check(v.complete===true||v.complete===false,'Keputusan complete wajib');
+   if(offense){
+    // Kickoff stays with the PM; engagement work starts once the PM has activated the project.
+    check(OFFENSE_TASKS.includes(task.code),'Task kickoff dan non-VAPT dikelola PM/Presales',403);
+    check(p.status==='active','Engagement dimulai setelah PM mengaktifkan proyek (kickoff lengkap)',409);
+    check(v.complete===false||role==='offense_lead','Offense Team Member menyimpan progres; penyelesaian task dengan evidence oleh Offense Team Leader',403);
+   }
+   if(governance){
+    // Kickoff stays with the PM; GRC work starts once the PM has activated the project.
+    check(GOVERNANCE_TASKS.includes(task.code),'Task kickoff dan non-GRC dikelola PM/Presales',403);
+    check(p.status==='active','Engagement dimulai setelah PM mengaktifkan proyek (kickoff lengkap)',409);
+    check(v.complete===false||role==='governance_leader','Governance Team Member menyimpan progres; penyelesaian task dengan evidence oleh Governance Team Leader',403);
+   }
+   if(itdev){
+    // Kickoff stays with the PM; implementation starts once the PM has activated the project.
+    check(ITDEV_TASKS.includes(task.code),'Task kickoff dan non-implementasi dikelola PM/Presales',403);
+    check(p.status==='active','Implementasi dimulai setelah PM mengaktifkan proyek (kickoff lengkap)',409);
+    check(v.complete===false||role==='itdev_leader','IT Developer Member menyimpan progres; penyelesaian task dengan evidence oleh IT Developer Leader',403);
+   }
    let doc:string|null=null;
    const params=validatedParameters(task.code,v.parameters);
    if(v.complete){

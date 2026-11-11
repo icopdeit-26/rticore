@@ -5,6 +5,10 @@ import { emailFromLocalSession, validSessionSecret } from './local-auth';
 import {accessRestricted} from './system-settings';
 import type { BoQRole } from './boq-domain';
 import {rolePreviewFromCookie} from './role-preview';
+import {offenseRouteAllowed} from './offense-team';
+import {governanceRouteAllowed} from './governance-team';
+import {defenseRouteAllowed} from './defense-routes';
+import {itdevRouteAllowed} from './itdev-team';
 
 export interface D1Prepared {
  bind(...args:(string|number|null)[]):D1Prepared;
@@ -52,7 +56,7 @@ export async function authorizeBoQ(request:Request,options:{ignoreRolePreview?:b
    const email=identity.email;
    if(!email.includes('@'))return deny(403,'Identitas email tidak valid.');
    const member=await db.prepare('SELECT role,active FROM rticore_members WHERE email=?').bind(email).first<{role:BoQRole;active:number}>();
-   if(!member||member.active!==1||!['admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer'].includes(member.role))
+   if(!member||member.active!==1||!['admin','marketing','finance','presales','sales','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer'].includes(member.role))
     return deny(403,'Akun belum diberi akses sesuai peran.');
    // Only a verified active Admin may voluntarily downscope to a different role.
    // Untrusted cookies from non-Admins are always ignored (no role elevation).
@@ -61,6 +65,15 @@ export async function authorizeBoQ(request:Request,options:{ignoreRolePreview?:b
    // Identity must remain readable to an authenticated member even when an
    // institution policy denies the preview role access to other Sales APIs.
    const path=new URL(request.url).pathname;
+   // Offense Team roles are allow-listed per API, so handlers written as deny-lists
+   // (e.g. "everyone except project_manager") never widen their access.
+   if(!offenseRouteAllowed(path,role))return deny(403,'API ini tidak tersedia untuk role Offense Team.');
+   // Governance Team roles use the same allow-list model (governance-team.ts).
+   if(!governanceRouteAllowed(path,role))return deny(403,'API ini tidak tersedia untuk role Governance Team.');
+   // SOC Defense Team roles are allow-listed per API the same way (src/lib/defense-routes.ts).
+   if(!defenseRouteAllowed(path,role))return deny(403,'API ini tidak tersedia untuk role Defense Team (SOC).');
+   // IT Developer Team roles: same allow-list model plus read-only platform diagnostics (itdev-team.ts).
+   if(!itdevRouteAllowed(path,role))return deny(403,'API ini tidak tersedia untuk role IT Developer Team.');
    try{if(path!=='/api/sales/identity'&&await accessRestricted(db,path,role))return deny(403,'Resource dibatasi oleh Access Policy institusi.');}catch{return deny(503,'Access Policy belum siap; verifikasi migrasi administrasi.');}
    return {ok:true,identity:{email,role,assignedRole:member.role,rolePreview:role!==member.role,db}};
  }catch{return deny(503,'Database RTICORE tidak dapat dibaca.');}

@@ -88,10 +88,10 @@ export default function SalesActivities(){
   </div>
   <section className="rounded-xl border bg-white p-4">
    <div className="flex flex-wrap items-end gap-3"><div className="grow"><h2 className="text-sm font-bold">Jadwalkan Aktivitas</h2><p className="text-xs text-slate-500">Tanggal menggunakan zona perangkat; kalender tampil WIB (Asia/Jakarta).</p></div>
-   {['admin','finance','approver'].includes(snapshot?.role||'')&&<label className="text-xs font-semibold">Kalender per Sales
+   {snapshot&&['admin','finance','approver'].includes(snapshot.role)&&<label className="text-xs font-semibold">Kalender per Sales
     <select className={input} value={owner} onChange={e=>setOwner(e.target.value)}><option value="">Semua Sales</option>{snapshot.owners.filter(x=>x.role==='sales').map(x=><option key={x.email} value={x.email}>{x.email}</option>)}</select>
    </label>}</div>
-   <form onSubmit={create} className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+   {['admin','sales'].includes(snapshot?.role||'')&&<form onSubmit={create} className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
     <label className="text-xs font-semibold">Lead / Opportunity<select required className={input} value={target} onChange={e=>setTarget(e.target.value)}><option value="">Pilih target</option>{targets.filter(x=>!owner||x.owner===owner).map(x=><option key={x.kind+x.id} value={x.kind+':'+x.id}>{x.kind==='lead'?'Lead':'Opportunity'} · {x.name}</option>)}</select></label>
     <label className="text-xs font-semibold">Aktivitas<select className={input} value={kind} onChange={e=>setKind(e.target.value)}>{Object.entries(kinds).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
     <label className="text-xs font-semibold">Subjek<input required minLength={3} maxLength={200} className={input} value={subject} onChange={e=>setSubject(e.target.value)}/></label>
@@ -99,7 +99,7 @@ export default function SalesActivities(){
     <label className="text-xs font-semibold">Batas waktu / selesai<input required type="datetime-local" className={input} value={due} onChange={e=>setDue(e.target.value)}/></label>
     <label className="text-xs font-semibold">Catatan<input maxLength={2000} className={input} value={detail} onChange={e=>setDetail(e.target.value)}/></label>
     <button disabled={busy||!snapshot||!target} type="submit" className="rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 sm:col-span-2 lg:col-span-3">Simpan Jadwal &amp; Reminder</button>
-   </form>
+   </form>}
   </section>
   <nav aria-label="Tampilan aktivitas" className="flex flex-wrap gap-2">
    {([['next','Next Action'],['calendar','Kalender'],['overdue','Overdue Queue'],['timeline','Activity Timeline'],['alerts','Pengingat & Eskalasi'],...(snapshot?.role==='admin'?[['manager','Sales Manager']]:[])] as string[][]).map(([key,label])=>

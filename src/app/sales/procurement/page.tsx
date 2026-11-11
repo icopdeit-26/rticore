@@ -18,7 +18,7 @@ async function fetchJson(method:'GET'|'POST'|'PATCH',url:string,data?:Record<str
 export default function SalesProcurement(){
  const [opp,setOpp]=useState('');
  const [title,setTitle]=useState('');
- const [role,setRole]=useState('');
+ const [role,setRole]=useState(''),[identityEmail,setIdentityEmail]=useState('');
  const [bid,setBid]=useState<Bid|null>(null);
  const [draftBid,setDraftBid]=useState(initialBid());
  const [decision,setDecision]=useState('go');
@@ -36,7 +36,7 @@ export default function SalesProcurement(){
     fetchJson('GET','/api/sales/procurement?opportunity_id='+encodeURIComponent(id)),
     fetchJson('GET','/api/sales?entity=details&id='+encodeURIComponent(id))
    ]);
-   setBid(j.bid||null);setRequirements(j.requirements||[]);setRole(j.role||'');setTitle(d.deal.title);
+   setBid(j.bid||null);setRequirements(j.requirements||[]);setRole(j.role||'');setIdentityEmail(j.identityEmail||'');setTitle(d.deal.title);
    if(j.bid)setDraftBid({channel:j.bid.channel,tender_number:j.bid.tender_number,tender_deadline:j.bid.tender_deadline,summary:j.bid.summary});
   }catch(e){setMessage(e instanceof Error?e.message:String(e));}
  },[]);
@@ -79,6 +79,11 @@ export default function SalesProcurement(){
   finally{setUploadBusy(false);}
  };
  const canWrite=['sales','presales','legal','admin'].includes(role);
+ // Mirrors API requirement_review: technical documents -> Presales/Admin, vendor quote -> Finance/Admin,
+ // other kinds (NDA, commercial, clarification) -> any independent reviewer; never the maker.
+ const requirementReviewers=(kind:string)=>['rks','kak','rfp','rfq','technical'].includes(kind)?['admin','presales']:kind==='vendor_quote'?['admin','finance']:['admin','presales','finance','approver','legal'];
+ const canReviewRequirement=(r:Requirement)=>r.status==='draft'&&r.created_by.toLowerCase()!==identityEmail.toLowerCase()&&requirementReviewers(r.kind).includes(role);
+ const archiveReady=(r:Requirement)=>!!r.file_reference&&/^[a-f0-9]{64}$/i.test(r.source_content_hash||'');
  return <main className="mx-auto max-w-6xl space-y-5 pb-24">
   <header className="space-y-2 rounded-xl border bg-white p-4 sm:p-5">
    <Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(opp)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><ArrowLeft size={14}/> Kembali ke Opportunity</Link>
@@ -135,7 +140,9 @@ export default function SalesProcurement(){
     <p className="break-all text-[11px] text-slate-600">{r.file_name||'Nama file belum tersedia'} · {r.file_reference||'Belum ada lokasi arsip'}</p>
     <p className="text-xs text-slate-600">{r.requirement_summary}</p>
     {r.reviewed_by?<p className="flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 size={14}/> Reviewed: {r.reviewed_by}</p>:null}
-    {r.status==='draft'&&['admin','presales','finance','approver','legal'].includes(role)&&<div className="space-y-2 border-t pt-2">
+    {r.status==='draft'&&!canReviewRequirement(r)&&r.created_by.toLowerCase()!==identityEmail.toLowerCase()&&<p className="border-t pt-2 text-[11px] text-slate-500">Review {r.kind.toUpperCase()} oleh {requirementReviewers(r.kind).filter(x=>x!=='admin').join('/')}/admin.</p>}
+    {canReviewRequirement(r)&&!archiveReady(r)&&<p className="border-t pt-2 text-[11px] text-amber-800">Referensi arsip dan SHA-256 sumber wajib tersedia sebelum review.</p>}
+    {canReviewRequirement(r)&&archiveReady(r)&&<div className="space-y-2 border-t pt-2">
      <select aria-label={'Status '+r.title} className={control} value={compliance[r.id]||'pending'} onChange={e=>setCompliance(v=>({...v,[r.id]:e.target.value}))}>
       {['pending','compliant','partial','non_compliant','not_applicable'].map(s=><option key={s} value={s}>{s}</option>)}</select>
      <textarea aria-label={'Catatan '+r.title} rows={2} className={control} placeholder="Review independen minimal 8 karakter" value={reviewNotes[r.id]||''} onChange={e=>setReviewNotes(v=>({...v,[r.id]:e.target.value}))}/>

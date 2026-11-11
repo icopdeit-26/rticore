@@ -25,6 +25,8 @@ const D1_ROUTES = new Set([
   '/api/scoping/model',
   '/api/reference/options',
   '/api/psa/timesheets',
+  // Read-only platform diagnostics for Admin and IT Developer Team (migration 0051).
+  '/api/platform/diagnostics',
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
 ]);

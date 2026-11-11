@@ -372,6 +372,8 @@ export const FINANCE_ROLE_CATALOG: FinanceMenuSection[] = [
   },
 ];
 
+const FINANCE_MENU_COUNT = FINANCE_ROLE_CATALOG.reduce((count, section) => count + section.menus.length, 0);
+
 export function FinanceWorkspaceGuide({
   role,
   opportunityId,
@@ -405,7 +407,7 @@ export function FinanceWorkspaceGuide({
                 Finance, Accounting & Commercial Control Desk
               </span>
               <span className="rounded-full border border-teal-200 bg-white px-2.5 py-0.5 text-[11px] font-bold text-teal-900">
-                10 Kelompok · 24 Menu Aktif
+                {FINANCE_ROLE_CATALOG.length} Kelompok · {FINANCE_MENU_COUNT} Menu Aktif
               </span>
               {currentStation && (
                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
@@ -427,7 +429,7 @@ export function FinanceWorkspaceGuide({
           aria-expanded={open}
           className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3.5 py-2 text-xs font-bold text-emerald-950 shadow-sm transition hover:bg-emerald-50"
         >
-          {open ? 'Ringkas Detail Fitur Finance' : 'Tampilkan Semua Fitur & Menu Finance (24 Modul)'}
+          {open ? 'Ringkas Detail Fitur Finance' : `Tampilkan Semua Fitur & Menu Finance (${FINANCE_MENU_COUNT} Modul)`}
           <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>
       </div>
@@ -476,7 +478,7 @@ export function FinanceWorkspaceGuide({
         <div className="mt-5 space-y-4 border-t border-emerald-100 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-950">
-              Katalog Lengkap 10 Kelompok & 24 Menu Operasional Role Finance
+              Katalog Lengkap {FINANCE_ROLE_CATALOG.length} Kelompok & {FINANCE_MENU_COUNT} Menu Operasional Role Finance
             </h3>
             <span className="text-[11px] text-slate-500">
               Klik judul menu untuk membuka halaman kerja terkait

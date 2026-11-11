@@ -325,7 +325,7 @@ export function LegalWorkspaceGuide({
             4. Kepatuhan Klausul & NDA Tender
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-600">
-            Review dokumen NDA/RKS di <Link href={buildHref('/sales/procurement', true)} className="font-bold text-indigo-700 underline">Procurement</Link>, pengesahan klausul administratif di <Link href={buildHref('/sales/compliance', true)} className="font-bold text-indigo-700 underline">Tender Compliance</Link>, dan verifikasi checklist di <Link href={buildHref('/sales/bid-readiness', true)} className="font-bold text-indigo-700 underline">Bid Readiness</Link>.
+            Registrasi dan review NDA serta requirement non-teknis di <Link href={buildHref('/sales/procurement', true)} className="font-bold text-indigo-700 underline">Procurement</Link>, pengesahan klausul administratif di <Link href={buildHref('/sales/compliance', true)} className="font-bold text-indigo-700 underline">Tender Compliance</Link>, dan verifikasi checklist di <Link href={buildHref('/sales/bid-readiness', true)} className="font-bold text-indigo-700 underline">Bid Readiness</Link>.
           </p>
         </div>
       </div>

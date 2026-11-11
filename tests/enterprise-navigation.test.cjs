@@ -10,13 +10,13 @@ const exportsObject={};
 vm.runInNewContext(transpiled,{exports:exportsObject,require:n=>{throw Error('Unexpected runtime dependency '+n)}},{filename:file});
 const {RTICORE_NAVIGATION,navigationForRole}=exportsObject;
 
-test('twelve business and administration menu groups, no duplicate or demo routes',()=>{
- assert.equal(RTICORE_NAVIGATION.length,12);
- assert.equal(new Set(RTICORE_NAVIGATION.map(x=>x.id)).size,12);
+test('thirteen business, administration and platform menu groups, no duplicate or demo routes',()=>{
+ assert.equal(RTICORE_NAVIGATION.length,13);
+ assert.equal(new Set(RTICORE_NAVIGATION.map(x=>x.id)).size,13);
  const all=RTICORE_NAVIGATION.flatMap(x=>x.items.map(i=>i.href));
  assert.equal(new Set(all).size,all.length);
  for(const href of all){
-  assert.match(href,/^\/(?:sales\/|psa\/timesheets$|erp\/|customers$|partners$|reports$|settings\/|boq(?:\/users)?$|flexguard$|post-po$|approvals$|scoping$)/);
+  assert.match(href,/^\/(?:sales\/|psa\/timesheets$|erp\/|customers$|partners$|reports$|settings\/|boq(?:\/users)?$|flexguard$|post-po$|approvals$|scoping$|platform\/diagnostics$)/);
   assert.ok(fs.existsSync(path.join(root,'src/app',href.replace(/^\//,''),'page.tsx')),href);
  }
  for(const legacy of ['/','/pricing','/tender','/proposals'])
@@ -26,7 +26,7 @@ test('twelve business and administration menu groups, no duplicate or demo route
 test('user roles are filtered; Admin alone gets secret-management menu',()=>{
  const admin=navigationForRole('admin').flatMap(g=>g.items.map(x=>x.href));
  assert.ok(admin.includes('/settings/system'));assert.ok(admin.includes('/settings/ai'));
- for(const role of ['sales','marketing','presales','finance','approver','legal','viewer']){
+ for(const role of ['sales','marketing','presales','finance','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer']){
   const routes=navigationForRole(role).flatMap(g=>g.items.map(x=>x.href));
   assert.ok(!routes.includes('/settings/system'),role);
   assert.ok(!routes.includes('/settings/ai'),role);
@@ -35,6 +35,49 @@ test('user roles are filtered; Admin alone gets secret-management menu',()=>{
  assert.equal(navigationForRole('made-up-role').length,0);
  assert.equal(navigationForRole(null).length,0);
  assert.ok(!navigationForRole('sales').flatMap(x=>x.items.map(i=>i.href)).includes('/sales/billing'));
+});
+
+test('Finance and Legal feature catalogs match their complete role navigation',()=>{
+ for(const [role,file,exportName] of [
+  ['finance','src/components/sales/FinanceWorkspaceGuide.tsx','FINANCE_ROLE_CATALOG'],
+  ['legal','src/components/sales/LegalWorkspaceGuide.tsx','LEGAL_ROLE_CATALOG'],
+ ]){
+  const source=read(file);
+  const start=source.indexOf(`export const ${exportName}`);
+  const end=source.indexOf('export function ',start);
+  assert.ok(start>=0&&end>start,file+' catalog boundaries');
+  const catalog=source.slice(start,end);
+  const hrefs=[...catalog.matchAll(/href:\s*'([^']+)'/g)].map(match=>match[1]);
+  const routes=navigationForRole(role).flatMap(group=>group.items.map(item=>item.href));
+  assert.equal(new Set(hrefs).size,hrefs.length,role+' catalog has duplicate routes');
+  assert.deepEqual([...hrefs].sort(),[...routes].sort(),role+' catalog must match its role routes');
+ }
+});
+
+test('IT Developer Team: Leader/Member menus match the in-app catalog and the API allow-list',()=>{
+ const source=read('src/components/sales/ITDevWorkspaceGuide.tsx');
+ const start=source.indexOf('export const ITDEV_ROLE_CATALOG'),end=source.indexOf('export function ',start);
+ assert.ok(start>=0&&end>start,'catalog boundaries');
+ const catalog=source.slice(start,end);
+ const menus=[...catalog.matchAll(/href:\s*'([^']+)'[\s\S]*?roles:\s*(BOTH|\[[^\]]*\])/g)].map(m=>({href:m[1],leaderOnly:m[2]!=='BOTH'}));
+ const leader=navigationForRole('itdev_leader').flatMap(g=>g.items.map(x=>x.href));
+ const member=navigationForRole('itdev_member').flatMap(g=>g.items.map(x=>x.href));
+ assert.deepEqual([...leader].sort(),menus.map(m=>m.href).sort(),'Leader catalog must match Leader menu');
+ assert.deepEqual([...member].sort(),menus.filter(m=>!m.leaderOnly).map(m=>m.href).sort(),'Member catalog must match Member menu');
+ assert.ok(leader.includes('/sales/feasibility')&&!member.includes('/sales/feasibility'));
+ for(const routes of [leader,member]){
+  assert.ok(routes.includes('/platform/diagnostics'));
+  for(const forbidden of ['/boq','/customers','/sales/billing','/sales/revenue','/sales/renewals','/approvals','/boq/users','/settings/system','/settings/ai','/erp/organization','/erp/cyber-operations'])
+   assert.ok(!routes.includes(forbidden),forbidden);
+ }
+ // API allow-list (itdev-team.ts) and the diagnostics handler stay read-only and role-limited.
+ const lib=read('src/lib/itdev-team.ts');
+ assert.match(lib,/LEADER_API:readonly string\[\]=\['\/api\/sales\/feasibility'\]/);
+ assert.match(read('src/lib/boq-auth.ts'),/itdevRouteAllowed\(path,role\)/);
+ const diag=read('src/app/api/platform/diagnostics/route.ts');
+ assert.doesNotMatch(diag,/export async function (POST|PUT|PATCH|DELETE)/);
+ assert.match(diag,/AUDIT_ROLES=\['admin','itdev_leader'\]/);
+ assert.doesNotMatch(diag,/key_ciphertext FROM|data_json|rticore_sales_audit/);
 });
 
 test('Smart Scoping is discoverable in Presales for Admin, Sales and Presales only',()=>{

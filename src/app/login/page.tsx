@@ -21,7 +21,7 @@ export default function RTICoreLoginPage() {
         <header className="flex items-center justify-between gap-4">
           <a href="/login" aria-label="RTICORE beranda login" className="flex items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-teal-600">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-slate-200/70">
-              <img src="/logo-rti-light.png" alt="Logo RTI - RiseT Indonesia" className="h-full w-full object-contain" />
+              <img src="/logo-rti-light.png" alt="Logo RTI - RiseT Indonesia" width={32} height={32} style={{width:32,height:32,objectFit:'contain'}} className="h-full w-full object-contain" />
             </span>
             <div>
               <p className="text-xl font-extrabold tracking-tight">RTI<span className="text-teal-700">CORE</span></p>

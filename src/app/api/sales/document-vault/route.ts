@@ -3,12 +3,17 @@ import {TENANT,safeID} from '@/lib/sales-workflow';
 import {canReadDeal} from '@/lib/sales-access';
 import {atomicSales,dealGuard,salesAudit,type FlowDeal} from '@/lib/sales-transactions';
 import {pmOwnsProject} from '@/lib/service-operations';
+import {isOffenseRole,offenseOnProject} from '@/lib/offense-team';
+import {isGovernanceRole,governanceOnProject} from '@/lib/governance-team';
+import {isDefenseRole,defenseOwnsOpportunity} from '@/lib/defense-team';
+import {isITDevRole,itdevOnProject} from '@/lib/itdev-team';
 import {VAULT_MAX_BYTES,documentHash,sealDocument,openDocument,inspectDocument,vaultError,type VaultDoc} from '@/lib/document-vault';
 export const dynamic='force-dynamic';
 const kinds=['nda','rks','kak','quotation','supporting'] as const;
-const readers=['admin','sales','presales','finance','approver','legal','project_manager'];
+const readers=['admin','sales','presales','finance','approver','legal','project_manager','offense_lead','offense_member','governance_leader','governance_member','defense_leader','defense_member','itdev_leader','itdev_member'];
 const res=(data:unknown,status=200)=>Response.json(data,{status,headers:privateHeaders});
 const deny=(message:string,status=400)=>res({success:false,message},status);
+const q0=(req:Request)=>new URL(req.url).searchParams;
 const goodDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
 type ExtraDoc=VaultDoc&{version:number;retention_until:string|null;legal_hold:number;hold_reason:string|null};
 async function identityDeal(req:Request){
@@ -20,8 +25,15 @@ async function identityDeal(req:Request){
  if(!safeID(id))return {error:deny('Opportunity tidak valid',422)};
  const deal=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE id=? AND tenant_id=?').bind(id,TENANT).first<FlowDeal>();
  if(!deal)return {error:deny('Opportunity tidak ditemukan',404)};
- if(role==='project_manager'?!await pmOwnsProject(db,email,deal.id):!canReadDeal(role,email,deal.created_by))
-  return {error:deny(role==='project_manager'?'Proyek ini tidak ditugaskan kepada Anda sebagai PM':'Opportunity bukan milik Sales ini',403)};
+ const offense=isOffenseRole(role),governance=isGovernanceRole(role);
+ // SOC Defense Team: only the Opportunity of a SOC/DFIR project under its approved cyber_ops grant.
+ if(isDefenseRole(role)&&!await defenseOwnsOpportunity(db,email,deal.id))
+  return {error:deny('Proyek ini bukan layanan SOC/DFIR dalam grant cyber_ops Anda',403)};
+ if(isDefenseRole(role))return {db,role,email,deal,id};
+ // IT Developer Team: only the Opportunity of a Technology & Implementation project allocated to it.
+ if(isITDevRole(role))return await itdevOnProject(db,email,deal.id)?{db,role,email,deal,id}:{error:deny('Proyek ini bukan proyek Technology & Implementation yang dialokasikan kepada Anda',403)};
+ if(role==='project_manager'?!await pmOwnsProject(db,email,deal.id):offense?!await offenseOnProject(db,email,deal.id):governance?!await governanceOnProject(db,email,deal.id):!canReadDeal(role,email,deal.created_by))
+  return {error:deny(role==='project_manager'?'Proyek ini tidak ditugaskan kepada Anda sebagai PM':offense?'Proyek ini bukan engagement Offensive Security yang dialokasikan kepada Anda':governance?'Proyek ini bukan engagement GRC yang dialokasikan kepada Anda':'Opportunity bukan milik Sales ini',403)};
  return {db,role,email,deal,id};
 }
 async function boundedBody(req:Request){
@@ -52,6 +64,10 @@ export async function GET(req:Request){
    if(!safeID(docId)||!['library','release'].includes(source))return deny('Dokumen tidak valid',422);
    // Commercial package originals (proposal, negotiation, PO/SPK) stay with commercial roles.
    if(role==='project_manager'&&source!=='library')return deny('Paket komersial tidak tersedia untuk Project Manager',403);
+   if(isOffenseRole(role)&&source!=='library')return deny('Paket komersial tidak tersedia untuk Offense Team',403);
+   if(isGovernanceRole(role)&&source!=='library')return deny('Paket komersial tidak tersedia untuk Governance Team',403);
+   if(isDefenseRole(role)&&source!=='library')return deny('Paket komersial tidak tersedia untuk Defense Team',403);
+   if(isITDevRole(role)&&source!=='library')return deny('Paket komersial tidak tersedia untuk IT Developer Team',403);
    const doc=await findDoc(db,opp,docId,source);if(!doc)return deny('Dokumen tidak ditemukan',404);
    if(doc.retention_until&&doc.retention_until<new Date().toISOString().slice(0,10)&&!doc.legal_hold&&!['admin','legal'].includes(role))
     return deny('Masa retensi terlampaui. Minta tinjauan Admin/Legal.',403);
@@ -61,16 +77,20 @@ export async function GET(req:Request){
    return new Response(new Uint8Array(data),{headers:{...privateHeaders,'Content-Type':doc.media_type,'Content-Length':String(data.length),'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(doc.file_name),'Content-Security-Policy':"sandbox; default-src 'none'",'Referrer-Policy':'no-referrer'}});
   }
   const [a1,a2]=await Promise.all([
-   role==='project_manager'?{results:[] as Record<string,unknown>[]}:db.prepare('SELECT v.id,v.release_id,v.kind,v.file_name,v.media_type,v.byte_length,v.sha256,v.created_by,v.created_at,g.version,g.retention_until,g.legal_hold FROM rticore_document_vault v JOIN rticore_document_governance g ON g.document_id=v.id WHERE v.tenant_id=? AND v.opportunity_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 150').bind(TENANT,opp).all(),
+   role==='project_manager'||isOffenseRole(role)||isGovernanceRole(role)||isDefenseRole(role)||isITDevRole(role)?{results:[] as Record<string,unknown>[]}:db.prepare('SELECT v.id,v.release_id,v.kind,v.file_name,v.media_type,v.byte_length,v.sha256,v.created_by,v.created_at,g.version,g.retention_until,g.legal_hold FROM rticore_document_vault v JOIN rticore_document_governance g ON g.document_id=v.id WHERE v.tenant_id=? AND v.opportunity_id=? ORDER BY v.created_at DESC,v.id DESC LIMIT 150').bind(TENANT,opp).all(),
    db.prepare('SELECT id,kind,file_name,media_type,byte_length,sha256,created_by,created_at,version,retention_until,legal_hold FROM rticore_document_library WHERE tenant_id=? AND opportunity_id=? ORDER BY created_at DESC,id DESC LIMIT 150').bind(TENANT,opp).all()
   ]);
-  return res({success:true,documents:[...a1.results.map(d=>({...d,source:'release'})),...a2.results.map(d=>({...d,source:'library'}))]});
+  return res({success:true,identityEmail:email,documents:[...a1.results.map(d=>({...d,source:'release'})),...a2.results.map(d=>({...d,source:'library'}))]});
  }catch(e){const x=vaultError(e);return deny(x.message,x.status);}
 }
 export async function POST(req:Request){
  const a=await identityDeal(req);if(a.error)return a.error;
  const {db,role,email,id:opp,deal}=a;if(!db||!role||!email||!opp||!deal)return deny('Auth invalid',403);
- if(!['admin','sales','presales','finance','legal','project_manager'].includes(role))return deny('Role tidak diizinkan mengunggah',403);
+ if(!['admin','sales','presales','finance','legal','project_manager','offense_lead','offense_member','governance_leader','governance_member','defense_leader','defense_member','itdev_leader','itdev_member'].includes(role))return deny('Role tidak diizinkan mengunggah',403);
+ if(isITDevRole(role)&&(deal.stage!=='closed_won'||(q0(req).get('kind')||'')!=='supporting'))return deny('IT Developer Team hanya mengunggah supporting implementasi (bukti lisensi, konfigurasi, hasil UAT, handover support) setelah Won',403);
+ if(isDefenseRole(role)&&(deal.stage!=='closed_won'||(q0(req).get('kind')||'')!=='supporting'))return deny('Defense Team hanya mengunggah supporting evidence SOC/DFIR (log, timeline, laporan insiden) setelah Won',403);
+ if(isGovernanceRole(role)&&(deal.stage!=='closed_won'||(q0(req).get('kind')||'')!=='supporting'))return deny('Governance Team hanya mengunggah supporting engagement (evidence assessment, gap analysis, remediation plan) setelah Won',403);
+ if(isOffenseRole(role)&&(deal.stage!=='closed_won'||(q0(req).get('kind')||'')!=='supporting'))return deny('Offense Team hanya mengunggah supporting engagement (evidence, laporan VAPT, retest) setelah Won',403);
  if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return deny('Origin ditolak',403);
  const q=new URL(req.url).searchParams,kind=q.get('kind')||'',name=q.get('filename')||'';
  if(!kinds.includes(kind as typeof kinds[number])||!name||name.length>180||/[\x00-\x1f\x7f/\\]/.test(name))return deny('Jenis atau nama dokumen tidak valid',422);

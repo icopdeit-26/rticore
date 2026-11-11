@@ -1,11 +1,18 @@
 import {authorizeBoQ,privateHeaders,type D1DB} from '@/lib/boq-auth';
 import {TENANT,safeID} from '@/lib/sales-workflow';
 import {canReadDeal} from '@/lib/sales-access';
+import {isGovernanceRole,governanceFeasibilityAllowed} from '@/lib/governance-team';
+import {isOffenseRole,offenseFeasibilityAllowed} from '@/lib/offense-team';
+import {isITDevRole,itdevFeasibilityAllowed} from '@/lib/itdev-team';
 import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {atomicSales,dealGuard,salesAudit,transactionError,type FlowDeal} from '@/lib/sales-transactions';
 import {costTypes,evaluateFeasibility,validMonth,validatePlan,isoDate,type Allocation,type Cost,type FeasibilityPlan} from '@/lib/solution-feasibility';
 export const dynamic='force-dynamic';
 const roles=['admin','sales','presales','finance','approver','legal'];
+// Governance Team Leader (0050): GET only, open GRC Opportunities, non-finance view (no HPP/margin).
+// Offense Team Leader (0048): GET only, open Offensive Security Opportunities, no costs/offers/HPP.
+// IT Developer Leader (0051): GET only, open Technology & Implementation Opportunities, non-finance view.
+const readRoles=[...roles,'governance_leader','offense_lead','itdev_leader'];
 const reply=(x:unknown,status=200)=>Response.json(x,{status,headers:privateHeaders});
 const fail=(message:string,status=400)=>reply({success:false,message},status);
 const str=(x:unknown,n=400)=>typeof x==='string'&&x.trim().length<=n?x.trim():'';
@@ -40,7 +47,13 @@ async function records(db:D1DB,id:string){
 async function context(db:D1DB,id:string,role:string,email:string){
  const d=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
  if(!d)return {error:fail('Opportunity tidak ditemukan',404)};
- if(!canReadDeal(role as import('@/lib/sales-access').SalesRole,email,d.created_by))return {error:fail('Opportunity tidak boleh dibaca Sales ini',403)};
+ if(isGovernanceRole(role)){
+  if(!governanceFeasibilityAllowed(role,d))return {error:fail('Governance Team Leader hanya membaca Feasibility Opportunity GRC yang masih terbuka',403)};
+ }else if(isOffenseRole(role)){
+  if(!offenseFeasibilityAllowed(role,d))return {error:fail('Offense Team Leader hanya membaca Feasibility Opportunity Offensive Security yang masih terbuka',403)};
+ }else if(isITDevRole(role)){
+  if(!itdevFeasibilityAllowed(role,d))return {error:fail('IT Developer Leader hanya membaca Feasibility Opportunity Technology & Implementation yang masih terbuka',403)};
+ }else if(!canReadDeal(role as import('@/lib/sales-access').SalesRole,email,d.created_by))return {error:fail('Opportunity tidak boleh dibaca Sales ini',403)};
  return {d};
 }
 async function readReport(db:D1DB,d:FlowDeal){
@@ -51,7 +64,7 @@ async function readReport(db:D1DB,d:FlowDeal){
 }
 export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
- const {db,role,email}=a.identity;if(!roles.includes(role))return fail('Akses Feasibility ditolak',403);
+ const {db,role,email}=a.identity;if(!readRoles.includes(role))return fail('Akses Feasibility ditolak',403);
  const id=new URL(req.url).searchParams.get('opportunity_id')||'';
  if(!safeID(id))return fail('Opportunity ID tidak valid',422);
  try{
@@ -65,8 +78,10 @@ export async function GET(req:Request){
   const publicOffers=finance?data.offers:data.offers.map(x=>({id:x.id,vendor_name:x.vendor_name,scope:x.scope,unit:x.unit,valid_until:x.valid_until,status:x.status}));
   const publicAllocations=finance?data.allocations:data.allocations.map(({daily_cost_snapshot,...x})=>x);
   if(!finance)displayReport.gaps=displayReport.gaps.map((x:string)=>x.startsWith('Gross margin ')?'Margin HPP belum memenuhi target Finance.':x);
+  // Offense Team Leader plans capacity only: no supplier/cost structure at all.
+  const capacityOnly=isOffenseRole(role);
   return reply({success:true,role,identityEmail:email,deal:{id,title:d.title,stage:d.stage,flow_version:d.flow_version},plan:data.plan,
-   people:publicPeople,allocations:publicAllocations,costs:publicCosts,offers:publicOffers,report:displayReport});
+   people:publicPeople,allocations:publicAllocations,costs:capacityOnly?[]:publicCosts,offers:capacityOnly?[]:publicOffers,report:displayReport});
  }catch{return fail('Modul Feasibility belum siap: pastikan migrasi D1 0016, 0021, 0025.',503);}
 }
 export async function POST(req:Request){

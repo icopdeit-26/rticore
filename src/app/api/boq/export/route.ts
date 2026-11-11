@@ -9,6 +9,8 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  const {db,role,email}=a.identity;
  if(role==='project_manager')return Response.json({success:false,message:'BoQ tidak tersedia untuk Project Manager'},{status:403,headers:privateHeaders});
+ if(role==='governance_leader'||role==='governance_member')return Response.json({success:false,message:'BoQ tidak tersedia untuk Governance Team'},{status:403,headers:privateHeaders});
+ if(role==='itdev_leader'||role==='itdev_member')return Response.json({success:false,message:'BoQ tidak tersedia untuk IT Developer Team'},{status:403,headers:privateHeaders});
  const url=new URL(req.url),id=url.searchParams.get('id')||'',format=url.searchParams.get('format')||'';
  if(!formats.includes(format)||!id)return Response.json({success:false,message:'Parameter ekspor tidak valid'},{status:400,headers:privateHeaders});
  if(format!=='customer'&&!can(role,'read_cost'))return Response.json({success:false,message:'BoQ internal khusus Finance/Admin'},{status:403,headers:privateHeaders});

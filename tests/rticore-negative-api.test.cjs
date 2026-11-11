@@ -71,6 +71,10 @@ function route(file,role,email,db,additional={}){
    runPriorityChain:async()=>{throw Error('No outbound provider expected');}
   },
   '@/lib/ai-provider-registry':{isProviderId:x=>x==='openai'},
+  '@/lib/offense-team':{isOffenseRole:()=>false,offenseDeals:async()=>[]},
+  '@/lib/defense-team':{isDefenseRole:()=>false,defenseProjects:async()=>[]},
+  '@/lib/governance-team':{isGovernanceRole:()=>false,governanceDeals:async()=>[]},
+  '@/lib/itdev-team':{isITDevRole:()=>false,itdevDeals:async()=>[]},
   ...additional
  };
  const mod={exports:{}};

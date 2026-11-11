@@ -101,7 +101,7 @@ WHERE n.nspname = 'public';
 
 CREATE TABLE IF NOT EXISTS rticore_erp_role_policy_changes(
  id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,
- role TEXT NOT NULL CHECK(role IN ('admin','marketing','sales','presales','finance','approver','legal','viewer')),
+ role TEXT NOT NULL CHECK(role IN ('admin','marketing','sales','presales','finance','approver','legal','defense_leader','defense_member','viewer')),
  capability TEXT NOT NULL CHECK(capability IN ('finance_gl','finance_ap','procurement','cyber_ops','resource','hr','audit')),
  from_allowed BIGINT NOT NULL CHECK(from_allowed IN (0,1)),
  to_allowed BIGINT NOT NULL CHECK(to_allowed IN (0,1)),
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS rticore_erp_role_capability_matrix (
  allowed BIGINT NOT NULL CHECK(allowed IN (0,1)),
  updated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
  PRIMARY KEY(role,capability),
- CHECK(role IN ('admin','marketing','sales','presales','finance','approver','legal','viewer')),
+ CHECK(role IN ('admin','marketing','sales','presales','finance','approver','legal','defense_leader','defense_member','viewer')),
  CHECK(capability IN ('finance_gl','finance_ap','procurement','cyber_ops','resource','hr','audit'))
 , rowid BIGSERIAL);
 
@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS rticore_marketing_leads (
 
 CREATE TABLE IF NOT EXISTS "rticore_members" (
  email TEXT PRIMARY KEY NOT NULL ,
- role TEXT NOT NULL CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','viewer')),
+ role TEXT NOT NULL CHECK(role IN ('admin','marketing','finance','presales','sales','approver','legal','project_manager','offense_lead','offense_member','defense_leader','defense_member','governance_leader','governance_member','itdev_leader','itdev_member','viewer')),
  active BIGINT NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
  created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
  created_by TEXT
@@ -1288,6 +1288,24 @@ CREATE TABLE IF NOT EXISTS rticore_cyber_cases (
  CHECK(reviewer_email IS NULL OR lower(reviewer_email)!=lower(created_by))
 , rowid BIGSERIAL);
 
+CREATE TABLE IF NOT EXISTS rticore_cyber_case_assignments (
+ tenant_id TEXT NOT NULL,case_id TEXT NOT NULL,
+ assignee_email TEXT NOT NULL ,assigned_by TEXT NOT NULL ,
+ status TEXT NOT NULL DEFAULT 'assigned' CHECK(status IN ('assigned','submitted','returned')),
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version>0),
+ investigation_notes TEXT CHECK(investigation_notes IS NULL OR length(investigation_notes) BETWEEN 12 AND 2000),
+ evidence_document_id TEXT,
+ leader_notes TEXT CHECK(leader_notes IS NULL OR length(leader_notes) BETWEEN 12 AND 800),
+ assigned_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ submitted_at TEXT,updated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ PRIMARY KEY(tenant_id,case_id),
+ FOREIGN KEY(tenant_id,case_id) REFERENCES rticore_cyber_cases(tenant_id,id),
+ CHECK(status!='submitted' OR (investigation_notes IS NOT NULL AND evidence_document_id IS NOT NULL AND submitted_at IS NOT NULL)),
+ CHECK(status!='returned' OR leader_notes IS NOT NULL)
+, rowid BIGSERIAL);
+
+CREATE INDEX IF NOT EXISTS rticore_cyber_assignment_queue ON rticore_cyber_case_assignments(tenant_id,assignee_email,status);
+
 CREATE TABLE IF NOT EXISTS rticore_ap_supplier_invoices (
  id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,po_id TEXT NOT NULL,vendor_id TEXT NOT NULL,
  supplier_invoice_number TEXT NOT NULL,qty BIGINT NOT NULL CHECK(qty BETWEEN 1 AND 1000000),
@@ -1956,6 +1974,8 @@ INSERT INTO "rticore_erp_role_capability_matrix" (role,capability,allowed,update
 INSERT INTO "rticore_erp_role_capability_matrix" (role,capability,allowed,updated_at) VALUES ('admin','audit',1,'2026-11-07 12:12:08') ON CONFLICT DO NOTHING;
 
 INSERT INTO "rticore_erp_role_capability_matrix" (role,capability,allowed,updated_at) VALUES ('approver','audit',1,'2026-11-07 12:12:08') ON CONFLICT DO NOTHING;
+
+INSERT INTO "rticore_erp_role_capability_matrix" (role,capability,allowed) VALUES ('defense_leader','cyber_ops',1),('defense_member','cyber_ops',1) ON CONFLICT DO NOTHING;
 
 
 INSERT INTO rticore_members (email, role, active, created_by) VALUES

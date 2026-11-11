@@ -3,6 +3,9 @@ import React from 'react';
 import Link from 'next/link';
 import {CommercialHeader,EntryForm,useOpportunityWorkspace,type FormField} from '@/components/sales/CommercialUI';
 import {FinanceWorkspaceGuide} from '@/components/sales/FinanceWorkspaceGuide';
+import {GovernanceWorkspaceGuide} from '@/components/sales/GovernanceWorkspaceGuide';
+import {OffenseTeamWorkspaceGuide} from '@/components/sales/OffenseTeamWorkspaceGuide';
+import {ITDevWorkspaceGuide} from '@/components/sales/ITDevWorkspaceGuide';
 import {serviceLines,costTypes} from '@/lib/solution-feasibility';
 type Person={id:string;display_name:string;email:string;skills:string;capacity_pd_month:number;daily_cost_idr?:number;active:number};
 type Allocation={id:string;person_id:string;display_name:string;work_role:string;allocation_month:string;person_days:number;total_pd_month:number;capacity_pd_month:number;status:string};
@@ -38,7 +41,10 @@ export default function FeasibilityPage(){
  const canPlan=!!d&&['admin','presales'].includes(d.role);
  const canResource=!!d&&['admin','finance'].includes(d.role);
  const canAllocate=!!d&&['admin','presales'].includes(d.role);
- const canReview=!!d&&['admin','finance','approver'].includes(d.role)&&!!p&&p.created_by.toLowerCase()!==d.identityEmail.toLowerCase();
+ const meEmail=(d?.identityEmail||'').toLowerCase();
+ // Mirrors API: reviewer must not have authored the plan, any cost line or any allocation.
+ const ownWork=!!d&&[...d.costs,...d.allocations].some(x=>String((x as {created_by?:string}).created_by||'').toLowerCase()===meEmail);
+ const canReview=!!d&&['admin','finance','approver'].includes(d.role)&&!!p&&p.created_by.toLowerCase()!==meEmail&&!ownWork;
  const canCost=canResource;
  const report=d?.report;
  const dates=new Set(d?.allocations.filter(x=>x.status==='active').map(x=>x.allocation_month)||[]);
@@ -63,6 +69,10 @@ export default function FeasibilityPage(){
    </section>
    {locked&&!w.busy&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">Paket yang sudah mencapai Commercial Review terkunci. Gunakan workflow revisi resmi untuk mengganti scope atau sumber daya.</p>}
    <FinanceWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Resource & Solution Feasibility"/>
+   {d.role==='governance_leader'&&<GovernanceWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Resource & Solution Feasibility"/>}
+   {d.role==='offense_lead'&&<OffenseTeamWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Resource & Solution Feasibility"/>}
+   {d.role==='itdev_leader'&&<ITDevWorkspaceGuide role={d.role} opportunityId={w.id} currentStation="Resource & Solution Feasibility"/>}
+   {d.role==='offense_lead'&&<p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">Offense Team Leader membaca rencana kapasitas (PD, alokasi dan engineer) secara read-only. Plan, alokasi dan review dikelola Presales, Finance dan Approver; cost line serta penawaran supplier tidak ditampilkan.</p>}
    <section className="grid items-start gap-4 xl:grid-cols-2">
     <EntryForm key={'plan'+w.id+(p?.version||0)} title={p?'Revisi Feasibility Plan v'+p.version:'Buat Feasibility Plan'} fields={planFields(p??null)}
      disabled={locked||!canPlan} submit={p?'Simpan revisi plan (approval direset)':'Hitung PD & simpan plan'}
@@ -116,6 +126,7 @@ export default function FeasibilityPage(){
      <p className="text-xs text-slate-500">Penawaran asli, bukti SHA-256, revisi dan expiry dikelola di Tender Compliance & Document Vault. Cost line hanya dapat menautkan penawaran vendor tervalidasi.</p>
     </div>
    </section>
+   {p&&p.status==='draft'&&!canReview&&ownWork&&['admin','finance','approver'].includes(d.role)&&<p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">Anda menambahkan biaya atau alokasi pada rencana ini, sehingga review harus dilakukan Finance, Approver atau Admin lain.</p>}
    {p&&p.status==='draft'&&canReview&&<EntryForm key={'review'+w.id+p.version} title="Independent Solution Feasibility Review" disabled={locked} submit="Simpan keputusan review" fields={[
     {key:'decision',label:'Keputusan',type:'select',options:[{value:'approved',label:'Approved'},{value:'rejected',label:'Rejected'}]},
     {key:'review_notes',label:'Hasil pengecekan engineer, supplier expiry, margin, dan delivery',type:'textarea'}
