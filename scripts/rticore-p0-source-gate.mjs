@@ -15,6 +15,8 @@ const latest = Math.max(...groups.keys());
 for (let n = 30; n <= latest; n++) {
   const matches = groups.get(n) || [];
   if (matches.length !== 1) fail('Canonical migration ' + String(n).padStart(4, '0') + ' requires exactly one SQL file; got ' + matches.join(','));
+  // The release workflow selects pending files by max(version), so an unrecorded file would be re-applied every release.
+  else if (n >= 46 && !new RegExp('INSERT INTO rticore_schema_migrations\\(version\\) VALUES\\(' + n + '\\)').test(readFileSync(join(root, 'migrations', matches[0]), 'utf8'))) fail(matches[0] + ' must record version ' + n + ' in rticore_schema_migrations');
 }
 const wfPath = join(root, '.github/workflows/rticore-production-release.yml');
 const workflow = readFileSync(wfPath, 'utf8');

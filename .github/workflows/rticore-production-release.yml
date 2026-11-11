@@ -23,7 +23,7 @@ on:
         required: true
         type: string
       apply_migrations:
-        description: 'Apply pending D1 migrations (0046-0050 incl. tenant rekey)'
+        description: 'Apply pending D1 migrations (0046-0051, no tenant rekey)'
         required: true
         default: true
         type: boolean
@@ -78,14 +78,18 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
-      - name: Release gates (generated migrations, source guard, RTI suites, ERP regression, types)
+      - name: Release gates (workflow and source guards, ERP regression, team roles, types)
         run: |
-          node scripts/rti/build-migrations.cjs --check
+          node scripts/rticore-production-workflow-guard.mjs
           node scripts/rticore-p0-source-gate.mjs
-          npm run test:rti
           npm run test:erp
           npm run test:erp:extensions
           npm run test:modules-13-15
+          npm run test:project-manager
+          npm run test:offense-team
+          npm run test:defense-team
+          npm run test:governance-team
+          npm run test:itdev-team
           npm run typecheck
 
       - name: Build Worker bundle before touching production
@@ -100,6 +104,14 @@ jobs:
           q "SELECT (SELECT count(*) FROM rticore_sales_opportunities) opportunities,(SELECT count(*) FROM rticore_boq) boq,(SELECT count(*) FROM rticore_document_vault) vault,(SELECT count(*) FROM rticore_members) members" > preflight.json
           cat preflight.json
           echo "triggers: $(q "SELECT count(*) n FROM sqlite_master WHERE type='trigger'")"
+
+      # Unmerged branch feat/india-v3-rti-wp00-wp01-wp06-20261101 reuses migration numbers 0046-0050 with different
+      # content and moves data to tenant 'rti'. A database from that lineage must stop here, before any change.
+      - name: Block on foreign schema lineage or tenant key
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute "$D1_NAME" --remote --json --command "SELECT (SELECT coalesce(max(version),0) FROM rticore_schema_migrations) v,(SELECT count(*) FROM sqlite_master WHERE type='table' AND name='rticore_scoping_model_settings') marker,(SELECT count(*) FROM rticore_sales_opportunities WHERE tenant_id<>'defendit360')+(SELECT count(*) FROM rticore_boq WHERE tenant_id<>'defendit360')+(SELECT count(*) FROM rticore_document_vault WHERE tenant_id<>'defendit360') foreign_tenant" > lineage.json
+          node -e "const r=require('./lineage.json')[0].results[0];console.log(JSON.stringify(r));if(r.v>=46&&!r.marker){console.error('BLOCKED: production schema is at '+r.v+' from a different migration lineage. Nothing was changed.');process.exit(2)}if(r.foreign_tenant!==0){console.error('BLOCKED: '+r.foreign_tenant+' rows are not on tenant defendit360, which this code reads. Nothing was changed.');process.exit(2)}"
 
       - name: Independent backup - D1 export kept on runner only, plus Time Travel bookmark
         id: backup
@@ -157,10 +169,10 @@ jobs:
         run: |
           set -euo pipefail
           q() { npx wrangler d1 execute "$D1_NAME" --remote --json --command "$1" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.stdout.write(JSON.stringify(j[0].results))})"; }
-          V=$(q "SELECT max(version) v FROM rticore_schema_migrations"); echo "schema: $V"; echo "$V" | grep -q '"v":50'
-          L=$(q "SELECT (SELECT count(*) FROM rticore_sales_opportunities WHERE tenant_id='defendit360')+(SELECT count(*) FROM rticore_boq WHERE tenant_id='defendit360')+(SELECT count(*) FROM rticore_document_vault WHERE tenant_id='defendit360') n")
-          echo "rows still on legacy key: $L"; echo "$L" | grep -q '"n":0'
-          P=$(q "SELECT value_json FROM rticore_sys_parameters WHERE tenant_id='rti' AND key='company.tenant_key'"); echo "tenant parameter: $P"; echo "$P" | grep -q 'rti'
+          EXPECTED=$((10#$(ls migrations/*.sql | sort | tail -1 | xargs basename | cut -c1-4)))
+          V=$(q "SELECT max(version) v FROM rticore_schema_migrations"); echo "schema: $V (expected $EXPECTED)"; echo "$V" | grep -q "\"v\":$EXPECTED"
+          L=$(q "SELECT (SELECT count(*) FROM rticore_sales_opportunities WHERE tenant_id<>'defendit360')+(SELECT count(*) FROM rticore_boq WHERE tenant_id<>'defendit360')+(SELECT count(*) FROM rticore_document_vault WHERE tenant_id<>'defendit360') n")
+          echo "rows off the application tenant key: $L"; echo "$L" | grep -q '"n":0'
           q "SELECT (SELECT count(*) FROM rticore_sales_opportunities) opportunities,(SELECT count(*) FROM rticore_boq) boq,(SELECT count(*) FROM rticore_document_vault) vault,(SELECT count(*) FROM rticore_members) members" > postflight.json
           cat postflight.json
           node -e "const a=require('./preflight.json')[0],b=require('./postflight.json')[0];for(const k of Object.keys(a))if(a[k]!==b[k]){console.error('ROW COUNT CHANGED for '+k+': '+a[k]+' -> '+b[k]);process.exit(1)}console.log('row counts preserved')"
@@ -170,7 +182,7 @@ jobs:
       - name: HTTP smoke test (no 5xx)
         if: env.BASE_URL != ''
         run: |
-          for p in /login /api/erp/posting; do
+          for p in /login /api/sales/identity; do
             c=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL$p"); echo "$p -> $c"
             case "$c" in 5*) echo "SMOKE FAILED on $p"; exit 1;; esac
           done

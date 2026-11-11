@@ -13,3 +13,5 @@ CREATE TABLE IF NOT EXISTS rticore_scoping_model_settings (
  tenant_id TEXT PRIMARY KEY, provider_id TEXT, model TEXT,
  updated_by TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+-- Recorded so the release workflow applies this file exactly once.
+INSERT INTO rticore_schema_migrations(version) VALUES(46);

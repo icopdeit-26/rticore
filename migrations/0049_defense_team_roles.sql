@@ -1,4 +1,4 @@
-﻿-- RTICORE 0049: SOC Defense Team login roles (defense_leader, defense_member).
+-- RTICORE 0049: SOC Defense Team login roles (defense_leader, defense_member).
 -- Scope is the ERP cyber_ops capability: an independently approved staff placement and
 -- cyber_ops grant on the legal unit of an approved SOC/DFIR project scope. The role alone
 -- opens nothing. Leader triages and assigns SOC/DFIR cases to analysts, returns or QA-reviews
@@ -146,3 +146,5 @@ BEGIN
  SELECT CASE WHEN EXISTS(SELECT 1 FROM rticore_cyber_case_assignments x WHERE x.tenant_id=OLD.tenant_id AND x.case_id=OLD.id AND lower(x.assignee_email)=lower(NEW.reviewer_email))
  THEN RAISE(ABORT,'CYBER_REVIEWER_IS_ASSIGNEE') END;
 END;
+-- Recorded so the release workflow applies this file exactly once.
+INSERT INTO rticore_schema_migrations(version) VALUES(49);

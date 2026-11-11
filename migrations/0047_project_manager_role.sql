@@ -43,3 +43,5 @@ BEGIN
  start_date=(SELECT x.start_date FROM rticore_delivery_planned_pm x WHERE x.tenant_id=NEW.tenant_id AND x.opportunity_id=NEW.opportunity_id),
  end_date=(SELECT x.end_date FROM rticore_delivery_planned_pm x WHERE x.tenant_id=NEW.tenant_id AND x.opportunity_id=NEW.opportunity_id),version=version+1 WHERE id=NEW.id AND tenant_id=NEW.tenant_id;
 END;
+-- Recorded so the release workflow applies this file exactly once.
+INSERT INTO rticore_schema_migrations(version) VALUES(47);

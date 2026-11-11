@@ -25,3 +25,5 @@ CREATE TABLE rticore_members (
 INSERT INTO rticore_members(email,role,active,created_at,created_by)
  SELECT email,role,active,created_at,created_by FROM rticore_members_backup_0050;
 DROP TABLE rticore_members_backup_0050;
+-- Recorded so the release workflow applies this file exactly once.
+INSERT INTO rticore_schema_migrations(version) VALUES(50);
