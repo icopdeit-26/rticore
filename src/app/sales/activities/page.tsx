@@ -88,7 +88,7 @@ export default function SalesActivities(){
   </div>
   <section className="rounded-xl border bg-white p-4">
    <div className="flex flex-wrap items-end gap-3"><div className="grow"><h2 className="text-sm font-bold">Jadwalkan Aktivitas</h2><p className="text-xs text-slate-500">Tanggal menggunakan zona perangkat; kalender tampil WIB (Asia/Jakarta).</p></div>
-   {['admin','finance','approver'].includes(snapshot?.role||'')&&<label className="text-xs font-semibold">Kalender per Sales
+   {snapshot&&['admin','finance','approver'].includes(snapshot.role)&&<label className="text-xs font-semibold">Kalender per Sales
     <select className={input} value={owner} onChange={e=>setOwner(e.target.value)}><option value="">Semua Sales</option>{snapshot.owners.filter(x=>x.role==='sales').map(x=><option key={x.email} value={x.email}>{x.email}</option>)}</select>
    </label>}</div>
    <form onSubmit={create} className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
