@@ -28,5 +28,17 @@ export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
     for(const key of LOCAL_KEYS)if(process?.env?.[key])env[key]=process.env[key];
     return env as T;
   }
-  return (await getCloudflareContext({async:true})).env as T;
+  return withLegacySecretNames((await getCloudflareContext({async:true})).env) as T;
+}
+
+// Worker secrets cannot be read back or renamed, so those provisioned before the
+// RTICORE rename stay usable under their INDIA_ name until they are re-issued.
+const LEGACY_SECRETS=['AI_ENCRYPTION_KEY','DOCUMENT_ENCRYPTION_KEY','SECURITY_ALLOWED_HOSTS',
+  'SIEM_OUTBOUND_TOKEN','EDR_OUTBOUND_TOKEN'] as const;
+
+export function withLegacySecretNames<T extends object>(env:T):T{
+  const source=env as Record<string,unknown>,aliased=Object.create(env) as Record<string,unknown>;
+  for(const name of LEGACY_SECRETS)
+    if(source['RTICORE_'+name]===undefined&&source['INDIA_'+name]!==undefined)aliased['RTICORE_'+name]=source['INDIA_'+name];
+  return aliased as T;
 }

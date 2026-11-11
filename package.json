@@ -57,6 +57,7 @@
     "test:offense-team": "node --test tests/offense-team-role.test.cjs",
     "test:defense-team": "node --test tests/defense-team-role.test.cjs",
     "test:itdev-team": "node --test tests/itdev-team-role.test.cjs",
+    "test:d1-rename": "node --test tests/d1-legacy-rename.test.cjs",
     "test:release-controls": "node --test tests/release-evidence.test.cjs tests/ai-request-budget.test.cjs tests/rticore-operational-release-gate.test.cjs tests/rticore-feasibility-live-access-guard.test.cjs",
     "test:admin": "node --test tests/admin-access.test.cjs tests/organization-parent-picker.test.cjs tests/admin-settings-update-delete.test.cjs tests/admin-user-delete.test.cjs && node --test tests/audit-remediation.test.cjs",
     "test:erp": "node --test tests/rticore-erp-foundation.test.cjs",

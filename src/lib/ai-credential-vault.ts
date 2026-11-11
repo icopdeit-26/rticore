@@ -36,8 +36,10 @@ export async function decryptProviderKey(row:AIProviderRow):Promise<string>{
  if(!row.key_iv||!row.key_ciphertext)throw new Error('Provider belum memiliki API key.');
  const key=await encryptionKey();
  try {
-  const bytes=await crypto.subtle.decrypt({name:'AES-GCM',iv:unbase64(row.key_iv),
-   additionalData:utf8.encode('RTICORE-AI:'+row.provider_id)},key,unbase64(row.key_ciphertext));
+  const decrypt=(label:string)=>crypto.subtle.decrypt({name:'AES-GCM',iv:unbase64(row.key_iv!),
+   additionalData:utf8.encode(label+row.provider_id)},key,unbase64(row.key_ciphertext!));
+  // Keys stored before the RTICORE rename are authenticated with the legacy label.
+  const bytes=await decrypt('RTICORE-AI:').catch(()=>decrypt('INDIA-AI:'));
   return decode.decode(bytes);
  }catch {throw new Error('Tidak dapat mendekripsi API key. Periksa secret enkripsi.');}
 }
