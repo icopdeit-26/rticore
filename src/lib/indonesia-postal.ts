@@ -21,6 +21,10 @@ export async function assertPostalReferenceReady(db:D1DB){
  if(!meta)throw new Error('Referensi wilayah nasional belum siap. Hubungi Administrator.');
  return meta.source_version;
 }
+async function hasCompactPostalReference(db:D1DB):Promise<boolean>{
+ const row=await db.prepare('SELECT 1 AS present FROM rticore_postal_lookup LIMIT 1').first<{present:number}>();
+ return !!row;
+}
 /**
  * Unified postal lookup. UAT retains its normalized village table; production
  * uses one JSON-array record per postal code to stay below D1 Free daily write
@@ -29,25 +33,20 @@ export async function assertPostalReferenceReady(db:D1DB){
 export async function findPostalAreasByCode(db:D1DB,postal:string):Promise<PostalArea[]>{
  if(!postalRegex.test(postal))throw new Error('Kode pos harus terdiri dari 5 angka.');
  await assertPostalReferenceReady(db);
- const table=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='rticore_postal_lookup'")
-  .first<{name:string}>();
- if(table){
-  const populated=await db.prepare('SELECT 1 AS present FROM rticore_postal_lookup LIMIT 1').first<{present:number}>();
-  if(populated){
-   const row=await db.prepare('SELECT areas_json,village_count FROM rticore_postal_lookup WHERE postal_code=?')
-    .bind(postal).first<{areas_json:string;village_count:number}>();
-   if(!row)return [];
-   const parsed:unknown=JSON.parse(row.areas_json);
-   if(!Array.isArray(parsed)||parsed.length!==row.village_count||parsed.length>500||
-      parsed.some((area:unknown)=>!area||typeof area!=='object'||
-       (area as PostalArea).postal_code!==postal||
-       typeof (area as PostalArea).region_code!=='string'||
-       typeof (area as PostalArea).province_name!=='string'||
-       typeof (area as PostalArea).village_name!=='string')){
-    throw new Error('Referensi wilayah pada kode pos ini tidak konsisten. Hubungi Administrator.');
-   }
-   return parsed as PostalArea[];
+ if(await hasCompactPostalReference(db)){
+  const row=await db.prepare('SELECT areas_json,village_count FROM rticore_postal_lookup WHERE postal_code=?')
+   .bind(postal).first<{areas_json:string;village_count:number}>();
+  if(!row)return [];
+  const parsed:unknown=JSON.parse(row.areas_json);
+  if(!Array.isArray(parsed)||parsed.length!==row.village_count||parsed.length>500||
+     parsed.some((area:unknown)=>!area||typeof area!=='object'||
+      (area as PostalArea).postal_code!==postal||
+      typeof (area as PostalArea).region_code!=='string'||
+      typeof (area as PostalArea).province_name!=='string'||
+      typeof (area as PostalArea).village_name!=='string')){
+   throw new Error('Referensi wilayah pada kode pos ini tidak konsisten. Hubungi Administrator.');
   }
+  return parsed as PostalArea[];
  }
  const rows=await db.prepare(
   'SELECT region_code,postal_code,province_code,province_name,regency_code,regency_name,district_code,district_name,village_name,village_kind FROM rticore_postal_areas WHERE postal_code=? ORDER BY province_name,regency_name,district_name,village_name LIMIT 501'
@@ -81,9 +80,7 @@ export async function searchPostalSuggestions(db:D1DB,raw:string):Promise<Postal
  if(!validPostalSearchQuery(query))throw new Error('Cari minimal 2 angka atau 3 huruf wilayah (maksimal 50 karakter).');
  await assertPostalReferenceReady(db);
  const digits=/^[0-9]+$/.test(query);
- const table=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='rticore_postal_lookup'")
-  .first<{name:string}>();
- const compact=!!table && !!(await db.prepare('SELECT 1 AS present FROM rticore_postal_lookup LIMIT 1').first<{present:number}>());
+ const compact=await hasCompactPostalReference(db);
  const suggestions=new Map<string,PostalSuggestion>();
  const matches=(area:PostalArea)=>[area.village_name,area.district_name,area.regency_name,area.province_name]
   .some(value=>value.toLocaleLowerCase('id-ID').includes(query.toLocaleLowerCase('id-ID')));

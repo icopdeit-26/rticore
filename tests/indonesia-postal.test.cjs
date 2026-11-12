@@ -16,8 +16,7 @@ const area={
 function referenceDb(mode='normalized'){
  return {prepare(sql){
   if(sql.includes('rticore_postal_import_state'))return {first:async()=>({source_version:'uat'})};
-  if(sql.includes('sqlite_master'))return {first:async()=>mode==='compact'?{name:'rticore_postal_lookup'}:null};
-  if(sql.includes('SELECT 1 AS present FROM rticore_postal_lookup'))return {first:async()=>({present:1})};
+  if(sql.includes('SELECT 1 AS present FROM rticore_postal_lookup'))return {first:async()=>mode==='compact'?{present:1}:null};
   if(sql.includes('FROM rticore_postal_lookup WHERE postal_code=?'))
    return {bind(postal){return {first:async()=>postal==='40111'?{areas_json:JSON.stringify([area]),village_count:1}:null}}};
   if(sql.includes('FROM rticore_postal_areas WHERE postal_code=?'))
@@ -62,7 +61,6 @@ test('unverified reference fails closed before any query for address',async()=>{
 test('corrupt compact postal JSON cannot certify customer address',async()=>{
  const db={prepare(sql){
   if(sql.includes('rticore_postal_import_state'))return {first:async()=>({source_version:'uat'})};
-  if(sql.includes('sqlite_master'))return {first:async()=>({name:'rticore_postal_lookup'})};
   if(sql.includes('SELECT 1 AS present'))return {first:async()=>({present:1})};
   if(sql.includes('FROM rticore_postal_lookup'))return {bind(){return {first:async()=>({areas_json:JSON.stringify([{...area,postal_code:'99999'}]),village_count:1})}}};
   throw Error('Unexpected query '+sql);
@@ -79,8 +77,7 @@ for(const mode of ['normalized','compact']){
  test(mode+': autocomplete returns unique canonical postal options by postcode and wilayah',async()=>{
   const db={prepare(sql){
    if(sql.includes('rticore_postal_import_state'))return {first:async()=>({source_version:'uat'})};
-   if(sql.includes('sqlite_master'))return {first:async()=>mode==='compact'?{name:'rticore_postal_lookup'}:null};
-   if(sql.includes('SELECT 1 AS present FROM rticore_postal_lookup'))return {first:async()=>({present:1})};
+   if(sql.includes('SELECT 1 AS present FROM rticore_postal_lookup'))return {first:async()=>mode==='compact'?{present:1}:null};
    if(sql.includes('FROM rticore_postal_lookup')){
     return {bind(param){return {all:async()=>({results:param==='401%'||param==='%Braga%'?
      [{postal_code:'40111',areas_json:JSON.stringify([area])}]:[]})}}};

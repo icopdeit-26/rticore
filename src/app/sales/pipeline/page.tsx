@@ -187,6 +187,7 @@ export default function SalesPipelinePage(){
  const [dealTitle,setDealTitle]=useState('');
  const [amount,setAmount]=useState('');
  const [dealFields,setDealFields]=useState<SalesFields>({});
+ const [accountFeedback,setAccountFeedback]=useState<{text:string;error:boolean}|null>(null);
  const [message,setMessage]=useState('');
  const [busy,setBusy]=useState(false);
  const [filter,setFilter]=useState<StageFilterValue>('all');
@@ -224,9 +225,21 @@ export default function SalesPipelinePage(){
   catch(e){setMessage(e instanceof Error?e.message:String(e));}
   finally{setBusy(false);}
  };
- const newAccount=()=>{setAccountName('');setAccountFields({});setTab('account');};
+ const newAccount=()=>{setAccountFeedback(null);setAccountName('');setAccountFields({});setTab('account');};
  const newDeal=()=>{setCustomerId(accounts[0]?.id||'');setDealTitle('');setAmount('');setDealFields({});setTab('newdeal');};
- const saveAccount=()=>{if(busy)return;void run(()=>request('POST','/api/sales',{entity:'account',legal_name:accountName,fields:synchronizeBillingAddress(accountFields)}),'Customer Account tersimpan di database. Pilih Customer ini pada Opportunity Baru untuk melanjutkan.',undefined,false);};
+ const saveAccount=async()=>{
+  if(busy||!isMaker)return;
+  setBusy(true);
+  setMessage('');
+  setAccountFeedback(null);
+  try{
+   await request('POST','/api/sales',{entity:'account',legal_name:accountName,fields:synchronizeBillingAddress(accountFields)});
+   setAccountFeedback({text:'Customer Account tersimpan. Pilih Customer ini pada Opportunity Baru untuk melanjutkan.',error:false});
+   await refresh();
+  }catch(error){
+   setAccountFeedback({text:errorText(error,'Customer Account gagal disimpan.'),error:true});
+  }finally{setBusy(false);}
+ };
  const saveDeal=()=>void run(()=>request('POST','/api/sales',{entity:'deal',company_id:customerId,title:dealTitle,estimated_value:Number(amount),fields:dealFields}),'Opportunity terdaftar pada pipeline.');
  const updateAccount=()=>detail&&void run(()=>request('PATCH','/api/sales',{entity:'account',id:detail.account.id,legal_name:accountName,fields:synchronizeBillingAddress(accountFields)}),'Registrasi pelanggan diperbarui.',selectedId);
  const updateDeal=()=>{if(!detail)return;
@@ -291,7 +304,9 @@ export default function SalesPipelinePage(){
   <p className="text-xs text-slate-500">Customer ID diterbitkan otomatis. Field kosong harus dilengkapi sebelum tahap Qualified dan sebelum dokumen final.</p>
   <label className="block text-xs font-bold">Nama badan usaha resmi *<input className={inputClass} value={accountName} onChange={e=>setAccountName(e.target.value)}/></label>
   <AccountFieldSections values={accountFields} onUpdate={(k,v)=>setAccountFields(f=>updateCustomerAddressFields(f,{[k]:v}))} onPatch={patch=>setAccountFields(f=>updateCustomerAddressFields(f,patch))}/>
-  <div className="border-t border-slate-100 pt-4"><button disabled={busy||!isMaker} onClick={saveAccount} className="min-h-11 w-full rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50 sm:w-auto">{busy?'Menyimpan…':'Simpan Customer Account'}</button></div>
+  <div className="space-y-3 border-t border-slate-100 pt-4"><button type="button" disabled={busy||!isMaker} onClick={saveAccount} className="min-h-11 w-full rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50 sm:w-auto">{busy?'Menyimpan…':'Simpan Customer Account'}</button>
+   {accountFeedback&&<p role={accountFeedback.error?'alert':'status'} className={'whitespace-pre-wrap text-sm '+(accountFeedback.error?'text-red-700':'text-emerald-800')}>{accountFeedback.text}</p>}
+  </div>
  </section>}
  {tab==='newdeal'&&<section className="space-y-4 rounded-xl border bg-white p-4">
   <h2 className="font-bold">Opportunity Registration</h2>
