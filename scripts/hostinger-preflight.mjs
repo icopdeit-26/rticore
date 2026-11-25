@@ -11,7 +11,7 @@ try {
   await client.query('BEGIN READ ONLY');
   const schema = fs.readFileSync(path.resolve('rticore_postgresql_schema.sql'), 'utf8');
   const triggers = fs.readFileSync(path.resolve('rticore_postgresql_triggers.sql'), 'utf8');
-  const expectedTables = [...new Set([...schema.matchAll(/CREATE TABLE IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/gi)].map(m => m[1]))];
+  const expectedTables = [...new Set([...(schema+'\n'+triggers).matchAll(/CREATE TABLE IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/gi)].map(m => m[1]))];
   const expectedTriggers = [...new Set([...triggers.matchAll(/CREATE TRIGGER\s+([a-z_][a-z0-9_]*)/gi)].map(m => m[1]))];
   if (!expectedTables.length || !expectedTriggers.length) throw new Error('Missing schema manifest');
   const tables = new Set((await client.query("SELECT tablename FROM pg_tables WHERE schemaname='public'")).rows.map(r=>r.tablename));

@@ -54,6 +54,23 @@ type QueryExecutor = {
   batch?(statements: { sql: string; args: unknown[] }[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }[]>;
 };
 
+type BatchClient = { query: QueryExecutor['query']; release(): void };
+
+/** A pool transaction must run on one leased connection, including rollback. */
+export async function runPostgresBatch(pool: { connect(): Promise<BatchClient> }, statements: {sql:string;args:unknown[]}[]) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const results = [];
+    for (const stmt of statements) results.push(await client.query(stmt.sql, stmt.args));
+    await client.query('COMMIT');
+    return results;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+    throw error;
+  } finally { client.release(); }
+}
+
 const globalPg = globalThis as unknown as {
   __rticorePgExecutorPromiseV3?: Promise<QueryExecutor> | null;
 };
@@ -86,19 +103,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
-      batch: async (statements) => {
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-          const results = [];
-          for (const stmt of statements) results.push(await client.query(stmt.sql, stmt.args));
-          await client.query('COMMIT');
-          return results;
-        } catch (error) {
-          try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
-          throw error;
-        } finally { client.release(); }
-      },
+      batch: (statements) => runPostgresBatch(pool, statements),
     };
     // Public hosting must never bootstrap or modify the production schema on request.
     if (hostinger) {
