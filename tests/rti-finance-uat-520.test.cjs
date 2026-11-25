@@ -89,9 +89,18 @@ test('Security: Finance entity selection and dataset permissions fail closed', a
     await expect(h.call('finance', 'GET', 'viewer', null, `?menu=F01&legal_entity_id=${legal}`), 403);
     await expect(h.call('finance', 'GET', 'finance', null, '?menu=F03&legal_entity_id=unknown-entity'), 403);
 
+    // Mutations must not accept another legal entity even from a Finance maker.
+    await expect(h.call('finance','POST','finance',{
+      action:'create_profit_center',legal_entity_id:legal2,code:'UNAUTHORIZED',name:'Cross Entity',center_kind:'cost_center'
+    }),403);
+    assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_finance_profit_centers WHERE code='UNAUTHORIZED'").get().n,0);
     // Create a real GL account in the second entity, inaccessible to the first.
     h.sql.prepare("INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES(?,?,?,?,?,?,?)")
       .run('other-entity-secret-account',tenant,legal2,'9001','OTHER-ENTITY-SECRET','asset',users.admin);
+    await expect(h.call('finance','POST','finance',{
+      action:'register_coa_hierarchy',legal_entity_id:legal,account_id:'other-entity-secret-account',
+      account_group:'Cross entity',normal_balance:'debit',effective_from:'2026-01-01'
+    }),403);
     const response = await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal}`),200);
     assert.ok(!JSON.stringify(response.body).includes('OTHER-ENTITY-SECRET'));
 
@@ -1451,6 +1460,9 @@ test('Domain 09 (35 UAT Scenarios): Enterprise Multi-Dimensional Budget, Soft/Ha
       executed++;
     }
 
+    // Positive expense flow needs an independently approved legal-entity affiliation.
+    h.sql.prepare("INSERT INTO rticore_erp_staff_org(tenant_id,email,unit_id,position_title,created_by,status,reviewed_by,review_notes) VALUES(?,?,?,?,?,'approved',?,?)")
+      .run(tenant,users.sales,legal,'Sales Staff',users.admin,users.approver,'Independent expense entity approval');
     const expDoc = (await expect(upload(h, 'supporting', 'sales'), 201)).body.id;
     const claim = await expect(
       h.call('finance', 'POST', 'sales', {
@@ -1977,6 +1989,13 @@ test('Domain 12 (35 UAT Scenarios): 17-Point Closing Checklist, 5-Stage Period L
     executed++;
 
     // 26-35: Multi-Entity Intercompany Eliminations (5 elimination types) & 5 Subledger Reconciliations
+    // The same Finance user cannot consolidate an unassigned counterparty.
+    await expect(h.call('finance','POST','finance',{
+      action:'record_intercompany_elimination',period_code:'2026-11',source_entity_id:legal,counterparty_entity_id:legal2,
+      elimination_kind:'intercompany_ar_ap',amount_cents:10000,
+    }),403);
+    h.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_make,can_check,can_approve,can_post,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,?,?,?,?,?,'approved',?,?,?)")
+      .run('consolidation-scope-2',tenant,users.finance,'financial_controller',legal2,100000000,1,1,1,1,users.admin,users.approver,'Independent consolidation authority');
     const elimKinds = ['intercompany_ar_ap', 'intercompany_revenue_expense', 'intercompany_loan', 'dividend_equity', 'fx_translation'];
     for (let i = 0; i < elimKinds.length; i++) {
       await expect(
