@@ -23,6 +23,7 @@ jobs:
       - run: npm run test:pg-triggers
       - run: npm run test:erp
       - run: npm run test:erp:extensions
+      - run: node --test tests/hostinger-production-safety.test.cjs
       - run: npm run test:finance-520
       - run: npm run typecheck
       - run: npm run build
