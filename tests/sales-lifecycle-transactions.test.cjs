@@ -110,8 +110,8 @@ test('invalidated PO verification is retained in immutable history and rolls bac
  assert.throws(()=>d.sql.exec('DELETE FROM rticore_sales_po_check_history'),/immutable/);
 }finally{d.close();}});
 test('expired quotation and malformed or future submission timestamps fail before any receipt is saved',async()=>{const d=h();try{
- await expect(d.flow('scope','presales'),201);await expect(d.edit({quotation_valid_until:'2026-01-01'}),200);await expect(d.flow('propose','sales',{...await d.proof('proposal','archive/proposal')}),422);
- await expect(d.edit({quotation_valid_until:'2026-11-21'}),200);await expect(d.flow('propose','sales',{...await d.proof('proposal','archive/proposal')}),200);await expect(d.flow('approve','approver'),200);for(const stage of ['solution_design','commercial_review','quotation_sent'])await expect(d.stage(stage),200);
+ await expect(d.flow('scope','presales'),201);await expect(d.edit({quotation_valid_until:new Date(Date.now()-86400000*2).toISOString().slice(0,10)}),200);await expect(d.flow('propose','sales',{...await d.proof('proposal','archive/proposal')}),422);
+ await expect(d.edit({quotation_valid_until:fields.quotation_valid_until}),200);await expect(d.flow('propose','sales',{...await d.proof('proposal','archive/proposal')}),200);await expect(d.flow('approve','approver'),200);for(const stage of ['solution_design','commercial_review','quotation_sent'])await expect(d.stage(stage),200);
  for(const sent_at of ['2026-02-31T01:00:00Z',new Date(Date.now()+86400000).toISOString(),'2020-01-01T01:00:00Z'])await expect(d.call('sales/submission','POST','sales',{opportunity_id:'opp-qa',channel:'email',recipient_email:'pic@flow.invalid',sent_at,...await d.proof('submission','archive/receipt')}),422);
  assert.equal(d.sql.prepare('SELECT count(*) n FROM rticore_sales_submissions').get().n,0);
 }finally{d.close();}});
