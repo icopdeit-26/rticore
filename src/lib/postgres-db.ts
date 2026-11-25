@@ -75,9 +75,8 @@ async function createExecutor(): Promise<QueryExecutor> {
   if (pgUrl) {
     const schemaPath = path.join(process.cwd(), 'rticore_postgresql_schema.sql');
     const schemaSQL = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, 'utf8') : '';
-    type PgPool = {
-      query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
-    };
+    type PgClient = { query: QueryExecutor['query']; release(): void };
+    type PgPool = { query: QueryExecutor['query']; connect(): Promise<PgClient> };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
       Pool: new (opts: { connectionString: string }) => PgPool;
     };
@@ -85,7 +84,25 @@ async function createExecutor(): Promise<QueryExecutor> {
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
+      batch: async (statements) => {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const results = [];
+          for (const stmt of statements) results.push(await client.query(stmt.sql, stmt.args));
+          await client.query('COMMIT');
+          return results;
+        } catch (error) {
+          try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+          throw error;
+        } finally { client.release(); }
+      },
     };
+    // Public hosting must never bootstrap or modify the production schema on request.
+    if (process.env.RTICORE_RUNTIME === 'hostinger') {
+      await exec.query('SELECT 1 FROM rticore_members LIMIT 1');
+      return exec;
+    }
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.
     const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');
