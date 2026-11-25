@@ -17,7 +17,6 @@ import {
   ICOFR_15_AUTOMATED_CONTROLS,
   RTICORE_DOCKING_EVENT_TYPES,
   type FinanceMenuId,
-  type FinanceRoleId,
 } from '@/lib/rti-finance-core';
 
 function formatIDRFromCents(cents: number | null | undefined): string {
@@ -36,7 +35,6 @@ interface RTIFinanceWorkstationProps {
 
 export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorkstationProps) {
   const [activeMenu, setActiveMenu] = useState<FinanceMenuId>(initialMenu);
-  const [selectedRolePreview, setSelectedRolePreview] = useState<FinanceRoleId | ''>('');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [period, setPeriod] = useState<string>(new Date().toISOString().slice(0, 7));
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -58,7 +56,6 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
       const q = new URLSearchParams({ menu: activeMenu, period });
       if (selectedEntity) q.set('legal_entity_id', selectedEntity);
       const headers: Record<string, string> = {};
-      if (selectedRolePreview) headers['x-finance-role'] = selectedRolePreview;
 
       const res = await fetch(`/api/finance?${q.toString()}`, {
         method: 'GET',
@@ -80,7 +77,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
     } finally {
       setLoading(false);
     }
-  }, [activeMenu, period, selectedEntity, selectedRolePreview]);
+  }, [activeMenu, period, selectedEntity]);
 
   useEffect(() => {
     void loadFinanceData();
@@ -112,7 +109,6 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
     setFeedback(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (selectedRolePreview) headers['x-finance-role'] = selectedRolePreview;
       const res = await fetch('/api/finance', {
         method: 'POST',
         credentials: 'same-origin',
@@ -222,19 +218,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
               className="h-9 rounded-xl border border-[#C0C0C0]/30 bg-[#050505]/70 px-3 text-xs font-semibold text-white outline-none"
             />
 
-            <select
-              aria-label="Simulasi 18 Role RTI Finance"
-              value={selectedRolePreview}
-              onChange={e => setSelectedRolePreview(e.target.value as FinanceRoleId | '')}
-              className="h-9 rounded-xl border border-[#C0C0C0]/40 bg-[#2B124C] px-3 text-xs font-semibold text-white outline-none"
-            >
-              <option value="">Role Aktif: {String(identity.financeRoleLabel || 'Auto Mapped')}</option>
-              {RTI_FINANCE_ROLES.map(r => (
-                <option key={r.id} value={r.id}>
-                  {String(r.number).padStart(2, '0')} · {r.label}
-                </option>
-              ))}
-            </select>
+            <span className="text-xs font-semibold text-white">Role Aktif: {String(identity.financeRoleLabel || 'Server assigned')}</span>
           </div>
         </div>
       </header>
