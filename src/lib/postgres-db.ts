@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import type { D1DB, D1Prepared } from './boq-auth';
+import { validateHostingerConfig } from './hostinger-config';
 
 function normalizeRow(row: Record<string, unknown> | undefined | null): Record<string, unknown> | null {
   if (!row) return null;
@@ -70,7 +71,8 @@ async function ensureSchema(exec: QueryExecutor, schemaSQL: string): Promise<voi
 }
 
 async function createExecutor(): Promise<QueryExecutor> {
-  const pgUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const hostinger = process.env.RTICORE_RUNTIME === 'hostinger';
+  const pgUrl = hostinger ? validateHostingerConfig(process.env).toString() : process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
   if (pgUrl) {
     const schemaPath = path.join(process.cwd(), 'rticore_postgresql_schema.sql');
@@ -78,9 +80,9 @@ async function createExecutor(): Promise<QueryExecutor> {
     type PgClient = { query: QueryExecutor['query']; release(): void };
     type PgPool = { query: QueryExecutor['query']; connect(): Promise<PgClient> };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
-      Pool: new (opts: { connectionString: string }) => PgPool;
+      Pool: new (opts: { connectionString: string; ssl?: { rejectUnauthorized: boolean }; connectionTimeoutMillis?: number; max?: number }) => PgPool;
     };
-    const pool = new pgMod.Pool({ connectionString: pgUrl });
+    const pool = new pgMod.Pool({ connectionString: pgUrl, ...(hostinger ? { ssl: { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, max: 5 } : {}) });
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
@@ -99,7 +101,7 @@ async function createExecutor(): Promise<QueryExecutor> {
       },
     };
     // Public hosting must never bootstrap or modify the production schema on request.
-    if (process.env.RTICORE_RUNTIME === 'hostinger') {
+    if (hostinger) {
       await exec.query('SELECT 1 FROM rticore_members LIMIT 1');
       return exec;
     }

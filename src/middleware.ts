@@ -29,6 +29,8 @@ const D1_ROUTES = new Set([
   '/api/platform/diagnostics',
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
+  '/api/health/live',
+  '/api/health/ready',
   // RTI Finance Enterprise Suite API (migration 0052).
   '/api/finance',
 ]);

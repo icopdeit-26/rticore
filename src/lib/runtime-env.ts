@@ -1,6 +1,7 @@
 import {getCloudflareContext} from '@opennextjs/cloudflare';
 import {getLocalD1} from './local-d1';
 import {getLocalPostgresDB} from './postgres-db';
+import {validateHostingerConfig} from './hostinger-config';
 
 /**
  * Single entry point for runtime bindings.
@@ -25,9 +26,7 @@ export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
   if(typeof navigator==='undefined'||navigator?.userAgent!=='Cloudflare-Workers'){
     if(typeof process!=='undefined'&&process?.env?.RTICORE_RUNTIME==='hostinger'){
       const e=process.env;
-      if(e.RTICORE_LOCAL_MODE==='1'||e.RTICORE_DB_ENGINE==='sqlite'||!e.DATABASE_URL||
-        !e.RTICORE_ACCESS_TEAM_DOMAIN?.endsWith('.cloudflareaccess.com')||!e.RTICORE_ACCESS_AUD||e.RTICORE_ACCESS_AUD.length<30)
-        throw new Error('Hostinger requires external PostgreSQL and verified Access authentication');
+      validateHostingerConfig(e);
       const env:Record<string,unknown>={RTICORE_DB:getLocalPostgresDB(),RTICORE_LOCAL_MODE:'0'};
       for(const key of LOCAL_KEYS)if(key!=='RTICORE_LOCAL_SESSION_SECRET'&&e[key])env[key]=e[key];
       return env as T;

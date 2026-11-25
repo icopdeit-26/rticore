@@ -1,0 +1,24 @@
+[Unit]
+Description=RTICore native Node.js candidate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rticore
+Group=rticore
+WorkingDirectory=/opt/rticore/current
+EnvironmentFile=/etc/rticore/rticore.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start:hostinger
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

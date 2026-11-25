@@ -21,6 +21,10 @@ test('native hosting does not enable local mode or silently bootstrap Finance',a
   new Function('require','module','exports',code)(name=>{
    if(name==='@opennextjs/cloudflare')return {getCloudflareContext:()=>{throw Error('unexpected worker runtime')}};
    if(name==='./local-d1')return {getLocalD1:()=>{throw Error('unexpected local database')}};
+   if(name==='./hostinger-config'){
+    const code=ts.transpileModule(fs.readFileSync('src/lib/hostinger-config.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+    const helper={exports:{}};new Function('require','module','exports',code)(require,helper,helper.exports);return helper.exports;
+   }
    if(name==='./postgres-db')return {getLocalPostgresDB:()=>{throw Error('unexpected database connection')}};
    throw Error(name);
   },mod,mod.exports);
