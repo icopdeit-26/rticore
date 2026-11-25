@@ -70,14 +70,16 @@ test('release renames before migrating and verifies before deploying',()=>{
   assert.ok(at('d1-legacy-rename.mjs generate')<at('Applying $f'));
   assert.ok(at('Applying $f')<at('name: Verify schema'));
   assert.ok(at('name: Verify schema')<at('name: Deploy Worker'));
-  assert.match(wf,/steps\.migrate\.outputs\.renamed != 'true'/);
+  assert.match(wf,/run: test "\$CONFIRM" = "DEPLOY RTICORE PRODUCTION"/);
+  assert.doesNotMatch(wf,/d1 time-travel restore|restore_d1_on_migration_failure/);
+  assert.ok(at('name: Deploy Worker')<at('name: Verify authenticated HTTP response'));
   assert.ok(at('from a different migration lineage')<at('Independent backup'));
   assert.ok(at('which this code reads')<at('Independent backup'));
 });
 
-test('migrations 0046-0051 record themselves in the ledger',()=>{
+test('migrations 0046-0052 record themselves in the ledger',()=>{
   const dir=path.join(__dirname,'..','migrations');
-  for(const n of [46,47,48,49,50,51]){
+  for(const n of [46,47,48,49,50,51,52]){
     const file=fs.readdirSync(dir).find(f=>f.startsWith('00'+n+'_'));
     assert.match(fs.readFileSync(path.join(dir,file),'utf8'),new RegExp('INSERT INTO rticore_schema_migrations\\(version\\) VALUES\\('+n+'\\);'));
   }

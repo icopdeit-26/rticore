@@ -63,53 +63,49 @@ export type ProductPricingProfile = {
   model: PricingModel;
   /** Default allocation of total MD to ICOP role_level (shares sum to 1). */
   roles: ReadonlyArray<{ role: RoleLevel; share: number }>;
-  /** Default component C (ICOP boq_internal default Rp 2 jt per project). */
-  defaultDocumentCost: number;
   hints: Partial<Record<CostCode, string>>;
   basis: string;
 };
 
-const DOC = 2000000;
 const standardTeam = [
   { role: 'project_manager', share: 0.15 }, { role: 'lead', share: 0.25 },
   { role: 'senior', share: 0.4 }, { role: 'junior', share: 0.2 },
 ] as const;
 
 export const PRODUCT_PRICING: Record<ScopingService, ProductPricingProfile> = {
-  VAPT: { model: 'md', roles: standardTeam, defaultDocumentCost: DOC,
+  VAPT: { model: 'md', roles: standardTeam,
     basis: 'MD dari kalkulator VAPT multi-aset (pricing_vapt_inputs)',
     hints: { D: 'Nessus, Burp Suite Pro, tools mobile / cloud', E: 'Wajib jika onsite' } },
-  SOC: { model: 'soc_mrc', roles: [{ role: 'soc_analyst_l1', share: 0.7 }, { role: 'soc_analyst_l2', share: 0.3 }],
-    defaultDocumentCost: 0, basis: 'MRC dari EPS sizing (pricing_soc_inputs) × tier × DAI',
+  SOC: { model: 'soc_mrc', roles: [{ role: 'soc_analyst_l1', share: 0.7 }, { role: 'soc_analyst_l2', share: 0.3 }], basis: 'MRC dari EPS sizing (pricing_soc_inputs) × tier × DAI',
     hints: { A: 'Biaya analis L1/L2 per bulan', D: 'Lisensi SIEM / SOAR per bulan' } },
-  CTI: { model: 'cti_mrc', roles: [{ role: 'cti_analyst', share: 1 }], defaultDocumentCost: 0,
+  CTI: { model: 'cti_mrc', roles: [{ role: 'cti_analyst', share: 1 }],
     basis: 'MRC dari footprint score (pricing_cti_inputs) × tier × DAI',
     hints: { A: 'CTI analyst per bulan', D: 'Feed / platform CTI (OpenCTI, Cybersixgill, dll) per bulan' } },
   ISO: { model: 'md', roles: [{ role: 'project_manager', share: 0.15 }, { role: 'lead', share: 0.35 },
-    { role: 'senior', share: 0.35 }, { role: 'junior', share: 0.15 }], defaultDocumentCost: DOC,
+    { role: 'senior', share: 0.35 }, { role: 'junior', share: 0.15 }],
     basis: 'Estimasi MD Presales × rate card ICOP', hints: { D: 'Badan sertifikasi / auditor eksternal' } },
   PDP: { model: 'md', roles: [{ role: 'project_manager', share: 0.15 }, { role: 'lead', share: 0.3 },
-    { role: 'senior', share: 0.4 }, { role: 'junior', share: 0.15 }], defaultDocumentCost: DOC,
+    { role: 'senior', share: 0.4 }, { role: 'junior', share: 0.15 }],
     basis: 'Estimasi MD Presales × rate card ICOP', hints: { D: 'Legal reviewer / tools data discovery' } },
   Hardening: { model: 'md', roles: [{ role: 'project_manager', share: 0.1 }, { role: 'lead', share: 0.2 },
-    { role: 'senior', share: 0.4 }, { role: 'junior', share: 0.3 }], defaultDocumentCost: DOC,
+    { role: 'senior', share: 0.4 }, { role: 'junior', share: 0.3 }],
     basis: 'Estimasi MD Presales × rate card ICOP', hints: { D: 'Tools CIS-CAT / scanner konfigurasi' } },
   IR: { model: 'md', roles: [{ role: 'project_manager', share: 0.1 }, { role: 'lead', share: 0.3 },
-    { role: 'forensic', share: 0.4 }, { role: 'senior', share: 0.2 }], defaultDocumentCost: DOC,
+    { role: 'forensic', share: 0.4 }, { role: 'senior', share: 0.2 }],
     basis: 'Estimasi MD Presales × rate card ICOP', hints: { D: 'EDR sementara / tools triage', E: 'Respons onsite' } },
   GRC: { model: 'md', roles: [{ role: 'project_manager', share: 0.15 }, { role: 'lead', share: 0.35 },
-    { role: 'senior', share: 0.35 }, { role: 'junior', share: 0.15 }], defaultDocumentCost: DOC,
+    { role: 'senior', share: 0.35 }, { role: 'junior', share: 0.15 }],
     basis: 'Estimasi MD Presales × rate card ICOP', hints: { D: 'SME regulasi eksternal' } },
   DFIR: { model: 'md', roles: [{ role: 'project_manager', share: 0.1 }, { role: 'forensic', share: 0.6 },
-    { role: 'lead', share: 0.15 }, { role: 'senior', share: 0.15 }], defaultDocumentCost: DOC,
+    { role: 'lead', share: 0.15 }, { role: 'senior', share: 0.15 }],
     basis: 'Estimasi MD Presales × rate card ICOP', hints: { D: 'Lisensi forensik, write blocker, media evidence' } },
-  TECHNOLOGY: { model: 'md', roles: standardTeam, defaultDocumentCost: DOC,
+  TECHNOLOGY: { model: 'md', roles: standardTeam,
     basis: 'MD implementasi × rate card ICOP + lisensi vendor (komponen D)',
     hints: { D: 'Harga beli lisensi / perangkat dari vendor (pass-through)' } },
   TRAINING: { model: 'md', roles: [{ role: 'project_manager', share: 0.1 }, { role: 'lead', share: 0.6 },
-    { role: 'senior', share: 0.3 }], defaultDocumentCost: DOC,
+    { role: 'senior', share: 0.3 }],
     basis: 'MD trainer (hari × batch) × rate card ICOP', hints: { C: 'Modul, sertifikat & kit peserta', E: 'Venue / travel trainer' } },
-  Lainnya: { model: 'md', roles: standardTeam, defaultDocumentCost: DOC,
+  Lainnya: { model: 'md', roles: standardTeam,
     basis: 'Estimasi MD Presales × rate card ICOP', hints: {} },
 };
 
@@ -242,6 +238,8 @@ export function estimateScopingPrice(input: {
   serviceValues?: Record<string, string>;
   /** Active calibration factor for this product (from Admin model). */
   calibrationFactor?: number;
+  /** Sales-facing indication uses selling baselines without internal cost inputs or floors. */
+  sellingOnly?: boolean;
 }): ScopingPriceEstimate {
   const factor = typeof input.calibrationFactor === 'number' && Number.isFinite(input.calibrationFactor)
     ? Math.min(1.4, Math.max(0.6, input.calibrationFactor)) : 1;
@@ -270,7 +268,7 @@ export function estimateScopingPrice(input: {
     const costs: Record<CostCode, number> = {
       A: hr.totalHRCost,
       B: typed('B') ?? 0,
-      C: typed('C') ?? profile.defaultDocumentCost,
+      C: typed('C') ?? 2000000,
       D: typed('D') ?? 0,
       E: typed('E') ?? 0,
     };
@@ -283,8 +281,9 @@ export function estimateScopingPrice(input: {
     }
     // Pass-through components (D tools/vendor, E travel) are added on top of the selling baseline.
     const ranges = calculate3Ranges({ totalInternalCost, totalSellingBaseline: hr.totalSellingBaseline, dai, tierMultiplier });
-    const baseStandard = Math.max(ranges.standard_price, Math.round((hr.totalSellingBaseline * dai * tierMultiplier) + costs.D + costs.E));
-    const { standard, heldAtFloor } = applyCalibration(baseStandard, ranges.floor_price, factor);
+    const sellingBaseline = Math.round(hr.totalSellingBaseline * dai * tierMultiplier);
+    const baseStandard = input.sellingOnly?sellingBaseline:Math.max(ranges.standard_price,sellingBaseline+costs.D+costs.E);
+    const { standard, heldAtFloor } = applyCalibration(baseStandard,input.sellingOnly?null:ranges.floor_price,factor);
     const boq = calculateBoQ({ component_a_total: costs.A, component_b_total: costs.B, component_c_total: costs.C,
       component_d_total: costs.D, component_e_total: costs.E, quoted_price: standard });
     return { ...base, baseStandard, heldAtFloor, totalMd: effortMd,

@@ -1,6 +1,7 @@
+const {launchBrowser}=require('./helpers/browser.cjs');
 // Browser UI -> actual route handlers -> isolated SQLite D1 adapter. Only Access identity is test supplied.
 // This is NOT live Cloudflare Access UAT and never connects to a remote database.
-const test=require('node:test'),assert=require('node:assert/strict'),{chromium}=require('playwright');
+const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {Harness,expect}=require('./helpers/sales-flow-harness.cjs');
 const base=process.env.RTICORE_UAT_URL||'http://127.0.0.1:3100';
@@ -15,8 +16,10 @@ async function pageFor(browser,d,role,mobile=false,pathname='/proposals'){const 
 const fillNotes=(p,notes)=>p.getByLabel('Catatan validasi / persetujuan / negosiasi').fill(notes);
 async function fillProof(p,ref,sha){await p.getByLabel('Upload dokumen asli ke Document Vault').setInputFiles({name:'browser-evidence.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\nSynthetic browser original '+ref)});await p.getByRole('status').filter({hasText:'Dokumen asli tersimpan.'}).waitFor();assert.match(await p.getByLabel('SHA-256',{exact:true}).inputValue(),/^[a-f0-9]{64}$/);}
 async function settle(page){await page.getByRole('status').filter({hasText:'Transaksi dan audit tersimpan.'}).waitFor();}
-test('mobile and desktop browser uploads connect proposal, submission, independent reviews and original PO to Won',async()=>{const d=new Harness().seed(),browser=await chromium.launch({headless:true,args:['--no-sandbox']});let page;
+test('mobile and desktop browser uploads connect proposal, submission, independent reviews and original PO to Won',async()=>{const d=new Harness().seed(),browser=await launchBrowser({headless:true,args:['--no-sandbox']});let page;
  try{
+  // Keep a page open while separate reviewer contexts are created and closed.
+  await browser.newPage();
   page=await pageFor(browser,d,'presales',true);await fillNotes(page,'Presales reviewed the actual scope and deliverables');await page.getByRole('button',{name:'Validasi Scope Presales',exact:true}).click();await settle(page);assert.equal(d.release().status,'scoped');
   await page.screenshot({path:path.join(screenshots,'lifecycle-presales-mobile.png'),fullPage:true});await page.close();
   page=await pageFor(browser,d,'sales',true);await fillNotes(page,'Sales submits final proposal matching approved BoQ');await fillProof(page,'archive/proposal/browser-uat','a'.repeat(64));await page.getByRole('button',{name:'Ajukan Proposal Final',exact:true}).click();await settle(page);assert.equal(d.release().status,'proposed');await page.close();
@@ -35,7 +38,8 @@ test('mobile and desktop browser uploads connect proposal, submission, independe
   page=await pageFor(browser,d,'sales',true,'/sales/award');await page.getByLabel('Upload dokumen asli ke Document Vault').setInputFiles({name:'original-po.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\nSynthetic original PO for the browser UAT')});await page.getByRole('status').filter({hasText:'Dokumen asli tersimpan.'}).waitFor();await page.getByRole('button',{name:'Register Dokumen (Pending Review)',exact:true}).click();await page.getByRole('status').filter({hasText:'Metadata dokumen dicatat'}).waitFor();await page.close();
   for(const role of ['finance','legal']){
    page=await pageFor(browser,d,role,true,'/sales/award');
-   const download=page.waitForEvent('download');await page.getByRole('link',{name:'Unduh dokumen asli',exact:true}).click();assert.equal((await download).suggestedFilename(),'original-po.pdf');
+   const download=page.waitForEvent('download');await page.getByRole('link',{name:'Unduh dokumen asli',exact:true}).click();
+   const original=await download;assert.equal(original.suggestedFilename(),'original-po.pdf');assert.equal(await original.failure(),null);
    await page.getByLabel('Catatan pemeriksaan asli').fill('Original PO scope and amount independently checked by '+role);page.once('dialog',x=>x.accept());await page.getByRole('button',{name:'Verifikasi sebagai '+(role==='legal'?'Legal':'Finance'),exact:true}).click();await page.getByRole('status').filter({hasText:'Hasil review '+role}).waitFor();
    const dims=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(dims.scroll<=dims.width+2,JSON.stringify(dims));await page.close();
   }

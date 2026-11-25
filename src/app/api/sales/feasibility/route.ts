@@ -1,9 +1,9 @@
 import {authorizeBoQ,privateHeaders,type D1DB} from '@/lib/boq-auth';
 import {TENANT,safeID} from '@/lib/sales-workflow';
 import {canReadDeal} from '@/lib/sales-access';
-import {isGovernanceRole,governanceFeasibilityAllowed} from '@/lib/governance-team';
-import {isOffenseRole,offenseFeasibilityAllowed} from '@/lib/offense-team';
-import {isITDevRole,itdevFeasibilityAllowed} from '@/lib/itdev-team';
+import {isGovernanceRole,governanceFeasibilityAllowed,governanceOnProject} from '@/lib/governance-team';
+import {isOffenseRole,offenseFeasibilityAllowed,offenseOnProject} from '@/lib/offense-team';
+import {isITDevRole,itdevFeasibilityAllowed,itdevOnProject} from '@/lib/itdev-team';
 import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {atomicSales,dealGuard,salesAudit,transactionError,type FlowDeal} from '@/lib/sales-transactions';
 import {costTypes,evaluateFeasibility,validMonth,validatePlan,isoDate,type Allocation,type Cost,type FeasibilityPlan} from '@/lib/solution-feasibility';
@@ -48,11 +48,13 @@ async function context(db:D1DB,id:string,role:string,email:string){
  const d=await db.prepare('SELECT * FROM rticore_sales_opportunities WHERE tenant_id=? AND id=?').bind(TENANT,id).first<FlowDeal>();
  if(!d)return {error:fail('Opportunity tidak ditemukan',404)};
  if(isGovernanceRole(role)){
-  if(!governanceFeasibilityAllowed(role,d))return {error:fail('Governance Team Leader hanya membaca Feasibility Opportunity GRC yang masih terbuka',403)};
+  const allowed=governanceFeasibilityAllowed(role,d)
+   &&(d.stage!=='closed_won'||await governanceOnProject(db,email,d.id));
+  if(!allowed)return {error:fail('Feasibility hanya tersedia untuk Opportunity GRC terbuka atau proyek GRC Won yang dialokasikan kepada Anda',403)};
  }else if(isOffenseRole(role)){
-  if(!offenseFeasibilityAllowed(role,d))return {error:fail('Offense Team Leader hanya membaca Feasibility Opportunity Offensive Security yang masih terbuka',403)};
+  if(!offenseFeasibilityAllowed(role,d)||(d.stage==='closed_won'&&!await offenseOnProject(db,email,d.id)))return {error:fail('Offense Team Leader hanya membaca Feasibility Opportunity Offensive Security terbuka atau proyek Won yang dialokasikan',403)};
  }else if(isITDevRole(role)){
-  if(!itdevFeasibilityAllowed(role,d))return {error:fail('IT Developer Leader hanya membaca Feasibility Opportunity Technology & Implementation yang masih terbuka',403)};
+  if(!itdevFeasibilityAllowed(role,d)||(d.stage==='closed_won'&&!await itdevOnProject(db,email,d.id)))return {error:fail('IT Developer Leader hanya membaca Feasibility Opportunity Technology & Implementation terbuka atau proyek Won yang dialokasikan',403)};
  }else if(!canReadDeal(role as import('@/lib/sales-access').SalesRole,email,d.created_by))return {error:fail('Opportunity tidak boleh dibaca Sales ini',403)};
  return {d};
 }

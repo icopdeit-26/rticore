@@ -123,3 +123,13 @@ test('Leader reviews team timesheets and reads Feasibility; Member cannot',async
   await expect(h.call('sales/feasibility','GET','governance_member',null,'?opportunity_id=opp-qa'),403);
  }finally{h.close();}
 });
+
+test('Revoked Governance allocation blocks Won Feasibility and concurrent timesheet review',async()=>{
+ const h=await grc();try{
+  const pending=await expect(h.call('psa/timesheets','POST','governance_member',{action:'submit',project_id:project(h).id,allocation_id:'alloc-gm',work_date:today(),minutes:60,billable:true,description:'Follow-up control assessment'}),201);
+  h.beforeBatch=()=>h.sql.prepare("UPDATE rticore_resource_allocations SET status='cancelled' WHERE id='alloc-gl'").run();
+  await expect(h.call('psa/timesheets','POST','governance_leader',{action:'review',id:pending.body.id,version:1,approve:true,notes:'Hours match the assessment plan'}),409);
+  assert.equal(h.sql.prepare('SELECT status FROM rticore_project_timesheets WHERE id=?').get(pending.body.id).status,'submitted');
+  await expect(h.call('sales/feasibility','GET','governance_leader',null,'?opportunity_id=opp-qa'),403);
+ }finally{h.close();}
+});

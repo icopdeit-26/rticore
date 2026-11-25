@@ -1,7 +1,7 @@
 import {enforceBoQApprovalPolicy} from '@/lib/system-settings';
 import { NextResponse } from 'next/server';
 import { authorizeBoQ, privateHeaders } from '@/lib/boq-auth';
-import { validateBoQ,can } from '@/lib/boq-domain';
+import { validateBoQ,can,boqReadRoles } from '@/lib/boq-domain';
 import { checkTransition } from '@/lib/boq-workflow';
 import { checkBoqLink } from '@/lib/sales-boq-link';
 import {atomicSales,transactionError} from '@/lib/sales-transactions';
@@ -13,6 +13,7 @@ const err=(m:string,s=400)=>answer({success:false,message:m},s);
 export async function PATCH(req:Request,ctx:{params:Promise<{id:string}>}){
  const auth=await authorizeBoQ(req);if(!auth.ok)return auth.response;
  const i=auth.identity;
+ if(!boqReadRoles.includes(i.role)||i.role==='viewer')return err('Aksi BoQ ditolak',403);
  if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return err('Origin ditolak',403);
  try{
   const {id}=await ctx.params;

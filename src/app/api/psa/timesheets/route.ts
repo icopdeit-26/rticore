@@ -30,7 +30,7 @@ export async function GET(req:Request){
  try{
   const u=new URL(req.url),id=u.searchParams.get('project_id');
   const privileged=reviewers.includes(role),pm=role==='project_manager',offense=isOffenseRole(role),governance=isGovernanceRole(role),itdev=isITDevRole(role),lead=role==='offense_lead'||role==='governance_leader'||role==='itdev_leader';
-  const allocated='EXISTS(SELECT 1 FROM rticore_resource_allocations x JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.status=\'active\' AND lower(r.email)=?)';
+  const allocated='EXISTS(SELECT 1 FROM rticore_resource_allocations x JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.status=\'active\' AND r.active=1 AND lower(r.email)=?)';
   const scope=privileged?'1=1':pm?PM_SCOPE+' OR '+allocated:offense?OFFENSE_PROJECT_SCOPE():governance?GOVERNANCE_PROJECT_SCOPE():itdev?ITDEV_PROJECT_SCOPE():allocated;
   const scopeArgs=privileged?[]:pm?[email,email]:offense?offenseScopeArgs(email):governance?governanceScopeArgs(email):itdev?itdevScopeArgs(email):[email];
   const projects=await db.prepare(`SELECT p.id,p.title,p.status,p.start_date,p.end_date,lower(coalesce(p.pm_email,''))=? AS managed FROM rticore_delivery_projects p
@@ -83,7 +83,18 @@ export async function POST(req:Request){
     return fail('IT Developer Leader hanya mereview timesheet tim pada proyek Technology & Implementation yang dialokasikan kepadanya',403);
    if(row.created_by.toLowerCase()===email)return fail('Maker tidak boleh menyetujui sendiri',403);
    if(row.status!=='submitted'||row.version!==v.version)return fail('Versi/status timesheet berubah',409);
-   await atomicSales(db,"EXISTS(SELECT 1 FROM rticore_project_timesheets WHERE tenant_id=? AND id=? AND version=? AND status='submitted' AND lower(created_by)!=?)",[TENANT,row.id,row.version,email],[
+   const scopeByRole={
+    project_manager:{sql:PM_SCOPE,args:[email]},
+    offense_lead:{sql:OFFENSE_PROJECT_SCOPE(),args:offenseScopeArgs(email)},
+    governance_leader:{sql:GOVERNANCE_PROJECT_SCOPE(),args:governanceScopeArgs(email)},
+    itdev_leader:{sql:ITDEV_PROJECT_SCOPE(),args:itdevScopeArgs(email)},
+   };
+   const scope=scopeByRole[role as keyof typeof scopeByRole];
+   const projectGuard=scope?` AND EXISTS(SELECT 1 FROM rticore_delivery_projects p
+    WHERE p.tenant_id=t.tenant_id AND p.id=t.project_id AND (${scope.sql}))`:'';
+   await atomicSales(db,`EXISTS(SELECT 1 FROM rticore_project_timesheets t
+    WHERE t.tenant_id=? AND t.id=? AND t.version=? AND t.status='submitted' AND lower(t.created_by)!=?${projectGuard})`,
+   [TENANT,row.id,row.version,email,...(scope?.args??[])],[
     db.prepare('UPDATE rticore_project_timesheets SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes.trim(),TENANT,row.id),
     operationEvent(db,'timesheet',row.id,v.approve?'APPROVE':'REJECT',email,{version:row.version,notes:v.notes.trim()})
    ]);return reply({success:true});

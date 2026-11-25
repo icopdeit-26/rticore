@@ -1,4 +1,4 @@
-const { chromium } = require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const assert = require('node:assert/strict');
 
 const baseUrl = process.env.RTICORE_CHAT_UAT_BASE || 'http://127.0.0.1:3124';
@@ -74,7 +74,7 @@ async function runScenario(browser, name, viewport, mobile) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     await runScenario(browser, 'Android viewport 390x844', { width: 390, height: 844 }, true);
     await runScenario(browser, 'Desktop viewport 1280x800', { width: 1280, height: 800 }, false);

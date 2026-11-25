@@ -29,10 +29,12 @@ const D1_ROUTES = new Set([
   '/api/platform/diagnostics',
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
+  // RTI Finance Enterprise Suite API (migration 0052).
+  '/api/finance',
 ]);
 
 export function isEnabledD1ApiRoute(path: string): boolean {
-  return D1_ROUTES.has(path) || path.startsWith('/api/erp/') || path.startsWith('/api/boq/') || path.startsWith('/api/sales/');
+  return D1_ROUTES.has(path) || path.startsWith('/api/finance/') || path.startsWith('/api/erp/') || path.startsWith('/api/boq/') || path.startsWith('/api/sales/');
 }
 
 export function middleware(request: NextRequest) {

@@ -253,6 +253,7 @@ export interface ProposalLineItem {
 }
 
 export interface Proposal {
+  vat_rate?: number;
   id: string;
   opportunity_id: string;
   opportunity_name: string;

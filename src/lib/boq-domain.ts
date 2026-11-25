@@ -12,12 +12,30 @@ export const roles:BoQRole[]=['admin','marketing','finance','presales','sales','
 export const costRoles:BoQRole[]=['admin','finance'];
 export const salesRoles:BoQRole[]=['admin','finance','presales','sales'];
 export const approvalRoles:BoQRole[]=['admin','approver'];
+export const boqReadRoles:readonly BoQRole[]=['admin','finance','presales','sales','approver','legal','viewer'];
 
 const s=(x:unknown,max=240)=>typeof x==='string'?x.trim().slice(0,max):'';
 const num=(x:unknown)=>typeof x==='number'&&Number.isFinite(x)?x:NaN;
 const money=(x:unknown)=>{const v=num(x);return Number.isFinite(v)&&v>=0&&v<=1e13&&Math.round(v*100)/100===v;};
 const allowedServiceTypes=new Set(['VAPT','SOC','CTI','ISO','PDP','Hardening','IR','Lainnya','GRC','DFIR','TRAINING','TECHNOLOGY']);
 const codes=['A','B','C','D','E'] as const;
+const maxBoqCents=BigInt(Math.floor(Number.MAX_SAFE_INTEGER/2));
+const roundPositive=(numerator:bigint,denominator:bigint)=>
+ (numerator+denominator/2n)/denominator;
+const lineSubtotalCents=(lines:BoQLine[])=>roundPositive(lines.reduce((total,line)=>
+ total+BigInt(Math.round(line.quantity*1000))*BigInt(Math.round(line.unit_price*100)),0n),1000n);
+function vatCents(subtotal:bigint,rate:number){
+ const [mantissa,exponent='0']=String(rate).split('e');
+ const [whole,decimal='']=mantissa.split('.');
+ const scale=decimal.length-Number(exponent);
+ const numerator=BigInt(whole+decimal);
+ return scale>0?roundPositive(subtotal*numerator,10n**BigInt(scale)):subtotal*numerator*10n**BigInt(-scale);
+}
+export function validateBoqTotal(lines:BoQLine[],vatRate:number){
+ const subtotal=lineSubtotalCents(lines);
+ if(subtotal<=0n)throw new Error('Nilai BoQ setelah pembulatan minimal Rp0,01');
+ if(subtotal+vatCents(subtotal,vatRate)>maxBoqCents)throw new Error('Total BoQ melampaui batas presisi sen');
+}
 export function validateBoQ(value:unknown):BoQPayload {
  if (!value || typeof value!=='object'||Array.isArray(value))throw new Error('Formulir BoQ tidak valid');
  const p=value as Record<string,unknown>;
@@ -49,19 +67,21 @@ export function validateBoQ(value:unknown):BoQPayload {
     found.add(code);return {code:code as CostLine['code'],amount:num(v.amount)};
   });
  }
- const subtotal=line_items.reduce((a,b)=>a+b.quantity*b.unit_price,0);
- if(!Number.isFinite(subtotal)||subtotal<=0||subtotal>1e14)throw new Error('Nilai BoQ harus lebih besar dari nol');
+ validateBoqTotal(line_items,vat_rate);
  return {customer_name,project_name,quotation_number,service_type,vat_rate,payment_terms,
    opportunity_id:s(p.opportunity_id,120)||null,notes:s(p.notes,1800)||null,line_items,cost_items};
 }
 export function boqTotals(lines:BoQLine[],costs:CostLine[]|undefined,vat_rate:number){
- const subtotal=Math.round(lines.reduce((a,b)=>a+b.quantity*b.unit_price,0)*100)/100;
- const vat_amount=Math.round(subtotal*vat_rate*100)/100;
- const grand_total=Math.round((subtotal+vat_amount)*100)/100;
+ const subtotalCents=lineSubtotalCents(lines);
+ const taxCents=vatCents(subtotalCents,vat_rate);
+ const subtotal=Number(subtotalCents)/100;
+ const vat_amount=Number(taxCents)/100;
+ const grand_total=Number(subtotalCents+taxCents)/100;
  const complete=Array.isArray(costs)&&codes.every(code=>costs.some(x=>x.code===code));
- const hpp=complete?costs!.reduce((a,b)=>a+b.amount,0):null;
- const gp=hpp===null?null:subtotal-hpp;
- const margin=gp===null?null:Math.round(gp/subtotal*10000)/100;
+ const hppCents=complete?costs!.reduce((total,cost)=>total+BigInt(Math.round(cost.amount*100)),0n):null;
+ const hpp=hppCents===null?null:Number(hppCents)/100;
+ const gp=hppCents===null?null:Number(subtotalCents-hppCents)/100;
+ const margin=gp===null||subtotal<=0?null:Math.round(gp/subtotal*10000)/100;
  return {subtotal,vat_amount,grand_total,hpp,gp,margin,complete};
 }
 export function can(role:BoQRole, action:'create'|'read_cost'|'edit_cost'|'edit_draft'|'submit'|'approve'|'manage_members'){

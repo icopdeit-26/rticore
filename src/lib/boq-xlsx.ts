@@ -104,12 +104,12 @@ function makeInternal(proposal: Proposal, pricing: PricingSession | undefined, o
   push(b, ['', 'TOTAL PROYEK (sebelum PPN)', null,
     f('SUMIF(C9:C' + (costBegin - 1) + ',"MD",D9:D' + (costBegin - 1) + ')'),
     null, null,
-    f('SUM(G9:G' + (total - 1) + ')'),
+    f('ROUND(SUM(G9:G' + (total - 1) + '),2)'),
     f('IF(COUNT(H' + (costBegin + 1) + ':H' + (costBegin + 5) + ')=5,SUM(H' + (costBegin + 1) + ':H' + (costBegin + 5) + '),"")'),
     f('IF(H' + total + '="","",G' + total + '-H' + total + ')'),
     f('IFERROR(I' + total + '/G' + total + ',"")'),
     pricing ? 'HPP agregat terhubung; validasi Finance' : 'LENGKAPI KOMPONEN A-E, 0 bila tidak ada']);
-  push(b, ['', 'PPN', null, null, null, null, f('G' + total + '*Parameter!C9')]);
+  push(b, ['', 'PPN', null, null, null, null, f('ROUND(G' + total + '*Parameter!C9,2)')]);
   push(b, ['', 'TOTAL TERMASUK PPN', null, null, null, null, f('G' + total + '+G' + (total + 1))]);
   push(b, ['', 'VALIDASI: Harga/HPP/lingkup/otorisasi harus diperiksa sebelum dokumen digunakan.']);
 
@@ -136,7 +136,7 @@ function makeInternal(proposal: Proposal, pricing: PricingSession | undefined, o
     [],
     ['Status', pricing ? 'DRAFT - Verifikasi HPP, alokasi dan approval' : 'DRAFT - Lengkapi seluruh komponen HPP A-E'],
   ];
-  const tax = proposal.subtotal > 0 ? proposal.vat_amount / proposal.subtotal : 0;
+  const tax = proposal.vat_rate ?? (proposal.subtotal > 0 ? proposal.vat_amount / proposal.subtotal : 0);
   const terms = proposal.payment_terms === '50-50' ? [0.5, 0.5, 0] :
     proposal.payment_terms === '100' ? [1, 0, 0] :
     proposal.payment_terms === '30-60-10' ? [0.3, 0.6, 0.1] : [0.3, 0.5, 0.2];
@@ -239,7 +239,7 @@ function makeInternal(proposal: Proposal, pricing: PricingSession | undefined, o
 
 function makeCustomer(proposal: Proposal): Sheet[] {
   const items = proposal.line_items.slice(0, 100);
-  const tax = proposal.subtotal > 0 ? proposal.vat_amount / proposal.subtotal : 0;
+  const tax = proposal.vat_rate ?? (proposal.subtotal > 0 ? proposal.vat_amount / proposal.subtotal : 0);
   const terms = proposal.payment_terms === '50-50' ? [0.5, 0.5, 0] :
     proposal.payment_terms === '100' ? [1, 0, 0] :
     proposal.payment_terms === '30-60-10' ? [0.3, 0.6, 0.1] : [0.3, 0.5, 0.2];
@@ -276,8 +276,8 @@ function makeCustomer(proposal: Proposal): Sheet[] {
       f('IF(OR(C' + r + '=0,E' + r + '=""),"",C' + r + '*E' + r + ')'), type]);
   }
   pad(b, final - 1);
-  push(b, ['', 'TOTAL SEBELUM PPN', null, null, null, f('SUM(F9:F' + (final - 1) + ')')]);
-  push(b, ['', 'PPN', null, null, null, f('F' + final + '*Parameters!C' + (optionRow + 2))]);
+  push(b, ['', 'TOTAL SEBELUM PPN', null, null, null, f('ROUND(SUM(F9:F' + (final - 1) + '),2)')]);
+  push(b, ['', 'PPN', null, null, null, f('ROUND(F' + final + '*Parameters!C' + (optionRow + 2) + ',2)')]);
   push(b, ['', 'GRAND TOTAL', null, null, null, f('F' + final + '+F' + (final + 1))]);
   push(b, ['', 'Catatan: Option 1 / Option 3 belum dikonfigurasi. Jangan terbitkan quotation Rp0.']);
   const s: Cell[][] = [

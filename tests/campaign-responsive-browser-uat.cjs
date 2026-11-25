@@ -1,8 +1,9 @@
+const {launchBrowser}=require('./helpers/browser.cjs');
 // Explicitly fixture-based browser UAT on localhost. NOT a substitute for genuine
 // Cloudflare Access UAT with signed JWTs against a dedicated UAT Worker and D1.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { chromium, devices } = require('playwright');
+const { devices } = require('playwright');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -27,7 +28,13 @@ async function fixturePage(browser, name, role, mobile) {
     body: JSON.stringify({ success: true, id: 'fixture-record', code: body.code, status: body.status }) });
   } else {
    await route.fulfill({ status: 200, headers, body: JSON.stringify({
-    success: true, role, email: role+'@example.test', owners:[{email:'marketing@example.test',role:'marketing'}], campaigns: []
+    success: true, role, email: role+'@example.test', owners:role === 'sales' ? undefined : [
+     {email:'marketing@example.test',role:'marketing'},
+     {email:'sales@example.test',role:'sales'},
+    ], campaigns: role === 'sales' ? [{
+     id:'existing-campaign', code:'CMP-20261116-000000000001', name:'Campaign Aktif UAT',
+     status:'active', owner_email:'marketing@example.test', owner_emails:['marketing@example.test'],
+    }] : []
    }) });
   }
  });
@@ -37,7 +44,10 @@ async function fixturePage(browser, name, role, mobile) {
   await page.getByRole('heading', { name: 'Marketing Campaign Center' }).waitFor();
   const newButton = page.getByRole('button', { name: 'Campaign Baru' });
   if (role === 'sales') {
+   await page.getByRole('button', { name: 'Buka Campaign Campaign Aktif UAT' }).click();
+   await page.getByText('Hanya Marketing/Admin yang dapat mengubah Owner.', { exact: false }).waitFor();
    assert.equal(await newButton.count(), 0, 'Sales cannot register Campaign');
+   assert.equal(await page.getByRole('button', { name: 'Simpan Revisi' }).count(), 0);
    return;
   }
   await newButton.click();
@@ -54,11 +64,14 @@ async function fixturePage(browser, name, role, mobile) {
   await page.screenshot({ path: path.join(shots,name+'-new.png'), fullPage: true });
 
   await page.getByLabel('Nama campaign *').fill('UAT Responsive Campaign');
-  await page.getByLabel('Owner Campaign (anggota aktif)').selectOption('marketing@example.test');
+  const ownerGroup = page.getByRole('group', { name: 'Owner Campaign (anggota aktif)' });
+  assert.equal(await ownerGroup.getByRole('checkbox', { name: 'marketing@example.test (marketing)' }).isChecked(), true);
+  await ownerGroup.getByRole('checkbox', { name: 'sales@example.test (sales)' }).check();
   await page.getByRole('button', { name: 'Daftarkan Campaign' }).click();
-  await page.getByText('Campaign berhasil diregistrasi di D1.', { exact: false }).waitFor();
+  await page.getByText('Campaign berhasil diregistrasi di database.', { exact: false }).waitFor();
   assert.equal(submissions.length, 1, 'Expected one mocked POST');
   assert.equal(submissions[0].code, first, 'Disabled HTML input remains in React JSON payload');
+  assert.deepEqual(submissions[0].owner_emails, ['marketing@example.test', 'sales@example.test']);
   await newButton.click();
   const second = await code.inputValue();
   assert.match(second,codePattern);
@@ -69,7 +82,7 @@ async function fixturePage(browser, name, role, mobile) {
 }
 
 test('Campaign browser UI: Android emulation and desktop, Marketing and Admin; Sales denied', async () => {
- const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+ const browser = await launchBrowser({ headless: true, args: ['--no-sandbox'] });
  try {
   for(const scenario of [
    {name:'android-marketing',role:'marketing',mobile:true},

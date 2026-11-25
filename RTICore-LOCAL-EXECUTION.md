@@ -55,7 +55,17 @@ Role lain dapat disiapkan dengan menjalankan setup kembali, misalnya:
 npm.cmd run local:setup -- --admin sales@example.com --role sales
 ```
 
-Role yang diterima: `admin`, `marketing`, `finance`, `presales`, `sales`, `approver`, `legal`, dan `viewer`. Menjalankan setup untuk email yang sudah ada akan mengaktifkan akun dan memperbarui role-nya. Opsi `--uat-users` mengisi akun dummy di SQLite; jangan mengandalkannya untuk membuat akun di PGlite.
+Setup menerima seluruh 17 role, termasuk `project_manager`, `offense_lead`, `offense_member`, `defense_leader`, `defense_member`, `governance_leader`, `governance_member`, `itdev_leader`, dan `itdev_member`. Menjalankan setup untuk email yang sudah ada akan mengaktifkan akun dan memperbarui role-nya.
+
+## Verifikasi browser semua role
+
+```powershell
+npm.cmd run build
+npx.cmd playwright install chromium
+npm.cmd run test:all
+```
+
+`test:all` menjalankan regresi, HTTP lokal, skenario browser per modul, dan login, navigasi, serta logout untuk seluruh role. Untuk mengulang bagian sesi role saja setelah build, jalankan `node tests/run-browser-http-uat.cjs --role-sessions`. Bagian ini membuat akun sintetis dan database SQLite sementara, lalu menghapusnya setelah pengujian.
 
 ## 4. Jalankan aplikasi
 

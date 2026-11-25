@@ -122,6 +122,8 @@ test('Leader reviews team timesheets and reads Feasibility; Member cannot',async
   const f=await expect(h.call('sales/feasibility','GET','itdev_leader',null,'?opportunity_id=opp-qa'),200);
   assert.equal(f.body.report.total_cost_idr,null);
   await expect(h.call('sales/feasibility','GET','itdev_member',null,'?opportunity_id=opp-qa'),403);
+  h.sql.prepare("UPDATE rticore_resource_allocations SET status='cancelled' WHERE id='alloc-dl'").run();
+  await expect(h.call('sales/feasibility','GET','itdev_leader',null,'?opportunity_id=opp-qa'),403);
  }finally{h.close();}
 });
 

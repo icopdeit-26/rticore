@@ -152,3 +152,12 @@ test('Leader reads open Offensive Feasibility without costs; Member and writes a
   await expect(h.call('sales/feasibility','GET','offense_lead',null,'?opportunity_id=opp-qa'),403);
  }finally{h.close();}
 });
+
+test('Won Feasibility requires an active Offense allocation',async()=>{
+ const h=await engagement();try{
+  const get=()=>h.call('sales/feasibility','GET','offense_lead',null,'?opportunity_id=opp-qa');
+  await expect(get(),200);
+  h.sql.prepare("UPDATE rticore_resource_allocations SET status='cancelled' WHERE id='alloc-lead'").run();
+  await expect(get(),403);
+ }finally{h.close();}
+});

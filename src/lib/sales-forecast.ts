@@ -1,5 +1,6 @@
+import {SALES_STAGES} from './sales-workflow';
 import {validISODate} from './lead-intelligence';
-export const forecastProbability:Record<string,number>={prospecting:10,qualified:25,discovery:35,solution_design:50,commercial_review:60,quotation_sent:70,negotiation:80,pending_po:90,closed_won:100,closed_lost:0};
+export const forecastProbability:Record<string,number>=Object.fromEntries(SALES_STAGES.map(([stage,,probability])=>[stage,probability]));
 export type ForecastRow={id:string;title:string;company_name:string;created_by:string;stage:string;estimated_value_idr:number;data_json:string;flow_version:number;
  expected_close_date:string|null;category:string|null;forecast_version:number|null;reason:string|null;verified_po_amount:number|null;booked_date:string|null;po_number:string|null;commit_ready:number;recognized_revenue_idr?:number};
 const amount=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e14;

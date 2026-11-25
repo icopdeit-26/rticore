@@ -97,12 +97,12 @@ test('commercial validation rejects bad values', () => {
   assert.ok(P.validateCommercialContext(ctx({total_md: 'abc'})).length);
 });
 
-test('scoping never transfers a unit price; BoQ only prefills HPP suggestion', () => {
+test('scoping draft transfers technical inputs without unit prices or HPP', () => {
   const scoping = source('src/app/scoping/page.tsx');
   const boq = source('src/app/boq/page.tsx');
-  assert.match(scoping, /hppSuggestion\(estimate\)/);
+  assert.doesNotMatch(scoping, /hppSuggestion\(estimate\)/);
   assert.doesNotMatch(scoping, /unit_price/);
-  assert.match(boq, /pricing_context\?\.hpp/);
+  assert.doesNotMatch(boq, /pricing_context\?\.hpp/);
   assert.match(boq, /unit_price:0/);
   assert.match(boq, /if\(isFinance\)/);
 });

@@ -14,6 +14,17 @@ test('validates commercial BoQ, calculates tax, does not infer HPP',()=>{
  assert.equal(t.subtotal,3000000);assert.equal(t.vat_amount,330000);assert.equal(t.grand_total,3330000);
  assert.equal(t.hpp,null);assert.equal(t.margin,null);assert.equal(t.complete,false);
 });
+test('BoQ uses exact half-cent rounding and rejects rounded zero or unsafe gross totals',()=>{
+ const base=standard.line_items[0];
+ assert.throws(()=>obj.validateBoQ({...standard,line_items:[{...base,quantity:0.001,unit_price:0.01}]}),/Rp0,01/);
+ const totals=obj.boqTotals([{...base,quantity:1.005,unit_price:1}],undefined,0.5);
+ assert.equal(totals.subtotal,1.01);
+ assert.equal(totals.vat_amount,0.51);
+ assert.equal(totals.grand_total,1.52);
+ assert.throws(()=>obj.validateBoQ({...standard,line_items:[{...base,quantity:100000,unit_price:1e13}]}),/presisi/);
+ const costs=['A','B','C','D','E'].map(code=>({code,amount:0}));
+ assert.equal(obj.boqTotals([{...base,quantity:0.001,unit_price:0.01}],costs,0.11).margin,null);
+});
 test('margin requires all A-E cost buckets including explicit zero',()=>{
  const line=obj.validateBoQ(standard).line_items;
  const incomplete=obj.boqTotals(line,[{code:'A',amount:750000}],0.11);

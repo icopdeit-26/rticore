@@ -15,10 +15,10 @@ import { calculateSocSizing } from '@/lib/scoping-calculator';
 import { SCOPING_DEFINITIONS, validateServiceScope, summarizeServiceScope, type ScopingService } from '@/lib/scoping-service-options';
 import { createVaptAsset, calculateVaptPortfolio, validateVaptAssets, describeVaptAsset, type VaptAsset } from '@/lib/vapt-multi-asset';
 import {
-  defaultCommercialContext, estimateScopingPrice, contractTotals, validateCommercialContext,
+  defaultCommercialContext, contractTotals, validateCommercialContext,
   ROLE_LABELS, type CommercialContext,
 } from '@/lib/scoping-pricing';
-import { calibrationFactor, type ModelFactors } from '@/lib/scoping-calibration';
+import {useScopingEstimate} from '@/lib/use-scoping-estimate';
 import { tierFromSegment } from '@/lib/product-delivery-profile';
 import type { SalesFields } from '@/lib/sales-workflow';
 
@@ -38,12 +38,10 @@ function restore(raw: string | undefined, product: ScopingService): Persisted | 
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 1000000 ? v : fallback);
 const input = 'mt-1 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs';
 
-export default function ProductScopingEstimator({ product, fields, clientSegment, factors, modelVersion, disabled, onApply, onUseAsPipelineValue }: {
+export default function ProductScopingEstimator({ product, fields, clientSegment, disabled, onApply, onUseAsPipelineValue }: {
   product: ScopingService;
   fields: SalesFields;
   clientSegment?: string;
-  factors: ModelFactors | null;
-  modelVersion: number | null;
   disabled?: boolean;
   onApply: (patch: SalesFields) => void;
   onUseAsPipelineValue?: (value: number) => void;
@@ -65,11 +63,11 @@ export default function ProductScopingEstimator({ product, fields, clientSegment
   const socResult = calculateSocSizing({ n_servers: soc.servers, n_network_devices: soc.network, n_endpoints: soc.endpoints,
     n_cloud_services: soc.cloud, n_web_apps: soc.webApps, has_active_directory: soc.ad, traffic_intensity: soc.traffic,
     service_level: soc.sla, has_threat_hunting: soc.hunting, has_ir_retainer: soc.ir });
-  const factor = calibrationFactor(factors, product);
-  const estimate = estimateScopingPrice({ service: product, ctx, vaptTotalMd: portfolio.total_md,
-    socBaseMrc: socResult.recommended_mrc, socMonths: soc.months, serviceValues: values, calibrationFactor: factor });
-  const totals = contractTotals(estimate);
   const ctxIssues = validateCommercialContext(ctx);
+  const {estimate,canViewCost,modelVersion}=useScopingEstimate({service:product,ctx,vaptTotalMd:portfolio.total_md,
+    socBaseMrc:socResult.recommended_mrc,socMonths:soc.months,serviceValues:values},ctxIssues.length===0);
+  const factor=estimate.calibrationFactor;
+  const totals=contractTotals(estimate);
   const blocked = disabled || !estimate.ready || missing.length > 0 || vaptIssues.length > 0 || ctxIssues.length > 0;
 
   const apply = () => {
@@ -122,7 +120,7 @@ export default function ProductScopingEstimator({ product, fields, clientSegment
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h4 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Calculator className="h-4 w-4 text-blue-700" />Estimator Scoping {def.label}</h4>
-          <p className="mt-1 text-xs text-slate-500">Parameter mengikuti jenis produk; MD, HPP A–E dan harga dari ICOP Pricing Engine{factors ? ', dikalibrasi model v' + modelVersion : ''}.</p>
+          <p className="mt-1 text-xs text-slate-500">Parameter mengikuti jenis produk; MD dan harga indikatif dari ICOP{modelVersion ? ' · model v' + modelVersion : ''}.</p>
         </div>
         {fields.scoping_estimate_price && <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-800">Tersimpan: {formatIDR(Number(fields.scoping_estimate_price))}</span>}
       </div>
@@ -165,14 +163,14 @@ export default function ProductScopingEstimator({ product, fields, clientSegment
         </div>
       )}
 
-      <IcopPricingPanel service={product} ctx={ctx} onChange={setCtx} estimate={estimate} />
+      <IcopPricingPanel service={product} ctx={ctx} onChange={setCtx} estimate={estimate} canViewCost={canViewCost} />
 
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 text-xs sm:grid-cols-4">
         <div><p className="text-slate-500">Effort</p><p className="text-base font-bold tabular-nums">{estimate.model === 'md' ? estimate.totalMd + ' MD' : 'MRC'}</p></div>
         <div><p className="text-slate-500">Indikasi ICOP (dasar)</p><p className="text-base font-bold tabular-nums">{estimate.ready ? formatIDR(totals.base) : '—'}</p></div>
         <div><p className="flex items-center gap-1 text-slate-500"><Sparkles className="h-3 w-3" />Terkalibrasi (×{factor.toFixed(3)})</p>
           <p className="text-base font-bold tabular-nums text-emerald-700">{estimate.ready ? formatIDR(totals.calibrated) : '—'}</p>
-          {estimate.heldAtFloor && <p className="text-[11px] text-amber-700">Ditahan di Floor (margin 20%).</p>}</div>
+          {canViewCost&&estimate.heldAtFloor && <p className="text-[11px] text-amber-700">Ditahan di Floor (margin 20%).</p>}</div>
         <div><p className="text-slate-500">Client tier</p><p className="text-base font-bold">{ctx.client_tier}{clientSegment ? <span className="ml-1 text-[11px] font-normal text-slate-500">({clientSegment})</span> : null}</p></div>
       </div>
 

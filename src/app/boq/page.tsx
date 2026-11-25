@@ -50,21 +50,9 @@ export default function BoQPage(){
        return {description:item.description,quantity:item.quantity,unit:item.unit,unit_price:0,service_type:item.service_type};
      });
      setForm(f=>({...f,service_type:draft.service_type,line_items:items}));
-     // Optional ICOP boq_internal A–E suggestion. It only prefills inputs; saving HPP stays Finance/Admin-only.
-     const hpp=draft.pricing_context?.hpp;
-     let hppNote='';
-     if(Array.isArray(hpp)&&hpp.length<=5){
-      const seen=new Set<string>(),next:Record<string,string>={};
-      for(const x of hpp){
-       if(!x||!['A','B','C','D','E'].includes(x.code)||seen.has(x.code)||typeof x.amount!=='number'
-         ||!Number.isSafeInteger(x.amount)||x.amount<0||x.amount>1e13){Object.keys(next).forEach(k=>delete next[k]);break;}
-       seen.add(x.code);next[x.code]=String(x.amount);
-      }
-      if(Object.keys(next).length){setCosts(next);hppNote=' Saran HPP A–E dari Pricing Engine ICOP dimuat; Finance wajib memverifikasi sebelum disimpan.';}
-     }
      const tier=draft.pricing_context?.client_tier;
-     if(typeof tier==='string'&&/^[SABCDE]$/.test(tier))hppNote+=' Client tier scoping: '+tier+'.';
-     setMsg('Draft scoping berhasil dimuat. Isi opportunity, harga dan data quotation lalu simpan ke database. Belum ada data tersimpan.'+hppNote);
+     const tierNote=typeof tier==='string'&&/^[SABCDE]$/.test(tier)?' Client tier scoping: '+tier+'.':'';
+     setMsg('Draft scoping berhasil dimuat. Isi opportunity, harga dan data quotation lalu simpan ke database. Belum ada data tersimpan.'+tierNote);
      sessionStorage.removeItem('rticore_scoping_boq_draft_v1');
     }catch(e){setMsg(e instanceof Error?e.message:'Draft scoping tidak dapat diimpor.');}
    }

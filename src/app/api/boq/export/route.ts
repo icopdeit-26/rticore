@@ -1,5 +1,5 @@
 import { authorizeBoQ, privateHeaders } from '@/lib/boq-auth';
-import { can,boqTotals, type CostLine, type BoQLine } from '@/lib/boq-domain';
+import { can,boqTotals,boqReadRoles, type CostLine, type BoQLine } from '@/lib/boq-domain';
 import { createProposalBoQ, type BoQExportFormat } from '@/lib/boq-xlsx';
 import type { Proposal, PricingSession } from '@/lib/types';
 export const dynamic='force-dynamic';
@@ -8,14 +8,15 @@ const formats=['standard','onsite','customer'];
 export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  const {db,role,email}=a.identity;
- if(role==='project_manager')return Response.json({success:false,message:'BoQ tidak tersedia untuk Project Manager'},{status:403,headers:privateHeaders});
- if(role==='governance_leader'||role==='governance_member')return Response.json({success:false,message:'BoQ tidak tersedia untuk Governance Team'},{status:403,headers:privateHeaders});
- if(role==='itdev_leader'||role==='itdev_member')return Response.json({success:false,message:'BoQ tidak tersedia untuk IT Developer Team'},{status:403,headers:privateHeaders});
+ if(!boqReadRoles.includes(role))return Response.json({success:false,message:'Akses baca BoQ ditolak'},{status:403,headers:privateHeaders});
  const url=new URL(req.url),id=url.searchParams.get('id')||'',format=url.searchParams.get('format')||'';
  if(!formats.includes(format)||!id)return Response.json({success:false,message:'Parameter ekspor tidak valid'},{status:400,headers:privateHeaders});
  if(format!=='customer'&&!can(role,'read_cost'))return Response.json({success:false,message:'BoQ internal khusus Finance/Admin'},{status:403,headers:privateHeaders});
  try{
-  const row=await db.prepare('SELECT * FROM rticore_boq WHERE id=? AND tenant_id=?').bind(id,'defendit360').first<any>();
+  const row=await db.prepare(`SELECT b.* FROM rticore_boq b
+   LEFT JOIN rticore_sales_opportunities d ON d.id=b.opportunity_id AND d.tenant_id=b.tenant_id
+   WHERE b.id=? AND b.tenant_id=? AND (?<>'sales' OR b.created_by=? OR d.created_by=?)`)
+   .bind(id,'defendit360',role,email,email).first<any>();
   if(!row)return Response.json({success:false,message:'BoQ tidak ditemukan'},{status:404,headers:privateHeaders});
   const lines:BoQLine[]=JSON.parse(row.line_items_json),costs:CostLine[]=JSON.parse(row.cost_items_json);
   const totals=boqTotals(lines,costs,row.vat_rate);
@@ -26,7 +27,7 @@ export async function GET(req:Request){
   const opportunityId=row.opportunity_id||('boq-'+id);
   const proposal={id,opportunity_id:opportunityId,opportunity_name:row.project_name,company_id:row.tenant_id,
     company_name:row.customer_name,quotation_number:row.quotation_number,version:row.version,
-    status:row.status,subtotal:totals.subtotal,vat_amount:totals.vat_amount,grand_total:totals.grand_total,
+    status:row.status,subtotal:totals.subtotal,vat_rate:row.vat_rate,vat_amount:totals.vat_amount,grand_total:totals.grand_total,
     discount_pct:0,payment_terms:row.payment_terms,valid_days:14,valid_until:'',client_tier:'A',
     selected_price_range:'standard',line_items:items,created_by:row.created_by,created_at:row.created_at} as Proposal;
   const lookup=(code:string)=>costs.find(x=>x.code===code)?.amount;

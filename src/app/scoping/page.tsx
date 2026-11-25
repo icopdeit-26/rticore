@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { calibrationFactor, type ModelFactors } from '@/lib/scoping-calibration';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -28,9 +27,11 @@ import {CompactSelect} from '@/components/ui/CompactSelect';
 import { isSupportedScopingFileName } from '@/lib/scoping-file-types';
 import IcopPricingPanel from '@/components/scoping/IcopPricingPanel';
 import {
-  defaultCommercialContext, estimateScopingPrice, hppSuggestion, validateCommercialContext,
+  defaultCommercialContext, validateCommercialContext,
   CLIENT_TIERS, LOCATION_OPTIONS, URGENCY_OPTIONS, type CommercialContext,
 } from '@/lib/scoping-pricing';
+
+import {useScopingEstimate} from '@/lib/use-scoping-estimate';
 
 export default function SmartScopingPage() {
   const router = useRouter();
@@ -71,8 +72,6 @@ export default function SmartScopingPage() {
   const [hasIR, setHasIR] = useState<boolean>(false);
   const [nWebApps, setNWebApps] = useState<number>(0);
   const [socMonths, setSocMonths] = useState<number>(12);
-  const [scopingModel, setScopingModel] = useState<{version:number;factors:ModelFactors}|null>(null);
-  useEffect(()=>{void fetch('/api/scoping/model',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j?.success&&j.model)setScopingModel(j.model);}).catch(()=>{});},[]);
   const [sessionDraftMessage,setSessionDraftMessage]=useState('');
 
   // ICOP commercial context (pricing_sessions) kept per product type.
@@ -98,11 +97,10 @@ export default function SmartScopingPage() {
     has_ir_retainer: hasIR,
   });
 
-  const estimate = estimateScopingPrice({
+  const {estimate,canViewCost,modelVersion} = useScopingEstimate({
     service: activeTab, ctx, vaptTotalMd: vaptPortfolio.total_md,
     socBaseMrc: socResult.recommended_mrc, socMonths, serviceValues,
-    calibrationFactor: calibrationFactor(scopingModel?.factors, activeTab),
-  });
+  }, commercialIssues.length===0);
   const socInvalid = activeTab === 'SOC' &&
     (![nServers,nNetwork,nEndpoints,nCloud,nWebApps].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=1000000) ||
      !Number.isSafeInteger(socMonths) || socMonths < 1 || socMonths > 60);
@@ -114,7 +112,7 @@ export default function SmartScopingPage() {
   const scopingSessionKey='rticore_scoping_form_draft_v1';
   const saveSessionDraft=()=>{
     try{
-      const draft={version:1,at:Date.now(),activeTab,scopeInputs,vaptAssets,commercial,
+      const draft={version:1,at:Date.now(),activeTab,scopeInputs,vaptAssets,commercial:Object.fromEntries(Object.entries(commercial).map(([service,context])=>[service,{...context,costs:{}}])),
         soc:{nServers,nNetwork,nEndpoints,nCloud,hasAD,trafficIntensity,serviceLevel,hasThreatHunting,hasIR,nWebApps,socMonths}};
       const raw=JSON.stringify(draft);
       if(raw.length>70000)throw Error('Draft terlalu besar untuk sesi browser.');
@@ -164,7 +162,7 @@ export default function SmartScopingPage() {
             validateCommercialContext(c).length)
             throw Error('Parameter komersial draft tidak valid.');
           restoredCommercial[k as ScopingService]={client_tier:c.client_tier,location_type:c.location_type,
-            urgency:c.urgency,total_md:c.total_md,role_md:{...c.role_md},costs:{...c.costs}};
+            urgency:c.urgency,total_md:c.total_md,role_md:{...c.role_md},costs:{}};
         }
       }
       setActiveTab(d.activeTab as ScopingService);setScopeInputs(d.scopeInputs);
@@ -194,10 +192,9 @@ export default function SmartScopingPage() {
         '; threat hunting ' + (hasThreatHunting ? 'ya' : 'tidak') + '; IR retainer ' + (hasIR ? 'ya' : 'tidak') +
         '; kontrak ' + socMonths + ' bulan'
       : summarizeServiceScope(activeTab, serviceValues) + ctiInfo + effort;
-    // ICOP pricing_sessions context + boq_internal A–E suggestion. No unit price is transferred.
+    // Transfer technical context without persisting pricing or cost inputs in browser storage.
     const pricing_context = {
       client_tier: ctx.client_tier, location_type: ctx.location_type, urgency: ctx.urgency,
-      hpp: hppSuggestion(estimate),
     };
     const draft = activeTab === 'VAPT'
       ? {version: 2, createdAt: Date.now(), service_type: 'VAPT', items: vaptAssetBoqLines(vaptAssets), pricing_context}
@@ -718,7 +715,7 @@ export default function SmartScopingPage() {
               <p className="border-t pt-4 text-xs text-slate-500">Lengkapi parameter dari discovery / RKS. Kebutuhan delivery, effort dan harga final ditentukan Presales dan Finance melalui BoQ approval.</p>
             </section>
           )}
-          <IcopPricingPanel service={activeTab} ctx={ctx} onChange={setCtx} estimate={estimate}/>
+          <IcopPricingPanel service={activeTab} ctx={ctx} onChange={setCtx} estimate={estimate} canViewCost={canViewCost}/>
         </div>
 
         {/* Output Summary Card (Col 1) */}
@@ -810,24 +807,24 @@ export default function SmartScopingPage() {
             <div className="space-y-2 border-t border-blue-100 pt-3 text-xs">
               <p className="font-bold text-slate-900">Indikasi Harga ICOP (internal)</p>
               {estimate.ready ? (<>
-                <div className="flex justify-between gap-2"><span className="text-slate-500">HPP A–E{estimate.periodLabel}</span>
+                {canViewCost&&<><div className="flex justify-between gap-2"><span className="text-slate-500">HPP A–E{estimate.periodLabel}</span>
                   <span className="font-semibold tabular-nums text-slate-800">{estimate.totalInternalCost?formatIDR(estimate.totalInternalCost):'Belum diisi'}</span></div>
                 <div className="flex justify-between gap-2"><span className="text-slate-500">Floor (margin 20%)</span>
-                  <span className="font-semibold tabular-nums text-slate-800">{estimate.floor!==null?formatIDR(estimate.floor)+estimate.periodLabel:'Perlu HPP'}</span></div>
+                  <span className="font-semibold tabular-nums text-slate-800">{estimate.floor!==null?formatIDR(estimate.floor)+estimate.periodLabel:'Perlu HPP'}</span></div></>}
                 {estimate.calibrationFactor!==1&&<div className="flex justify-between gap-2"><span className="text-slate-500">Standard dasar ICOP</span>
                   <span className="tabular-nums text-slate-600">{formatIDR(estimate.baseStandard)}{estimate.periodLabel}</span></div>}
-                <div className="flex justify-between gap-2"><span className="text-slate-500">Standard (tier ×{estimate.tierMultiplier.toFixed(2)}, DAI {estimate.dai.toFixed(3)}{estimate.calibrationFactor!==1?', kalibrasi v'+scopingModel?.version+' ×'+estimate.calibrationFactor.toFixed(3):''})</span>
+                <div className="flex justify-between gap-2"><span className="text-slate-500">Standard (tier ×{estimate.tierMultiplier.toFixed(2)}, DAI {estimate.dai.toFixed(3)}{estimate.calibrationFactor!==1?', kalibrasi v'+modelVersion+' ×'+estimate.calibrationFactor.toFixed(3):''})</span>
                   <span className="font-bold tabular-nums text-emerald-700">{formatIDR(estimate.standard)}{estimate.periodLabel}</span></div>
                 <div className="flex justify-between gap-2"><span className="text-slate-500">Premium (×1,25)</span>
                   <span className="font-semibold tabular-nums text-slate-800">{formatIDR(estimate.premium)}{estimate.periodLabel}</span></div>
                 {estimate.contractValueStandard!==undefined&&<div className="flex justify-between gap-2"><span className="text-slate-500">Nilai kontrak standard ({estimate.contractMonths} bln)</span>
                   <span className="font-semibold tabular-nums text-slate-800">{formatIDR(estimate.contractValueStandard)}</span></div>}
-                {estimate.marginAtStandard!==null&&<p className={`rounded-lg p-2 font-medium ${estimate.marginWarning?'bg-rose-50 text-rose-800':'bg-emerald-50 text-emerald-800'}`}>
+                {canViewCost&&estimate.marginAtStandard!==null&&<p className={`rounded-lg p-2 font-medium ${estimate.marginWarning?'bg-rose-50 text-rose-800':'bg-emerald-50 text-emerald-800'}`}>
                   Gross margin pada Standard: {estimate.marginAtStandard.toFixed(1)}%{estimate.marginWarning?' — di bawah 25%, perlu review Head Sales.':''}</p>}
               </>) : <p className="text-slate-500">{estimate.reason}</p>}
               {commercialIssues.length>0&&<div role="alert" className="rounded-lg bg-amber-50 p-2 text-amber-900">{commercialIssues.map(x=><p key={x}>{x}</p>)}</div>}
               {socInvalid&&<p role="alert" className="rounded-lg bg-amber-50 p-2 text-amber-900">Jumlah aset SOC harus bilangan bulat ≥ 0 dan durasi kontrak 1–60 bulan.</p>}
-              <p className="text-[11px] leading-relaxed text-slate-500">Bukan harga quotation. Harga tidak ikut ditransfer; HPP A–E dibawa ke BoQ sebagai saran untuk Finance.</p>
+              <p className="text-[11px] leading-relaxed text-slate-500">BoQ menerima data teknis. Harga penawaran dan HPP diisi di BoQ sesuai kewenangan.</p>
             </div>
 
             {/* Transfer to Pricing Button */}
@@ -847,7 +844,7 @@ export default function SmartScopingPage() {
               <span>Ketentuan Kalkulasi</span>
             </div>
             <p className="text-[11px] leading-relaxed">
-              Effort VAPT dan EPS SOC mengikuti kalkulator; CTI memakai footprint score ICOP; kategori lain memakai estimasi MD Presales yang dibagi ke role sesuai profil produk. Harga indikatif mengikuti rate card, client tier, DAI dan BoQ A–E ICOP. Transfer ke BoQ tidak menyimpan transaksi ke database: Presales melengkapi penawaran, Finance memeriksa costing, dan approval tetap berlaku.
+              Effort VAPT dan EPS SOC mengikuti kalkulator. CTI memakai footprint score ICOP. Kategori lain memakai estimasi MD Presales yang dibagi ke role sesuai profil produk. Harga indikatif memakai baseline penjualan, client tier dan DAI. Admin dan Finance dapat melihat simulasi biaya internal. Transfer menyiapkan draft BoQ untuk diperiksa sebelum disimpan.
             </p>
           </div>
         </div>

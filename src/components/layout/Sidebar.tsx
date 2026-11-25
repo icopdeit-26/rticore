@@ -40,6 +40,10 @@ function NavigationContent({role, onClose, onNavigate, mobile}:{
   const pathname = usePathname();
   const [query, setQuery] = useState('');
   const groups = navigationForRole(role);
+  const activeItem = groups.flatMap(group => group.items).reduce<string | undefined>((current, item) => {
+    const matches = pathname === item.href || pathname.startsWith(item.href + '/');
+    return matches && (!current || item.href.length > current.length) ? item.href : current;
+  }, undefined);
   const totalMenus = groups.reduce((total, group) => total + group.items.length, 0);
   const term = query.trim().toLocaleLowerCase('id');
   const filtered = groups.map(group => ({
@@ -89,7 +93,7 @@ function NavigationContent({role, onClose, onNavigate, mobile}:{
       <nav aria-label="Daftar modul RTICORE" className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-4">
         {filtered.map(group=>{
           const Icon = GROUP_ICONS[group.id] || LayoutDashboard;
-          const activeGroup = group.items.some(item=>pathname===item.href || pathname.startsWith(item.href+'/'));
+          const activeGroup = group.items.some(item => activeItem === item.href);
           return (
             <details key={group.id+':'+(term?'search':'default')} open={Boolean(term)||activeGroup||group.id==='workspace'}
               className="group rounded-2xl border border-transparent bg-white open:border-slate-100 open:bg-slate-50/80">
@@ -103,7 +107,7 @@ function NavigationContent({role, onClose, onNavigate, mobile}:{
               </summary>
               <div className="mb-2 ml-7 space-y-1 border-l-2 border-teal-100 pl-3 pr-2">
                 {group.items.map(item=>{
-                  const active=pathname===item.href || pathname.startsWith(item.href+'/');
+                  const active = activeItem === item.href;
                   return (
                     <Link key={item.href} href={item.href} onClick={onNavigate}
                       aria-current={active?'page':undefined}

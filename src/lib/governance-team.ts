@@ -70,7 +70,7 @@ export async function governanceDeals(db:D1DB,email:string,role:GovernanceRole){
  const seen=new Set(rows.map(x=>x.id));
  return [...rows,...planning.results.filter(x=>!seen.has(x.id)).map(x=>({...x,scope:'feasibility' as const}))];
 }
-/** Leader reads Feasibility only for open GRC Opportunities. */
+/** Eligible GRC stages. The route additionally checks active allocation for Won projects. */
 export function governanceFeasibilityAllowed(role:string,deal:{stage:string;data_json:string}){
  if(role!=='governance_leader')return false;
  let family='';try{family=String((JSON.parse(deal.data_json||'{}') as Record<string,unknown>).service_family||'');}catch{family='';}

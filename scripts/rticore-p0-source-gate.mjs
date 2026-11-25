@@ -24,12 +24,18 @@ const workflow = readFileSync(wfPath, 'utf8');
 // control that justified lifting it. These are source-level guards, not an operational certification.
 if (/^\s+push\s*:/m.test(workflow)) fail('Production release workflow has an automatic push trigger');
 if (!/workflow_dispatch\s*:/.test(workflow)) fail('Production release must use manual dispatch only');
-if (!workflow.includes('DEPLOY RTICORE PRODUCTION')) fail('Production release must require a typed confirmation string');
+if (!workflow.includes('run: test "$CONFIRM" = "DEPLOY RTICORE PRODUCTION"') ||
+    !/^\s+CONFIRM: \$\{\{ inputs\.confirm \}\}$/m.test(workflow))
+  fail('Production release must validate typed confirmation through an environment variable');
 if (!/time-travel info/.test(workflow)) fail('Production release must capture a D1 Time Travel bookmark before migrating');
 if (/upload-artifact/.test(workflow)) fail('This repository is public: the production D1 export must never be uploaded as an artifact');
-if (!/Roll back Worker version on failure/.test(workflow)) fail('Production release must roll back the Worker on failure');
+if (!/Record recovery checkpoint for operator review/.test(workflow) ||
+    /d1 time-travel restore|restore_d1_on_migration_failure/.test(workflow))
+  fail('Production release must record operator recovery checkpoints and avoid automatic D1 restore');
 if (!/foreign_key_check/.test(workflow) || !/row counts preserved/.test(workflow)) fail('Production release must verify foreign keys and row preservation');
-if (!/steps\.deploy\.outcome != 'success'/.test(workflow)) fail('D1 auto-restore must be fenced to pre-deploy failures only');
+if (!/Verify authenticated HTTP response and D1 schema/.test(workflow) ||
+    !/run: node scripts\/release\/verify-production-http\.mjs$/m.test(workflow))
+  fail('Production release must verify authenticated HTTP and D1 readiness');
 const loginPage = readFileSync(join(root, 'src/app/login/page.tsx'), 'utf8');
 const loginTest = readFileSync(join(root, 'tests/rticore-login-browser.test.cjs'), 'utf8');
 for (const label of ['Login RTICORE', 'Identitas belum diizinkan membuka RTICORE.']) {

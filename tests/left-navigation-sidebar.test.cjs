@@ -48,7 +48,7 @@ test('sidebar offers keyword search, active route, compact groups, and saved des
   assert.match(side,/group\.label\.toLocaleLowerCase/);
   assert.match(side,/item\.label\.toLocaleLowerCase/);
   assert.match(side,/<details key=/);
-  assert.match(side,/pathname\.startsWith\(item\.href\+'\/'\)/);
+  assert.match(side,/pathname\.startsWith\(item\.href\s*\+\s*'\/'\)/);
   assert.match(side,/aria-current=\{active\?'page':undefined\}/);
   assert.match(shell,/localStorage\.getItem\('rticore:left-navigation-open'\)/);
   assert.match(shell,/localStorage\.setItem\('rticore:left-navigation-open'/);

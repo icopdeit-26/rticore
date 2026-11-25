@@ -7,6 +7,29 @@ const base=process.env.RTICORE_UAT_URL||'http://127.0.0.1:3100';
 const shots=path.join(process.cwd(),'artifacts','browser-uat');
 fs.mkdirSync(shots,{recursive:true});
 
+test('Scoping displays selling estimates and keeps internal cost controls role-gated',async()=>{
+ const browser=await launchBrowser({headless:true,args:['--no-sandbox']});
+ try{
+  for(const role of ['sales','admin']){
+   const canViewCost=role==='admin';
+   const page=await browser.newPage({viewport:{width:1280,height:800}});
+   try{
+    await page.route('**/api/sales/identity',r=>r.fulfill({json:{success:true,identity:{email:role+'@example.invalid',role}}}));
+    await page.route('**/api/scoping/model',r=>r.fulfill({json:{success:true,canViewCost,modelVersion:null,estimate:{
+     model:'md',periodLabel:'',ready:true,totalMd:10,staffing:[],tierMultiplier:1,dai:1,calibrationFactor:1,
+     totalInternalCost:canViewCost?4000000:0,floor:canViewCost?5000000:null,standard:9000000,premium:11250000,
+     marginAtStandard:canViewCost?55.56:null,marginWarning:false,heldAtFloor:false,
+    }}}));
+    const response=await page.goto(base+'/scoping');
+    assert.equal(response?.status(),200);
+    await page.getByText('Standard (tier', {exact:false}).waitFor();
+    assert.equal(await page.getByText('HPP A–E',{exact:true}).count(),Number(canViewCost));
+    assert.equal(await page.getByLabel('B · Komisi Sales & Partner',{exact:true}).count(),Number(canViewCost));
+   }finally{await page.close();}
+  }
+ }finally{await browser.close();}
+});
+
 test('login on mobile uses the local account flow without a cloud link or password',async()=>{
  const browser=await launchBrowser({headless:true,args:['--no-sandbox']});
  try{

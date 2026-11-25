@@ -1,4 +1,4 @@
-name: RTICORE production release - backup, rename, migrate, verify, deploy, rollback
+name: RTICORE production release - backup, rename, migrate, verify, deploy
 
 # Manual-only controlled release. Authorised by the repository owner / business owner on 2026-11-01 to lift the
 # earlier P0 hard hold. The objections that caused the hold are addressed here, not removed:
@@ -8,16 +8,15 @@ name: RTICORE production release - backup, rename, migrate, verify, deploy, roll
 #  2. No production data leaves Cloudflare. THIS REPOSITORY IS PUBLIC, so the D1 export is kept only on the
 #     ephemeral runner and never uploaded as an artifact; only its size and SHA-256 are printed. Rollback uses the
 #     server-side D1 Time Travel bookmark.
-#  3. Concurrent-write fence on rollback. D1 is restored automatically ONLY when the run failed before the Worker
-#     was deployed, where no new-code writes can exist yet. If anything fails after the Worker is deployed, D1 is
-#     deliberately left intact, with the bookmark printed for a human decision.
+#  3. Recovery is operator-controlled. A failed or interrupted deploy can still change the
+#     remote Worker, and writes may occur after the backup bookmark.
 #  4. Pre-rebrand production. The deployed Worker and D1 still carry the india_* schema. The schema is renamed once
 #     from the live sqlite_master. The old Worker cannot read the renamed schema, so expect errors from the start of
 #     the migrate step until the deploy finishes, and run this in a maintenance window. The Worker is not rolled
 #     back on its own after a rename, because the previous version would have no tables to read.
 #
 # Order: gates -> build -> target checks -> preflight -> D1 export + Time Travel bookmark -> schema rename
-#        -> pending migrations -> data/schema/control verification -> deploy Worker -> HTTP smoke -> fenced rollback.
+#        -> pending migrations -> data/schema/control verification -> deploy Worker -> authenticated smoke -> operator recovery if needed.
 
 on:
   workflow_dispatch:
@@ -31,12 +30,6 @@ on:
         required: true
         default: true
         type: boolean
-      restore_d1_on_migration_failure:
-        description: 'Auto-restore D1 to the pre-release bookmark if the run fails before the Worker is deployed'
-        required: true
-        default: true
-        type: boolean
-
 permissions:
   contents: read
 
@@ -58,18 +51,15 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
-      RTICORE_JOB_TOKEN: ${{ secrets.RTICORE_JOB_TOKEN }}
-      BASE_URL: ${{ secrets.RTICORE_BASE_URL }}
     steps:
       - name: Require typed confirmation
-        run: |
-          if [ "${{ inputs.confirm }}" != "DEPLOY RTICORE PRODUCTION" ]; then
-            echo "BLOCKED: confirmation string did not match. Nothing was changed."; exit 1
-          fi
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: test "$CONFIRM" = "DEPLOY RTICORE PRODUCTION"
 
       - name: Require Cloudflare deploy token (value never printed)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "BLOCKED: CLOUDFLARE_API_TOKEN secret is not configured. Nothing was changed."; exit 2
@@ -95,6 +85,7 @@ jobs:
           node scripts/rticore-production-workflow-guard.mjs
           node scripts/rticore-p0-source-gate.mjs
           npm run test:d1-rename
+          node --test tests/production-http-smoke.test.cjs
           npm run test:project-manager
           npm run test:offense-team
           npm run test:defense-team
@@ -108,7 +99,15 @@ jobs:
       - name: Build Worker bundle before touching production
         run: npx opennextjs-cloudflare build
 
+      - name: Validate smoke target and Access session configuration
+        env:
+          BASE_URL: ${{ secrets.RTICORE_BASE_URL }}
+          ACCESS_SESSION: ${{ secrets.RTICORE_SMOKE_ACCESS_SESSION }}
+        run: node scripts/release/verify-production-http.mjs --preflight
+
       - name: Confirm the production Worker exists and holds its encryption secrets (names only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           set -euo pipefail
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER/settings")
@@ -118,6 +117,8 @@ jobs:
 
       - name: Preflight - classify production schema and record row counts (counts only, no data)
         id: preflight
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           set -euo pipefail
           npx wrangler d1 execute "$D1_NAME" --remote --json --command "SELECT type,name,tbl_name,sql FROM sqlite_master" > sqlite-master.json
@@ -156,6 +157,8 @@ jobs:
 
       - name: Independent backup - D1 export kept on runner only, plus Time Travel bookmark
         id: backup
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           set -euo pipefail
           mkdir -p backup
@@ -171,25 +174,30 @@ jobs:
 
       - name: Record current Worker version for rollback
         id: checkpoint
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           set -euo pipefail
           node --input-type=module > prev.txt <<'NODE'
           const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${process.env.WORKER}/deployments`, { headers: { Authorization: 'Bearer ' + process.env.CLOUDFLARE_API_TOKEN } });
           const j = await r.json();
-          process.stdout.write(j?.result?.deployments?.[0]?.versions?.[0]?.version_id || '');
+          const versions = j?.result?.deployments?.[0]?.versions;
+          if (!r.ok || j.success !== true || versions?.length !== 1 || versions[0].percentage !== 100 ||
+              !/^[a-f0-9-]{36}$/i.test(versions[0].version_id))
+            throw Error('Expected a single active Worker version for recovery');
+          process.stdout.write(versions[0].version_id);
           NODE
           echo "previous_version=$(cat prev.txt)" >> "$GITHUB_OUTPUT"
           echo "Previous Worker version: $(cat prev.txt)"
 
       - name: Rename legacy schema, then apply pending migrations in order (stop at first failure)
-        id: migrate
         if: inputs.apply_migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           set -euo pipefail
-          echo "started=true" >> "$GITHUB_OUTPUT"
           if [ "${{ steps.preflight.outputs.state }}" = "legacy" ]; then
             node scripts/release/d1-legacy-rename.mjs generate sqlite-master.json rename-legacy-schema.sql
-            echo "renamed=true" >> "$GITHUB_OUTPUT"
             npx wrangler d1 execute "$D1_NAME" --remote --file rename-legacy-schema.sql --yes
           fi
           CURRENT=$(npx wrangler d1 execute "$D1_NAME" --remote --json --command "SELECT coalesce(max(version),0) v FROM rticore_schema_migrations" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.stdout.write(String(j[0].results[0].v))})")
@@ -201,9 +209,10 @@ jobs:
               npx wrangler d1 execute "$D1_NAME" --remote --file "$f" --yes
             fi
           done
-          echo "applied=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify schema, names, controls and row preservation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           set -euo pipefail
           q() { npx wrangler d1 execute "$D1_NAME" --remote --json --command "$1" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.stdout.write(JSON.stringify(j[0].results))})"; }
@@ -218,53 +227,24 @@ jobs:
           echo "triggers after: $(q "SELECT count(*) n FROM sqlite_master WHERE type='trigger'")"
           F=$(q "PRAGMA foreign_key_check"); echo "fk violations: $F"; test "$F" = "[]"
 
-      - name: Set posting-worker job token on the Worker (when provided)
-        if: env.RTICORE_JOB_TOKEN != ''
-        run: printf '%s' "$RTICORE_JOB_TOKEN" | npx wrangler secret put RTICORE_JOB_TOKEN --name "$WORKER"
-
       - name: Deploy Worker
-        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN }}
         run: npx opennextjs-cloudflare deploy
 
-      - name: HTTP smoke test (no 5xx)
-        if: env.BASE_URL != ''
-        run: |
-          for p in /login /api/sales/identity; do
-            c=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL$p"); echo "$p -> $c"
-            case "$c" in 5*) echo "SMOKE FAILED on $p"; exit 1;; esac
-          done
-
-      - name: Roll back Worker version on failure
-        if: failure() && steps.deploy.outcome == 'success' && steps.checkpoint.outputs.previous_version != '' && steps.migrate.outputs.renamed != 'true'
+      - name: Verify authenticated HTTP response and D1 schema
         env:
-          PREV: ${{ steps.checkpoint.outputs.previous_version }}
-        run: |
-          node --input-type=module <<'NODE'
-          const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${process.env.WORKER}/deployments`, {
-            method: 'POST', headers: { Authorization: 'Bearer ' + process.env.CLOUDFLARE_API_TOKEN, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ strategy: 'percentage', versions: [{ version_id: process.env.PREV, percentage: 100 }], annotations: { 'workers/message': 'Rollback after RTICORE release verification failure' } }) });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok || j.success !== true) { console.error('WORKER ROLLBACK FAILED - restore manually to ' + process.env.PREV); process.exit(2); }
-          console.log('Worker rolled back to ' + process.env.PREV);
-          NODE
+          BASE_URL: ${{ secrets.RTICORE_BASE_URL }}
+          ACCESS_SESSION: ${{ secrets.RTICORE_SMOKE_ACCESS_SESSION }}
+        run: node scripts/release/verify-production-http.mjs
 
-      - name: Restore D1 only when the failure happened before any deploy (concurrent-write fence)
-        if: failure() && inputs.restore_d1_on_migration_failure && steps.migrate.outputs.started == 'true' && steps.deploy.outcome != 'success' && steps.backup.outputs.bookmark != ''
-        run: |
-          echo "Failure with no deployed code: restoring D1 to the pre-release bookmark."
-          npx wrangler d1 time-travel restore "$D1_NAME" --bookmark "${{ steps.backup.outputs.bookmark }}" --json
-
-      - name: Post-deploy failure - D1 deliberately NOT restored
-        if: failure() && steps.deploy.outcome == 'success'
+      - name: Record recovery checkpoint for operator review
+        if: failure() && steps.backup.outputs.bookmark != ''
         env:
-          RENAMED: ${{ steps.migrate.outputs.renamed }}
-          PREV: ${{ steps.checkpoint.outputs.previous_version }}
+          BOOKMARK: ${{ steps.backup.outputs.bookmark }}
+          PREVIOUS_VERSION: ${{ steps.checkpoint.outputs.previous_version }}
         run: |
-          echo "D1 was NOT restored automatically because the deployed code may already have written rows;"
-          echo "an automatic restore could discard them. Pre-release bookmark for a human decision:"
-          echo "  ${{ steps.backup.outputs.bookmark }}"
-          echo "Restore command: npx wrangler d1 time-travel restore $D1_NAME --bookmark <bookmark>"
-          if [ "$RENAMED" = "true" ]; then
-            echo "This run renamed the schema, so the Worker was left on the new version: version $PREV cannot read it."
-            echo "To return to the old release, restore D1 to the bookmark AND redeploy version $PREV together."
-          fi
+          echo "Previous Worker: $PREVIOUS_VERSION"
+          echo "Pre-release D1 bookmark: $BOOKMARK"
+          echo "Check the active Worker and schema, and stop all writers before deciding whether to restore."
+          echo "Reconcile writes since the bookmark and recover a compatible Worker and schema together."

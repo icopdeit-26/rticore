@@ -14,7 +14,6 @@ import {errorText,readApiJSON,rupiah} from '@/lib/client-api';
 import ProductScopingEstimator from '@/components/sales/ProductScopingEstimator';
 import {deliveryProfile,productsForFamily,SCOPING_ESTIMATE_KEYS,ALWAYS_VISIBLE} from '@/lib/product-delivery-profile';
 import {SCOPING_DEFINITIONS,type ScopingService} from '@/lib/scoping-service-options';
-import type {ModelFactors} from '@/lib/scoping-calibration';
 import { SALES_STAGES, ACCOUNT_FIELDS, DEAL_FIELDS, SERVICE_FAMILIES, stageProbability,
  type SalesAccount,type SalesDeal,type SalesFields,type SalesStage,synchronizeBillingAddress,updateCustomerAddressFields } from '@/lib/sales-workflow';
 
@@ -123,7 +122,7 @@ const SALES_FIELD_GROUPS: Array<{title:string;description:string;keys:readonly s
  {title:'06 · PO & Closing / Loss Analysis',description:'Nomor, tanggal, nilai dan bukti pemeriksaan PO atau alasan deal tidak dimenangkan',
   keys:['scope_reconciliation','po_number','po_date','po_reference','po_amount_before_vat','lost_reason','lost_notes','competitor','opportunity_notes']},
 ];
-type ScopingContext={clientSegment?:string;factors:ModelFactors|null;modelVersion:number|null;
+type ScopingContext={clientSegment?:string;
  onPatch:(patch:SalesFields)=>void;onUseAsPipelineValue?:(value:number)=>void};
 const estimateKeys=new Set<string>(SCOPING_ESTIMATE_KEYS);
 function DealFieldSections({values,onUpdate,readOnly,scoping}:{
@@ -156,7 +155,7 @@ function DealFieldSections({values,onUpdate,readOnly,scoping}:{
        onChange={v=>onUpdate('scoping_product',v)} options={products.map(p=>({value:p,label:SCOPING_DEFINITIONS[p].label}))}/>
      </label>
      {scoping&&<ProductScopingEstimator key={product} product={product} fields={values} clientSegment={scoping.clientSegment}
-       factors={scoping.factors} modelVersion={scoping.modelVersion} disabled={readOnly?.('scoping_params')}
+       disabled={readOnly?.('scoping_params')}
        onApply={scoping.onPatch} onUseAsPipelineValue={scoping.onUseAsPipelineValue}/>}
     </>}
     <FormFields fields={fields} values={values} readOnly={readOnly} onUpdate={onUpdate} highlightEmpty placeholders={placeholders}/>
@@ -187,8 +186,8 @@ export default function SalesPipelinePage(){
  const [dealTitle,setDealTitle]=useState('');
  const [amount,setAmount]=useState('');
  const [dealFields,setDealFields]=useState<SalesFields>({});
- const [accountFeedback,setAccountFeedback]=useState<{text:string;error:boolean}|null>(null);
  const [message,setMessage]=useState('');
+ const [accountFeedback,setAccountFeedback]=useState<{text:string;error:boolean}|null>(null);
  const [busy,setBusy]=useState(false);
  const [filter,setFilter]=useState<StageFilterValue>('all');
  const [activitySubject,setActivitySubject]=useState('');
@@ -197,8 +196,6 @@ export default function SalesPipelinePage(){
  const [docKind,setDocKind]=useState('customer_registration');
  const [docRef,setDocRef]=useState('');
  // Active calibration model (Admin → Model Scoping & Harga). Missing model = factor 1.
- const [scopingModel,setScopingModel]=useState<{version:number;factors:ModelFactors}|null>(null);
- useEffect(()=>{void fetch('/api/scoping/model',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j?.success&&j.model)setScopingModel(j.model);}).catch(()=>{});},[]);
  const refresh=useCallback(async()=>{
   try{
    const [a,d]=await Promise.all([request('GET','/api/sales?entity=accounts'),request('GET','/api/sales?entity=deals')]);
@@ -315,7 +312,7 @@ export default function SalesPipelinePage(){
   <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Nama Proyek *<input className={inputClass} value={dealTitle} onChange={e=>setDealTitle(e.target.value)}/></label>
   <label className="text-xs font-bold">Estimasi Nilai (IDR) *<input type="number" min="1" className={inputClass} value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
   <DealFieldSections values={dealFields} onUpdate={(k,v)=>setDealFields(f=>({...f,[k]:v}))}
-   scoping={{clientSegment:accounts.find(a=>a.id===customerId)?.fields.client_tier,factors:scopingModel?.factors||null,modelVersion:scopingModel?.version||null,
+   scoping={{clientSegment:accounts.find(a=>a.id===customerId)?.fields.client_tier,
     onPatch:patch=>setDealFields(f=>({...f,...patch})),onUseAsPipelineValue:v=>setAmount(String(v))}}/>
   <button disabled={busy||!isMaker} onClick={saveDeal} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white">Simpan ke Pipeline</button>
  </section>}
@@ -377,7 +374,7 @@ export default function SalesPipelinePage(){
    <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">Nama proyek<input className={inputClass} disabled={!mayMove} value={dealTitle} onChange={e=>setDealTitle(e.target.value)}/></label>
    <label className="text-xs font-semibold">Nilai pipeline (IDR)<input type="number" className={inputClass} disabled={!mayMove} value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
    <DealFieldSections values={dealFields} readOnly={k=>!mayMove&&(role!=='presales'||!PRESALES_FIELDS.has(k))} onUpdate={(k,v)=>setDealFields(f=>({...f,[k]:v}))}
-    scoping={{clientSegment:accountFields.client_tier,factors:scopingModel?.factors||null,modelVersion:scopingModel?.version||null,
+    scoping={{clientSegment:accountFields.client_tier,
      onPatch:patch=>setDealFields(f=>({...f,...patch})),onUseAsPipelineValue:mayMove?v=>setAmount(String(v)):undefined}}/>
    <div className="flex flex-wrap items-center gap-3">
     <button disabled={busy||!['admin','sales','presales'].includes(role)||['closed_won','closed_lost'].includes(detail.deal.stage)} onClick={updateDeal} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white">{role==='presales'?'Simpan Parameter Teknis':'Simpan Semua Perubahan'}</button>

@@ -1,4 +1,4 @@
-import { boqTotals, can, type BoQRole, type BoQLine, type CostLine } from './boq-domain';
+import { boqTotals, can, validateBoqTotal, type BoQRole, type BoQLine, type CostLine } from './boq-domain';
 export type WorkflowAction = 'submit'|'approve'|'reject'|'revise';
 export type BoQWorkflowRecord={
  status:string; created_by:string; line_items:BoQLine[]; cost_items:CostLine[]; vat_rate:number;
@@ -10,6 +10,7 @@ export function checkTransition(
  const fail=(message:string):never=>{throw new Error(message);};
  if(action==='submit'){
   if(row.status!=='draft'||!can(actor.role,'submit'))fail('Hanya draft boleh dikirim oleh Sales/Pre-Sales/Finance/Admin');
+  validateBoqTotal(row.line_items,row.vat_rate);
   return {valid:true,note:'SUBMITTED'};
  }
  if(action==='revise'){
@@ -25,6 +26,7 @@ export function checkTransition(
   if(reason.trim().length<5)fail('Alasan penolakan harus minimal 5 karakter');
   return {valid:true,note:'REJECTED'};
  }
+ validateBoqTotal(row.line_items,row.vat_rate);
  const t=boqTotals(row.line_items,row.cost_items,row.vat_rate);
  if(!t.complete)fail('Seluruh HPP A-E harus lengkap sebelum approval');
  if((t.margin??-Infinity)<25&&(actor.role!=='admin'||reason.trim().length<15))

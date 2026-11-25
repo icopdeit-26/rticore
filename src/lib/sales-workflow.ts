@@ -5,12 +5,12 @@ export const TENANT='defendit360';
 export const SALES_STAGES=[
  ['prospecting','Prospecting',10],
  ['qualified','Qualified',25],
- ['discovery','Discovery / Scoping',40],
- ['solution_design','Solution & BoQ',55],
- ['commercial_review','Commercial Approval',65],
+ ['discovery','Discovery / Scoping',35],
+ ['solution_design','Solution & BoQ',50],
+ ['commercial_review','Commercial Approval',60],
  ['quotation_sent','Quotation Sent',70],
- ['negotiation','Negotiation',85],
- ['pending_po','Pending PO',95],
+ ['negotiation','Negotiation',80],
+ ['pending_po','Pending PO',90],
  ['closed_won','Closed Won',100],
  ['closed_lost','Closed Lost',0],
 ] as const;
