@@ -112,16 +112,21 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
       { role: 'project_manager', menu: 'F22', status: 403 },
     ];
     for (const c of menuChecks) {
+      const roleFixture = fixture();
+      try {
+        await setupFinanceEnvironment(roleFixture);
       // Seed a real approved assignment in the isolated fixture, never an HTTP role override.
       const assignmentId = 'uat-menu-role';
       const def = core.getFinanceRoleDefinition(c.role);
-      h.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_make,can_check,can_approve,can_post,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,?,?,?,?,?,'approved',?,?,?)")
+      roleFixture.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_make,can_check,can_approve,can_post,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,?,?,?,?,?,'approved',?,?,?)")
         .run(assignmentId, tenant, users.admin, c.role, legal, def.defaultLimitCents, Number(def.canMake), Number(def.canCheck), Number(def.canApprove), Number(def.canPost), users.finance, users.approver, 'Independent fixture approval');
       await expect(
-        h.call('finance', 'GET', 'admin', null, `?menu=${c.menu}&legal_entity_id=${legal}`),
+        roleFixture.call('finance', 'GET', 'admin', null, `?menu=${c.menu}&legal_entity_id=${legal}`),
         c.status,
       );
-      h.sql.prepare('DELETE FROM rticore_finance_role_assignments WHERE id=?').run(assignmentId);
+      } finally {
+        roleFixture.close();
+      }
       executed++;
     }
 
