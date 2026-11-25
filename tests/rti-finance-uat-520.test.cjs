@@ -77,6 +77,42 @@ async function setupFinanceEnvironment(h) {
   await expect(h.call('erp/organization', 'POST', 'approver', { action: 'review_opportunity_scope', opportunity_id: 'opp-qa', version: 1, approve: true }), 200);
 }
 
+// Dedicated negative tests supplement, rather than replace, the 520-case suite.
+test('Security: Finance entity selection and dataset permissions fail closed', async () => {
+  const h = fixture();
+  try {
+    await setupFinanceEnvironment(h);
+    const scoped = await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal}`), 200);
+    assert.deepEqual(scoped.body.legalEntities.map(e => e.id), [legal]);
+    assert.equal(scoped.body.legalEntityId, legal);
+    await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal2}`), 403);
+    await expect(h.call('finance', 'GET', 'viewer', null, `?menu=F01&legal_entity_id=${legal}`), 403);
+    await expect(h.call('finance', 'GET', 'finance', null, '?menu=F03&legal_entity_id=unknown-entity'), 403);
+
+    // Create a real GL account in the second entity, inaccessible to the first.
+    h.sql.prepare("INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES(?,?,?,?,?,?,?)")
+      .run('other-entity-secret-account',tenant,legal2,'9001','OTHER-ENTITY-SECRET','asset',users.admin);
+    const response = await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal}`),200);
+    assert.ok(!JSON.stringify(response.body).includes('OTHER-ENTITY-SECRET'));
+
+    // Super admin with approved affiliation may open F01 but not see GL/AP detail.
+    const admin = await expect(h.call('finance', 'GET', 'admin', null, `?menu=F01&legal_entity_id=${legal}`),200);
+    assert.deepEqual(admin.body.data.journals,[]);
+    assert.deepEqual(admin.body.data.payrollBatches,[]);
+    assert.deepEqual(admin.body.data.apInvoices,[]);
+    assert.equal(admin.body.kpis.trialBalanceDebitCents,null);
+    assert.equal(admin.body.kpis.apOutstandingCents,null);
+
+    // An authorized independent role assignment to a second entity may extend access.
+    h.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,'approved',?,?,?)")
+      .run('viewer-entity-2',tenant,users.viewer,'management_viewer',legal2,users.admin,users.approver,'Independent entity assignment');
+    const view = await expect(h.call('finance','GET','viewer',null,`?menu=F01&legal_entity_id=${legal2}`),200);
+    assert.deepEqual(view.body.legalEntities.map(e => e.id),[legal2]);
+    await expect(h.call('finance','GET','viewer',null,`?menu=F01&legal_entity_id=${legal}`),403);
+    await expect(h.call('finance','GET','viewer',null,`?menu=F03&legal_entity_id=${legal2}`),403);
+  } finally { h.close(); }
+});
+
 // =============================================================================
 // DOMAIN 01: FOUNDATION & 18-ROLE RBAC (35 SCENARIOS)
 // =============================================================================
@@ -456,6 +492,12 @@ test('Domain 02 (55 UAT Scenarios): General Ledger, 10 COA Classes, 16 Journal T
       403,
     );
     executed++;
+
+    // An authorized reviewer may not use a different entity ID for this journal.
+    await expect(h.call('finance','POST','approver',{
+      action:'approve_and_post_journal', legal_entity_id:legal2,
+      journal_id:firstJournalId, review_notes:'Cross entity approval attempt denied',post_immediately:true,
+    }),403);
 
     // Independent Approver approves and posts
     await expect(
