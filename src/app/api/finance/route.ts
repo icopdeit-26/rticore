@@ -42,7 +42,6 @@ async function sha256Hex(input: string): Promise<string> {
 async function resolveEffectiveFinanceRole(
   identity: BoQIdentity,
   legalEntityId: string | null,
-  overrideRoleHeader?: string | null,
 ): Promise<{ financeRole: FinanceRoleId; customLimitCents?: number }> {
   // Check if user has an approved role assignment in rticore_finance_role_assignments
   if (legalEntityId) {
@@ -56,17 +55,16 @@ async function resolveEffectiveFinanceRole(
       return { financeRole: assigned.finance_role, customLimitCents: Number(assigned.approval_limit_cents) };
     }
   }
-  // Allow test/preview header only when the base RTICore role is admin/finance/approver
-  if (overrideRoleHeader && ['admin', 'finance', 'approver'].includes(identity.role)) {
-    const valid = RTI_FINANCE_ROLES.find(r => r.id === overrideRoleHeader);
-    if (valid) return { financeRole: valid.id };
-  }
   return { financeRole: mapRTICoreRoleToFinanceRole(identity.role) };
 }
 
 export async function GET(req: Request) {
   const a = await authorizeBoQ(req);
   if (!a.ok) return a.response;
+  if (req.headers.has('x-finance-role')) return erpReply({ success: false, message: 'Role Finance harus berasal dari penugasan server.' }, 403);
+  // Native public hosting remains fail-closed until entity and action scope is certified.
+  if (typeof process !== 'undefined' && process.env.RTICORE_RUNTIME === 'hostinger')
+    return erpReply({ success: false, message: 'Finance production scope certification pending.' }, 503);
   const { db, email, role } = a.identity;
 
   try {
@@ -85,7 +83,6 @@ export async function GET(req: Request) {
     const { financeRole, customLimitCents } = await resolveEffectiveFinanceRole(
       a.identity,
       legalEntityId,
-      req.headers.get('x-finance-role'),
     );
     const roleDef = getFinanceRoleDefinition(financeRole);
 
@@ -391,6 +388,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const a = await authorizeBoQ(req);
   if (!a.ok) return a.response;
+  if (req.headers.has('x-finance-role')) return erpReply({ success: false, message: 'Role Finance harus berasal dari penugasan server.' }, 403);
+  // Native public hosting remains fail-closed until entity and action scope is certified.
+  if (typeof process !== 'undefined' && process.env.RTICORE_RUNTIME === 'hostinger')
+    return erpReply({ success: false, message: 'Finance production scope certification pending.' }, 503);
   const { db, email } = a.identity;
 
   try {
@@ -401,7 +402,6 @@ export async function POST(req: Request) {
     const { financeRole, customLimitCents } = await resolveEffectiveFinanceRole(
       a.identity,
       legalEntityId,
-      req.headers.get('x-finance-role'),
     );
     const roleDef = getFinanceRoleDefinition(financeRole);
 
