@@ -1,0 +1,31 @@
+name: RTICore Hostinger candidate gates
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:sales-transactions
+      - run: npm run test:local-mode
+      - run: npm run test:pg-triggers
+      - run: npm run test:erp
+      - run: npm run test:erp:extensions
+      - run: npm run test:finance-520
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Production hold
+        run: |
+          echo "::notice::Native build is not a production release authorization. External authentication, Finance scope controls, live PostgreSQL migration, reconciliation, backups and business UAT remain required."
