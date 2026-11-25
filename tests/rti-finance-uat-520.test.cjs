@@ -1899,8 +1899,6 @@ test('Domain 12 (35 UAT Scenarios): 17-Point Closing Checklist, 5-Stage Period L
           period_id: periodId,
           reopen_reason: 'Unauthorized attempt to reopen closed period',
         },
-        '',
-        { 'x-finance-role': 'ar_officer' },
       ),
       403,
     );
