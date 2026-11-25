@@ -112,10 +112,16 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
       { role: 'project_manager', menu: 'F22', status: 403 },
     ];
     for (const c of menuChecks) {
+      // Seed a real approved assignment in the isolated fixture, never an HTTP role override.
+      const assignmentId = 'uat-menu-role';
+      const def = core.getFinanceRoleDefinition(c.role);
+      h.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_make,can_check,can_approve,can_post,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,?,?,?,?,?,'approved',?,?,?)")
+        .run(assignmentId, tenant, users.admin, c.role, legal, def.defaultLimitCents, Number(def.canMake), Number(def.canCheck), Number(def.canApprove), Number(def.canPost), users.finance, users.approver, 'Independent fixture approval');
       await expect(
-        h.call('finance', 'GET', 'admin', null, `?menu=${c.menu}&legal_entity_id=${legal}`, { 'x-finance-role': c.role }),
+        h.call('finance', 'GET', 'admin', null, `?menu=${c.menu}&legal_entity_id=${legal}`),
         c.status,
       );
+      h.sql.prepare('DELETE FROM rticore_finance_role_assignments WHERE id=?').run(assignmentId);
       executed++;
     }
 
@@ -132,8 +138,6 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
           target_role: 'finance_manager',
           approval_limit_cents: 500_000_000_00,
         },
-        '',
-        { 'x-finance-role': 'super_admin' },
       ),
       201,
     );
@@ -146,8 +150,6 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
         'POST',
         'admin',
         { action: 'approve_finance_role', id: reqRole.body.id, review_notes: 'Self approval attempt must fail' },
-        '',
-        { 'x-finance-role': 'cfo' },
       ),
       403,
     );
@@ -160,12 +162,23 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
         'POST',
         'finance',
         { action: 'approve_finance_role', id: reqRole.body.id, review_notes: 'Target self approval must fail' },
-        '',
-        { 'x-finance-role': 'cfo' },
       ),
       403,
     );
     executed++;
+
+    // A read-only or unrelated member cannot approve role grants.
+    await expect(h.call('finance', 'POST', 'sales', {
+      action: 'approve_finance_role', id: reqRole.body.id,
+      review_notes: 'Unauthorized sales role approval must fail'
+    }), 403);
+    // A client-controlled header must never elevate privileges.
+    await expect(h.call('finance', 'GET', 'admin', null,
+      `?menu=F03&legal_entity_id=${legal}`, { 'x-finance-role': 'cfo' }), 403);
+    await expect(h.call('finance', 'POST', 'admin', {
+      action: 'approve_finance_role', id: reqRole.body.id,
+      review_notes: 'Client role override must be denied'
+    }, '', { 'x-finance-role': 'cfo' }), 403);
 
     // Independent approver succeeds
     await expect(
@@ -174,8 +187,6 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
         'POST',
         'approver',
         { action: 'approve_finance_role', id: reqRole.body.id, review_notes: 'Independently approved by CFO' },
-        '',
-        { 'x-finance-role': 'cfo' },
       ),
       200,
     );
