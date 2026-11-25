@@ -424,7 +424,43 @@ export async function POST(req: Request) {
     erpAssert(!a.identity.rolePreview, 'Role preview tidak diizinkan untuk transaksi Finance', 403);
     const v = (await readBoundedJSON(req, 32000)) as Record<string, unknown>;
     const action = String(v.action || '');
-    const legalEntityId = typeof v.legal_entity_id === 'string' ? v.legal_entity_id : null;
+    let legalEntityId = typeof v.legal_entity_id === 'string' ? v.legal_entity_id : null;
+    if (legalEntityId !== null) await requireFinanceEntity(a.identity, legalEntityId);
+
+    // Fixed server-side resource queries: never interpolate a caller-supplied table or field.
+    // Bind the effective role to the authoritative target, not to a supplied entity ID.
+    const references: Record<string, readonly [string, string][]> = {
+      approve_finance_role: [['id','SELECT legal_entity_id FROM rticore_finance_role_assignments WHERE tenant_id=? AND id=?']],
+      approve_posting_rule: [['id','SELECT legal_entity_id FROM rticore_finance_posting_rules WHERE tenant_id=? AND id=?']],
+      approve_and_post_journal: [['journal_id','SELECT legal_entity_id FROM rticore_gl_journals WHERE tenant_id=? AND id=?']],
+      register_coa_hierarchy: [['account_id','SELECT legal_entity_id FROM rticore_gl_accounts WHERE tenant_id=? AND id=?'],['parent_account_id','SELECT legal_entity_id FROM rticore_gl_accounts WHERE tenant_id=? AND id=?']],
+      create_posting_rule: [['debit_account_id','SELECT legal_entity_id FROM rticore_gl_accounts WHERE tenant_id=? AND id=?'],['credit_account_id','SELECT legal_entity_id FROM rticore_gl_accounts WHERE tenant_id=? AND id=?']],
+      approve_psak115_obligation: [['id','SELECT legal_entity_id FROM rticore_finance_performance_obligations WHERE tenant_id=? AND id=?']],
+      recognize_psak115_revenue: [['obligation_id','SELECT legal_entity_id FROM rticore_finance_performance_obligations WHERE tenant_id=? AND id=?']],
+      consume_or_reserve_budget: [['budget_id','SELECT legal_entity_id FROM rticore_finance_budgets WHERE tenant_id=? AND id=?']],
+      review_expense_claim: [['id','SELECT legal_entity_id FROM rticore_finance_expense_claims WHERE tenant_id=? AND id=?']],
+      approve_tax_rule: [['id','SELECT legal_entity_id FROM rticore_finance_tax_rules WHERE tenant_id=? AND id=?']],
+      record_tax_transaction: [['tax_rule_id','SELECT legal_entity_id FROM rticore_finance_tax_rules WHERE tenant_id=? AND id=?']],
+      retry_docking_event: [['event_id','SELECT legal_entity_id FROM rticore_finance_integration_events WHERE tenant_id=? AND id=?']],
+      update_closing_cockpit: [['period_id','SELECT legal_entity_id FROM rticore_gl_periods WHERE tenant_id=? AND id=?']],
+      reopen_closed_period: [['period_id','SELECT legal_entity_id FROM rticore_gl_periods WHERE tenant_id=? AND id=?']],
+      import_bank_statement: [['bank_account_id','SELECT legal_entity_id FROM rticore_treasury_accounts WHERE tenant_id=? AND id=?']],
+    };
+    for (const [field, sql] of Object.hasOwn(references, action) ? references[action] : []) {
+      if (!erpId(v[field])) continue; // existing action validation handles malformed inputs
+      const target = await db.prepare(sql).bind(TENANT, v[field] as string).first<{legal_entity_id:string}>();
+      if (!target) continue; // existing action handles nonexistent records and FK checks
+      await requireFinanceEntity(a.identity, target.legal_entity_id);
+      erpAssert(legalEntityId === null || legalEntityId === target.legal_entity_id, 'Referensi transaksi berasal dari legal entity berbeda', 403);
+      legalEntityId = target.legal_entity_id;
+    }
+    if (action === 'record_intercompany_elimination' && erpId(v.source_entity_id) && erpId(v.counterparty_entity_id)) {
+      for (const entity of [v.source_entity_id, v.counterparty_entity_id]) {
+        await requireFinanceEntity(a.identity, entity);
+        const effective = await resolveEffectiveFinanceRole(a.identity, entity);
+        erpAssert(canFinanceRoleAccessMenu(effective.financeRole, 'F22'), 'Akses konsolidasi untuk kedua legal entity diperlukan', 403);
+      }
+    }
     const { financeRole, customLimitCents } = await resolveEffectiveFinanceRole(
       a.identity,
       legalEntityId,
