@@ -464,6 +464,11 @@ export async function POST(req: Request) {
         .bind(TENANT, v.id as string)
         .first<{ id: string; email: string; requested_by: string; status: string; version: number; legal_entity_id: string }>();
       erpAssert(row && row.status === 'pending', 'Assignment role tidak ditemukan atau sudah diproses', 409);
+      // Resolve authority against the target assignment's entity, not a client-selected entity.
+      const reviewer = await resolveEffectiveFinanceRole(a.identity, row.legal_entity_id);
+      erpAssert(['cfo', 'financial_controller'].includes(reviewer.financeRole),
+        'Hanya CFO atau Financial Controller yang dapat menyetujui assignment role keuangan', 403);
+
       erpAssert(
         row.requested_by.toLowerCase() !== email.toLowerCase() && row.email.toLowerCase() !== email.toLowerCase(),
         'Segregation of Duties: Pemohon atau pemilik role dilarang menyetujui role sendiri',
