@@ -17,7 +17,14 @@ test('Next.js 16.4.2 and React 19 use pinned matching versions', () => {
 
 test('Next.js 16 builds with webpack while custom webpack config remains', () => {
   assert.match(nextConfig, /webpack\s*:/);
-  assert.equal(pkg.scripts.build, 'next build --webpack');
+  assert.equal(pkg.scripts.build, 'node scripts/build-hostinger.mjs');
+  const wrapper = fs.readFileSync(path.join(root, 'scripts/build-hostinger.mjs'), 'utf8');
+  assert.match(wrapper, /require\.resolve\('next\/dist\/bin\/next'\),\s*'build',\s*'--webpack'/);
+  assert.match(wrapper, /spawnSync\(process\.execPath/);
+  assert.match(wrapper, /TOKIO_WORKER_THREADS:\s*'1'/);
+  assert.match(wrapper, /RAYON_NUM_THREADS:\s*'1'/);
+  assert.match(wrapper, /UV_THREADPOOL_SIZE:\s*'2'/);
+  assert.match(wrapper, /process\.exitCode\s*=\s*result\.status\s*\?\?\s*1/);
   assert.equal(pkg.scripts.dev, 'next dev --webpack');
 });
 
