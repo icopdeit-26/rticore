@@ -56,6 +56,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleMenu,
 }) => {
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
+  // SSR markup must not accept clicks until React has attached event handlers.
+  const [assistantHydrated, setAssistantHydrated] = useState(false);
+  useEffect(() => { setAssistantHydrated(true); }, []);
   const [roleSwitchBusy,setRoleSwitchBusy]=useState(false);
   const [roleSwitchError,setRoleSwitchError]=useState('');
 
@@ -229,6 +232,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* AI Assistant Quick Trigger */}
             <button
               onClick={() => setAiAssistantOpen(true)}
+              type="button"
+              disabled={!assistantHydrated}
+              aria-haspopup="dialog"
+              aria-expanded={aiAssistantOpen}
               className="flex items-center gap-1.5 rounded-lg bg-[#102c36] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-teal-800 transition-all"
               title="Buka AI Business Assistant"
             >
