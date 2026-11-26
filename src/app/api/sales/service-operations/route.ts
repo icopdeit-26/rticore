@@ -192,7 +192,13 @@ export async function POST(req:Request){
    }else if(action==='approve_contract'){
     check(reviewer||role==='legal','Approval kontrak hanya Finance/Legal/Approver/Admin',403);check(c.status==='draft'&&c.configured_by&&c.end_date&&c.renewal_cents,'Lengkapi konfigurasi kontrak',409);check(c.configured_by!==email,'Maker kontrak tidak boleh review sendiri',403);check(txt(v.notes,1500).length>=12,'Catatan review wajib');
     writes.push(db.prepare("UPDATE rticore_service_contracts SET status='active',approved_by=?,version=version+1 WHERE tenant_id=? AND id=?").bind(email,TENANT,c.id));
-    await emitDock('contract.approved',c.id,`contract-approve-${c.id}-v${c.version}`,{project_id:p.id,opportunity_id:d.id,contract_id:c.id,model:c.model,recurring_cents:c.recurring_cents,renewal_cents:c.renewal_cents,approved_by:email});
+    // Legacy deployments without Finance migration retain standalone contract approval.
+    // When scoped, enqueue the event in the same CAS transaction as approval and audit.
+    const financeInstalled=await db.prepare('SELECT 1 FROM rticore_schema_migrations WHERE version=52').first();
+    if(financeInstalled){
+     const scope=await db.prepare("SELECT legal_entity_id FROM rticore_erp_project_scopes WHERE tenant_id=? AND project_id=? AND status='approved'").bind(TENANT,p.id).first<{legal_entity_id:string}>();
+     if(scope?.legal_entity_id)writes.push(buildFinanceOutboxStatement(db,{legalEntityId:scope.legal_entity_id,eventType:'contract.approved',sourceDocumentId:c.id,idempotencyKey:`contract-approve-${c.id}-v${c.version}`,payload:{project_id:p.id,opportunity_id:d.id,contract_id:c.id,model:c.model,recurring_cents:c.recurring_cents,renewal_cents:c.renewal_cents,approved_by:email}}).stmt);
+    }
    }else if(action==='risk'){
     check(financial||role==='sales','Risiko churn hanya Sales/Finance/Admin',403);check(c.status==='active'&&['low','medium','high'].includes(String(v.churn_risk))&&txt(v.notes,1500).length>=12,'Kontrak aktif dan penilaian risiko wajib',409);
     writes.push(db.prepare('UPDATE rticore_service_contracts SET churn_risk=?,churn_reason=?,version=version+1 WHERE tenant_id=? AND id=?').bind(String(v.churn_risk),txt(v.notes,1500),TENANT,c.id));
