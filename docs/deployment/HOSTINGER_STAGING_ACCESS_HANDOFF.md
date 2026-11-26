@@ -1,0 +1,3 @@
+# Hostinger staging access handoff
+
+No server access has been provisioned or verified by this change. Infrastructure owner must create a separate staging VPS/project, dedicated staging PostgreSQL database and OIDC realm, and a non-root deployment account with scoped SSH public key. Do not paste secrets into chat or Git. Restrict SSH by approved network, disable password authentication after key verification, and keep production deployment disabled. Use the existing deployment runbook and preflight script. Record exact candidate SHA, Node version, PostgreSQL TLS and migration checks, OIDC/MFA evidence, worker health, backup/restore reconciliation and business/security sign-offs. Do not restore into production or enable Finance guard prematurely.

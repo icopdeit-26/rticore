@@ -2121,6 +2121,12 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
 
     // 35: Scenario H — Failed Event -> Retry -> Move to Dead Letter Queue -> Controlled Reprocessing
     const failedRow = h.sql.prepare("SELECT id FROM rticore_finance_integration_events WHERE status='failed' LIMIT 1").get();
+    const original = h.sql.prepare('SELECT payload_json,payload_sha256,retry_count FROM rticore_finance_integration_events WHERE id=?').get(failedRow.id);
+    h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run('{"amount_cents":999}',failedRow.id);
+    await expect(h.call('finance','POST','finance',{action:'retry_docking_event',event_id:failedRow.id}),409);
+    assert.equal(h.sql.prepare('SELECT retry_count FROM rticore_finance_integration_events WHERE id=?').get(failedRow.id).retry_count,original.retry_count);
+    h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run(original.payload_json,failedRow.id);
+    await expect(h.call('finance','POST','admin',{action:'retry_docking_event',event_id:failedRow.id}),403);
     const dlqRes = await expect(
       h.call('finance', 'POST', 'finance', {
         action: 'retry_docking_event',
@@ -2138,7 +2144,7 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
       }),
       200,
     );
-    assert.equal(reprocessRes.body.status, 'processed');
+    assert.equal(reprocessRes.body.status, 'validated'); // Retry is not a posting or processing acknowledgement.
     executed++;
 
     assert.equal(executed, 35);

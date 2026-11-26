@@ -1,3 +1,4 @@
+import { verifyFinancePayload } from '@/lib/finance-docking-bridge';
 import { authorizeBoQ, type BoQIdentity } from '@/lib/boq-auth';
 import { readBoundedJSON } from '@/lib/bounded-json';
 import { TENANT } from '@/lib/sales-workflow';
@@ -1115,37 +1116,29 @@ export async function POST(req: Request) {
 
     if (action === 'retry_docking_event') {
       erpAssert(erpId(v.event_id), 'Event ID wajib');
-      const ev = await db
-        .prepare('SELECT id, status, retry_count FROM rticore_finance_integration_events WHERE tenant_id=? AND id=?')
-        .bind(TENANT, v.event_id as string)
-        .first<{ id: string; status: string; retry_count: number }>();
+      erpAssert(roleDef.canApprove && roleDef.canCheck, 'Kewenangan review Finance diperlukan untuk retry', 403);
+      erpAssert(legalEntityId, 'Legal entity wajib', 403);
+      const ev = await db.prepare('SELECT id, status, retry_count, payload_json, payload_sha256 FROM rticore_finance_integration_events WHERE tenant_id=? AND legal_entity_id=? AND id=?')
+        .bind(TENANT, legalEntityId, v.event_id as string)
+        .first<{ id: string; status: string; retry_count: number; payload_json: string; payload_sha256: string }>();
       erpAssert(ev, 'Event tidak ditemukan', 404);
-      erpAssert(ev.status !== 'processed', 'Event sudah berstatus processed; reprocessing duplikat ditolak', 409);
-
+      erpAssert(['failed','dead_letter'].includes(ev.status), 'Hanya event gagal atau karantina yang dapat di-retry', 409);
       const nextRetry = Number(ev.retry_count) + 1;
-      const nextStatus = v.move_to_dlq === true || nextRetry > 3 ? 'dead_letter' : 'processed';
+      const quarantine = v.move_to_dlq === true || nextRetry > 3;
+      if (!quarantine) {
+        erpAssert(await verifyFinancePayload(ev.payload_json, ev.payload_sha256), 'Integritas payload gagal; rekonsiliasi diperlukan', 409);
+        const parsed: unknown = JSON.parse(ev.payload_json);
+        erpAssert(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed), 'Payload event tidak valid', 409);
+      }
+      // Retry only revalidates the queue entry; it is not an accounting or delivery acknowledgement.
+      const nextStatus = quarantine ? 'dead_letter' : 'validated';
       await erpAtom(
         a.identity,
-        "EXISTS(SELECT 1 FROM rticore_finance_integration_events WHERE tenant_id=? AND id=? AND status!='processed')",
-        [TENANT, ev.id],
-        [
-          db
-            .prepare(
-              'UPDATE rticore_finance_integration_events SET status=?, retry_count=?, error_message=?, processed_at=CURRENT_TIMESTAMP, processed_by=? WHERE tenant_id=? AND id=?',
-            )
-            .bind(
-              nextStatus,
-              nextRetry,
-              nextStatus === 'dead_letter' ? 'Moved to Dead Letter Queue after max retries' : null,
-              email,
-              TENANT,
-              ev.id,
-            ),
-        ],
-        'rti_finance',
-        ev.id,
-        'DOCKING_EVENT_RETRY',
-        { nextStatus, nextRetry },
+        "EXISTS(SELECT 1 FROM rticore_finance_integration_events WHERE tenant_id=? AND legal_entity_id=? AND id=? AND status=? AND retry_count=? AND payload_json=? AND payload_sha256=?)",
+        [TENANT, legalEntityId, ev.id, ev.status, ev.retry_count, ev.payload_json, ev.payload_sha256],
+        [db.prepare('UPDATE rticore_finance_integration_events SET status=?, retry_count=?, error_message=?, processed_at=NULL, processed_by=? WHERE tenant_id=? AND legal_entity_id=? AND id=?')
+          .bind(nextStatus, nextRetry, quarantine ? 'Quarantined; independent reconciliation required' : null, email, TENANT, legalEntityId, ev.id)],
+        'rti_finance', ev.id, 'DOCKING_EVENT_RETRY', { nextStatus, nextRetry },
       );
       return erpReply({ success: true, status: nextStatus, retry_count: nextRetry });
     }
