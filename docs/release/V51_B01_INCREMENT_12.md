@@ -1,0 +1,2 @@
+# V5.1 B01 increment 12
+Adds read-only settlement evidence checks for non-posted journal links, cross-entity accounting periods and missing posting/processing metadata. Populated CI fixture builds a balanced journal through approval/posting and detects an invalid historical processed link. No posting automation or historical repair; source-to-journal accounting policy certification remains outstanding. Finance guard preserved. Exact-SHA CI required. No deployment.

@@ -21,7 +21,7 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   await pool.query(fs.readFileSync('rticore_postgresql_triggers.sql','utf8'));
   const counts=await pool.query("SELECT count(*)::int AS n FROM pg_trigger WHERE NOT tgisinternal AND tgenabled IN ('O','A')");
   assert.ok(counts.rows[0].n>=267,'canonical business triggers must exist');
-  const {scanJournalIntegrity,scanTimesheetSources,scanProcurementSources,scanContractSources,scanFlexGuardSources}=await import('../scripts/finance-historical-reconciliation.mjs');
+  const {scanJournalIntegrity,scanTimesheetSources,scanProcurementSources,scanContractSources,scanFlexGuardSources,scanSettlementEvidence}=await import('../scripts/finance-historical-reconciliation.mjs');
   const snapshot=await pool.connect();
   try {
    await snapshot.query('BEGIN READ ONLY');
@@ -32,6 +32,7 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
    assert.deepEqual(await scanProcurementSources(snapshot),{total:'0',missing_source:'0',invalid_opportunity_scope:'0',source_mismatch:'0'});
    assert.deepEqual(await scanContractSources(snapshot),{total:'0',missing_source:'0',invalid_project_scope:'0',source_mismatch:'0'});
    assert.deepEqual(await scanFlexGuardSources(snapshot),{total:'0',missing_source:'0',invalid_entity_scope:'0',source_mismatch:'0'});
+   assert.deepEqual(await scanSettlementEvidence(snapshot),{processed_unposted_journal:'0',invalid_period_scope:'0',missing_posting_evidence:'0',missing_processing_evidence:'0'});
    await snapshot.query('ROLLBACK');
   }finally{snapshot.release();}
   await pool.query("INSERT INTO rticore_erp_org_units(id,tenant_id,code,label,kind,created_by) VALUES('ci-fin-entity','ci-fin','CI-FIN','CI Finance','legal_entity','ci@example.invalid')");
@@ -52,6 +53,17 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   }
   assert.deepEqual(await scanContractSources(pool),{total:'1',missing_source:'1',invalid_project_scope:'0',source_mismatch:'0'});
   assert.deepEqual(await scanFlexGuardSources(pool),{total:'2',missing_source:'2',invalid_entity_scope:'0',source_mismatch:'0'});
+  // Populated settlement evidence: a valid posted journal and an invalid historical processed link.
+  await pool.query("INSERT INTO rticore_gl_periods(id,tenant_id,legal_entity_id,period,created_by) VALUES('ci-period','ci-fin','ci-fin-entity','2026-01','maker@example.invalid')");
+  await pool.query("INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES('ci-debit','ci-fin','ci-fin-entity','100','Cash account','asset','maker@example.invalid'),('ci-credit','ci-fin','ci-fin-entity','200','Liability account','liability','maker@example.invalid')");
+  await pool.query("INSERT INTO rticore_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by) VALUES('ci-posted','ci-fin','ci-fin-entity','ci-period','test','ci-posted','CI balanced journal','maker@example.invalid'),('ci-draft','ci-fin','ci-fin-entity','ci-period','test','ci-draft','CI draft journal','maker@example.invalid')");
+  await pool.query("INSERT INTO rticore_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents) VALUES('ci-line-d','ci-fin','ci-posted','ci-debit',1000,0),('ci-line-c','ci-fin','ci-posted','ci-credit',0,1000)");
+  await pool.query("UPDATE rticore_gl_journals SET status='approved',reviewed_by='checker@example.invalid',review_notes='Independent CI approval' WHERE id='ci-posted'");
+  await pool.query("UPDATE rticore_gl_journals SET status='posted',posted_by='checker@example.invalid',posted_at='2026-01-01T00:00:00Z' WHERE id='ci-posted'");
+  assert.equal((await scanJournalIntegrity(pool)).unbalanced_posted_journals,'0');
+  assert.equal((await scanSettlementEvidence(pool)).missing_posting_evidence,'0');
+  await pool.query("UPDATE rticore_finance_integration_events SET status='processed',resulting_journal_id='ci-draft' WHERE id='ci-missing-ts'");
+  assert.deepEqual(await scanSettlementEvidence(pool),{processed_unposted_journal:'1',invalid_period_scope:'0',missing_posting_evidence:'0',missing_processing_evidence:'1'});
   const {processNextJob}=await import('../scripts/hostinger-job-engine.mjs');
   await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES('ci-job','ci-tenant','report_generation','ci-job-key','ci@example.invalid')");
   const claims=await Promise.all([processNextJob(pool,'ci-a'),processNextJob(pool,'ci-b')]);

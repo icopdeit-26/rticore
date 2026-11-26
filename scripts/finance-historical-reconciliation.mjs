@@ -108,6 +108,16 @@ export async function scanFlexGuardSources(client){
  return rows[0];
 }
 
+// A linked journal is not evidence of settlement unless posted and correctly scoped.
+export async function scanSettlementEvidence(client){
+ const {rows}=await client.query(`SELECT
+ (SELECT count(*) FROM public.rticore_finance_integration_events e JOIN public.rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.resulting_journal_id AND j.legal_entity_id=e.legal_entity_id WHERE e.status='processed' AND j.status<>'posted')::text AS processed_unposted_journal,
+ (SELECT count(*) FROM public.rticore_gl_journals j LEFT JOIN public.rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id AND p.legal_entity_id=j.legal_entity_id WHERE p.id IS NULL)::text AS invalid_period_scope,
+ (SELECT count(*) FROM public.rticore_gl_journals WHERE status='posted' AND (posted_by IS NULL OR posted_at IS NULL OR reviewed_by IS NULL OR lower(created_by)=lower(reviewed_by)))::text AS missing_posting_evidence,
+ (SELECT count(*) FROM public.rticore_finance_integration_events WHERE status='processed' AND (processed_at IS NULL OR processed_by IS NULL))::text AS missing_processing_evidence`);
+ return rows[0];
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -141,9 +151,10 @@ async function main() {
     const procurementSources=await scanProcurementSources(client);
     const contractSources=await scanContractSources(client);
     const flexguardSources=await scanFlexGuardSources(client);
+    const settlementEvidence=await scanSettlementEvidence(client);
     await client.query('ROLLBACK');
-    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
