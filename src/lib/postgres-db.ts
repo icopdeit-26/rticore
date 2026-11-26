@@ -77,6 +77,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     const schemaSQL = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, 'utf8') : '';
     type PgPool = {
       query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+      connect(): Promise<{query: PgPool['query']; release(error?: Error):void}>;
     };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
       Pool: new (opts: { connectionString: string }) => PgPool;
@@ -85,7 +86,23 @@ async function createExecutor(): Promise<QueryExecutor> {
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
+      batch: async (statements) => {
+        const client=await pool.connect();
+        let discard:Error|undefined;
+        try {
+          await client.query('BEGIN');
+          const results=[];
+          for(const statement of statements)results.push(await client.query(statement.sql,statement.args));
+          await client.query('COMMIT');
+          return results;
+        }catch(error){
+          try{await client.query('ROLLBACK');}catch{discard=new Error('Rollback failed');}
+          throw error;
+        }finally{client.release(discard);}
+      },
     };
+    // Hosted schema changes are operator-controlled, not request-time DDL.
+    if(process.env.RTICORE_RUNTIME==='hostinger')return exec;
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.
     const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');
@@ -93,6 +110,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     return exec;
   }
 
+  if(process.env.RTICORE_RUNTIME==='hostinger')throw Error('External PostgreSQL is mandatory');
   type WorkerResponse = {
     id: number;
     ok: boolean;

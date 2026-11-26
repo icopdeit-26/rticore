@@ -15,7 +15,7 @@ declare const navigator:{userAgent?:string}|undefined;
 
 export function isLocalMode():boolean{
   if(typeof navigator!=='undefined'&&navigator?.userAgent==='Cloudflare-Workers')return false;
-  return typeof process!=='undefined'&&process?.env?.RTICORE_LOCAL_MODE==='1';
+  return typeof process!=='undefined'&&process?.env?.RTICORE_RUNTIME!=='hostinger'&&process?.env?.RTICORE_LOCAL_MODE==='1';
 }
 
 const LOCAL_KEYS=['RTICORE_ACCESS_AUD','RTICORE_ACCESS_TEAM_DOMAIN','RTICORE_AI_ENCRYPTION_KEY',
@@ -26,6 +26,14 @@ export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
     const db=process?.env?.RTICORE_DB_ENGINE==='sqlite'?getLocalD1():getLocalPostgresDB();
     const env:Record<string,unknown>={RTICORE_LOCAL_MODE:'1',RTICORE_DB:db};
     for(const key of LOCAL_KEYS)if(process?.env?.[key])env[key]=process.env[key];
+    return env as T;
+  }
+  // Explicit native hosting mode: retain Cloudflare Access JWT verification,
+  // never enable the localhost account picker or embedded database in production.
+  if(typeof process!=='undefined'&&process?.env?.RTICORE_RUNTIME==='hostinger'){
+    if(!process.env.DATABASE_URL&&!process.env.POSTGRES_URL)throw Error('Hostinger PostgreSQL configuration required');
+    const env:Record<string,unknown>={RTICORE_DB:getLocalPostgresDB()};
+    for(const key of LOCAL_KEYS)if(key!=='RTICORE_LOCAL_SESSION_SECRET'&&process.env[key])env[key]=process.env[key];
     return env as T;
   }
   return withLegacySecretNames((await getCloudflareContext({async:true})).env) as T;
