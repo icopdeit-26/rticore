@@ -36,13 +36,9 @@ let pgPromise = null;
 async function getPg() {
   if (!pgPromise) {
     pgPromise = (async () => {
-      let pg;
-      try {
-        pg = await PGlite.create(dataDir);
-      } catch {
-        fs.rmSync(dataDir, { recursive: true, force: true });
-        pg = await PGlite.create(dataDir);
-      }
+      // Never erase a database when opening it fails. Recovery requires an
+      // explicit operator decision and a separately verified backup.
+      const pg = await PGlite.create(dataDir);
       try {
         const check = await pg.query('SELECT COUNT(*) AS n FROM rticore_members');
         if (Number(check.rows?.[0]?.n ?? 0) === 0 && fs.existsSync(schemaPath)) {
