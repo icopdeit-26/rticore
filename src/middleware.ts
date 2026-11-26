@@ -34,6 +34,8 @@ const D1_ROUTES = new Set([
   '/api/health/ready',
   // RTI Finance Enterprise Suite API (migration 0052).
   '/api/finance',
+  // FlexGuard Customer Portal API (migration 0054).
+  '/api/portal/flexguard',
 ]);
 
 export function isEnabledD1ApiRoute(path: string): boolean {
