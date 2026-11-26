@@ -13,8 +13,9 @@ const seed=(h,id,owner=users.sales,source='Referral',status='assigned')=>{
  return h.sql.prepare('SELECT * FROM rticore_marketing_leads WHERE id=?').get(id);
 };
 const post=(h,role,id,version,action,extra={})=>h.call('marketing/lead-intelligence','POST',role,{id,version,action,...extra});
-// Match the application business day (WIB), including the UTC/WIB midnight boundary.
-const day=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);
+// Use tomorrow in WIB for positive plan fixtures: the request can cross midnight
+// between computing the date and reaching the route. Test past dates separately.
+const day=(offset=1)=>new Date(Date.now()+7*3600000+offset*86400000).toISOString().slice(0,10);
 const scoring=()=>new Harness();
 test('scoring deterministic 100 cap, BANT readiness and budget negation without AI intent',()=>{
  const h=scoring();
@@ -169,5 +170,15 @@ test('stale nurture version fails closed without duplicate touch or audit events
   assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_marketing_activities WHERE lead_id='lead-race-plan'").get().n,0);
   assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_lead_intelligence_events WHERE lead_id='lead-race-plan' AND event_type='TOUCH'").get().n,0);
   assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_sales_tx_guards").get().n,0);
+ }finally{h.close();}
+});
+
+test('initial nurture plan rejects past WIB date without persistence',async()=>{
+ const h=scoring();try{
+  seed(h,'lead-past-plan');
+  const r=await post(h,'sales','lead-past-plan',1,'plan',{cadence_days:7,channel:'call',next_touch_at:day(-1)});
+  assert.equal(r.status,422);
+  assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_lead_nurture_plans WHERE lead_id='lead-past-plan'").get().n,0);
+  assert.equal(h.sql.prepare("SELECT count(*) n FROM rticore_lead_intelligence_events WHERE lead_id='lead-past-plan'").get().n,0);
  }finally{h.close();}
 });

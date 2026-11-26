@@ -1,0 +1,2 @@
+# V5.1 B01 CI remediation 07
+Exact baseline 9ab3b6f: 19/20 PASS; ERP WP2/WP5/WP6/WP7 run 45863626760 job 140060742242 failed test:marketing at WIB midnight (17:00 UTC), with 422 past initial schedule. Positive same-day fixture can expire between request construction and handler validation. Use next WIB day for positive tests and add explicit past-day rejection/no-write assertions. Production validation unchanged. No merge or deployment. Fresh CI required.
