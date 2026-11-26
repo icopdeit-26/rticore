@@ -82,7 +82,17 @@ test('login on mobile uses the local account flow without a cloud link or passwo
   const browser=await launchBrowser({headless:true,args:['--no-sandbox']});
   try{
    const page=await browser.newPage({viewport:{width:390,height:844}});
-   const response=await page.goto(localBase+'/login',{waitUntil:'networkidle'});
+   const pending=new Set();
+   const failures=[];
+   page.on('request',req=>pending.add(req));
+   page.on('requestfinished',req=>pending.delete(req));
+   page.on('requestfailed',req=>{pending.delete(req);failures.push(new URL(req.url()).pathname);});
+   try {
+   const authReady=page.waitForResponse(res=>new URL(res.url()).pathname==='/api/local-auth' && res.request().method()==='GET');
+   const response=await page.goto(localBase+'/login',{waitUntil:'domcontentloaded',timeout:30000});
+   const authResponse=await authReady;
+   assert.equal(authResponse.status(),200);
+   assert.deepEqual(await authResponse.json(),{success:true,localMode:true,members:[]});
    assert.equal(response?.status(),200);
    await page.getByRole('heading',{name:'Login RTICORE'}).waitFor();
    await page.getByText('Mode lokal · tanpa cloud',{exact:false}).waitFor();
@@ -92,7 +102,10 @@ test('login on mobile uses the local account flow without a cloud link or passwo
    const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
    assert.ok(dimensions.scroll<=dimensions.width+2,'Mobile login overflows: '+JSON.stringify(dimensions));
    await page.screenshot({path:path.join(shots,'rticore-login-mobile.png'),fullPage:true});
-   await page.close();
+   } catch(error) {
+    console.error('Local login browser diagnostics:',JSON.stringify({pending:[...pending].map(req=>new URL(req.url()).pathname),failed:failures}));
+    throw error;
+   } finally { await page.close(); }
   }finally{await browser.close();}
  });
 });
