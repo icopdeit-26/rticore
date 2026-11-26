@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity, AlertTriangle, ArrowLeftRight, Banknote, BookOpen, Briefcase,
@@ -20,7 +20,8 @@ import {
 } from '@/lib/rti-finance-core';
 
 function formatIDRFromCents(cents: number | null | undefined): string {
-  const val = Number(cents || 0) / 100;
+  if (cents == null || !Number.isFinite(cents)) return '—';
+  const val = cents / 100;
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
@@ -50,8 +51,12 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   const [dockingMode, setDockingMode] = useState<'standalone' | 'docked' | 'multi_entity'>('docked');
   const [dockingStatus, setDockingStatus] = useState<'connected' | 'disconnected'>('connected');
 
+  const requestVersion = useRef(0);
   const loadFinanceData = useCallback(async () => {
+    const version = ++requestVersion.current;
     setLoading(true);
+    setPayload(null);
+    setAiResult(null);
     try {
       const q = new URLSearchParams({ menu: activeMenu, period });
       if (selectedEntity) q.set('legal_entity_id', selectedEntity);
@@ -64,6 +69,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
         headers,
       });
       const json = await res.json();
+      if (version !== requestVersion.current) return;
       if (!res.ok || !json.success) {
         setFeedback({ kind: 'err', text: json.message || 'Gagal memuat data RTI Finance' });
       } else {
@@ -73,14 +79,15 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
         }
       }
     } catch {
-      setFeedback({ kind: 'err', text: 'Tidak dapat menghubungi endpoint /api/finance' });
+      if (version === requestVersion.current) setFeedback({ kind: 'err', text: 'Tidak dapat menghubungi endpoint /api/finance' });
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [activeMenu, period, selectedEntity]);
 
   useEffect(() => {
     void loadFinanceData();
+    return () => { requestVersion.current++; };
   }, [loadFinanceData]);
 
   const currentMenuDef = useMemo(
@@ -99,12 +106,15 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
     );
   }, [searchQuery]);
 
-  const identity = (payload?.identity as Record<string, unknown>) || {};
-  const kpis = (payload?.kpis as Record<string, number | boolean>) || {};
-  const data = (payload?.data as Record<string, Array<Record<string, unknown>>>) || {};
+  const scopedPayload = payload && payload.menu === activeMenu && payload.period === period && (!selectedEntity || payload.legalEntityId === selectedEntity) ? payload : null;
+  const identity = (scopedPayload?.identity as Record<string, unknown>) || {};
+  const kpis = (scopedPayload?.kpis as Record<string, number | boolean | null>) || {};
+  const data = (scopedPayload?.data as Record<string, Array<Record<string, unknown>>>) || {};
   const legalEntities = (payload?.legalEntities as Array<{ id: string; code: string; label: string }>) || [];
 
   async function executeFinanceAction(body: Record<string, unknown>, successMsg: string) {
+    if (!scopedPayload || loading || busy || !selectedEntity) return;
+    const version = requestVersion.current;
     setBusy(true);
     setFeedback(null);
     try {
@@ -113,9 +123,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
         method: 'POST',
         credentials: 'same-origin',
         headers,
-        body: JSON.stringify({ legal_entity_id: selectedEntity, ...body }),
+        body: JSON.stringify({ ...body, legal_entity_id: selectedEntity }),
       });
       const json = await res.json();
+      if (version !== requestVersion.current) return;
       if (!res.ok || !json.success) {
         setFeedback({ kind: 'err', text: json.message || 'Transaksi ditolak oleh kontrol keuangan' });
       } else {
@@ -133,6 +144,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   }
 
   function exportCurrentRegisterCSV() {
+    if (!scopedPayload || loading) return;
     const rows = data.trialBalance || data.journals || [];
     const header = ['Code/ID', 'Name/Memo', 'Category/Status', 'Debit_Cents', 'Credit_Cents'];
     const csvLines = [
@@ -350,11 +362,11 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 GL Trial Balance Equilibrium
               </p>
               <p className="mt-1 text-lg font-extrabold text-slate-900">
-                {formatIDRFromCents(Number(kpis.trialBalanceDebitCents || 0))}
+                {formatIDRFromCents(typeof kpis.trialBalanceDebitCents === 'number' ? kpis.trialBalanceDebitCents : null)}
               </p>
               <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {kpis.trialBalanceBalanced !== false ? 'Debit = Kredit (Balanced)' : 'Unbalanced Exception'}
+                {kpis.trialBalanceBalanced === true ? 'Debit = Kredit (Balanced)' : kpis.trialBalanceBalanced === false ? 'Unbalanced Exception' : 'Belum tersedia / tidak berwenang'}
               </p>
             </div>
 
@@ -363,11 +375,11 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 AR Outstanding (Order-to-Cash)
               </p>
               <p className="mt-1 text-lg font-extrabold text-slate-900">
-                {formatIDRFromCents(Number(kpis.arOutstandingCents || 0))}
+                {formatIDRFromCents(typeof kpis.arOutstandingCents === 'number' ? kpis.arOutstandingCents : null)}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                Billed: {formatIDRFromCents(Number(kpis.arBilledCents || 0))} · Collected:{' '}
-                {formatIDRFromCents(Number(kpis.arCollectedCents || 0))}
+                Billed: {formatIDRFromCents(typeof kpis.arBilledCents === 'number' ? kpis.arBilledCents : null)} · Collected:{' '}
+                {formatIDRFromCents(typeof kpis.arCollectedCents === 'number' ? kpis.arCollectedCents : null)}
               </p>
             </div>
 
@@ -376,10 +388,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 AP Outstanding (Procure-to-Pay)
               </p>
               <p className="mt-1 text-lg font-extrabold text-slate-900">
-                {formatIDRFromCents(Number(kpis.apOutstandingCents || 0))}
+                {formatIDRFromCents(typeof kpis.apOutstandingCents === 'number' ? kpis.apOutstandingCents : null)}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                3-Way Matched AP: {formatIDRFromCents(Number(kpis.apApprovedCents || 0))}
+                3-Way Matched AP: {formatIDRFromCents(typeof kpis.apApprovedCents === 'number' ? kpis.apApprovedCents : null)}
               </p>
             </div>
 
@@ -388,10 +400,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 ICOFR & Docking Health
               </p>
               <p className="mt-1 text-lg font-extrabold text-[#2B124C]">
-                {Number(kpis.openExceptionsCount || 0)} Open Exceptions
+                {(typeof kpis.openExceptionsCount === 'number' ? kpis.openExceptionsCount : '—')} Open Exceptions
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                DLQ / Failed Events: {Number(kpis.failedEventsCount || 0)} · Limit:{' '}
+                DLQ / Failed Events: {(typeof kpis.failedEventsCount === 'number' ? kpis.failedEventsCount : '—')} · Limit:{' '}
                 {formatIDRFromCents(Number(identity.approvalLimitCents || 0))}
               </p>
             </div>
@@ -440,17 +452,17 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Total Recognized Revenue & Growth</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(Number(kpis.glRevenueCents || 0))}
+                      {formatIDRFromCents(typeof kpis.glRevenueCents === 'number' ? kpis.glRevenueCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">PSAK 115 Verified Contract Revenue</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Gross Profit, EBITDA & Net Profit</p>
                     <p className="mt-1 text-xl font-extrabold text-emerald-700">
-                      {formatIDRFromCents(Number(kpis.glNetIncomeCents || 0))}
+                      {formatIDRFromCents(typeof kpis.glNetIncomeCents === 'number' ? kpis.glNetIncomeCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Total Expenses: {formatIDRFromCents(Number(kpis.glExpenseCents || 0))}
+                      Total Expenses: {formatIDRFromCents(typeof kpis.glExpenseCents === 'number' ? kpis.glExpenseCents : null)}
                     </p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -470,7 +482,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Working Capital & Liquidity</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(Number(kpis.glAssetCents || 0) - Number(kpis.glLiabilityCents || 0))}
+                      {formatIDRFromCents(typeof kpis.glAssetCents === 'number' && typeof kpis.glLiabilityCents === 'number' ? kpis.glAssetCents - kpis.glLiabilityCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       13-Week Forecast Buckets: {(data.cashForecasts || []).length}
@@ -479,7 +491,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">AR vs AP Aging Balance</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(Number(kpis.arOutstandingCents || 0) - Number(kpis.apOutstandingCents || 0))}
+                      {formatIDRFromCents(typeof kpis.arOutstandingCents === 'number' && typeof kpis.apOutstandingCents === 'number' ? kpis.arOutstandingCents - kpis.apOutstandingCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       Reconciliations: {(data.reconciliations || []).length} records
@@ -491,7 +503,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                       {(data.taxTransactions || []).length} Tax Records
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Open ICOFR Exceptions: {Number(kpis.openExceptionsCount || 0)}
+                      Open ICOFR Exceptions: {(typeof kpis.openExceptionsCount === 'number' ? kpis.openExceptionsCount : '—')}
                     </p>
                   </div>
                 </div>
@@ -547,7 +559,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Failed Docking Events</p>
                     <p className="mt-1 text-xl font-extrabold text-rose-700">
-                      {Number(kpis.failedEventsCount || 0)}
+                      {(typeof kpis.failedEventsCount === 'number' ? kpis.failedEventsCount : '—')}
                     </p>
                   </div>
                 </div>
