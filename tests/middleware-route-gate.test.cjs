@@ -67,3 +67,25 @@ test('each newly enabled route still calls real server-side Access authorization
     assert.match(code, /if\s*\(!a\.ok\)\s*return\s+a\.response/);
   }
 });
+
+test('Hostinger mode rejects mutating API requests with missing, foreign or cross-site origin', () => {
+  const hostingerExports = {};
+  vm.runInNewContext(js, {
+    exports: hostingerExports,
+    process: { env: { RTICORE_RUNTIME: 'hostinger', RTICORE_PUBLIC_ORIGIN: 'https://rticore.example.com' } },
+    require: name => {
+      assert.equal(name, 'next/server');
+      return nextServer;
+    }
+  }, { filename: 'src/middleware.ts' });
+  const mkReq = (method, pathname, headers = {}) => ({
+    method,
+    nextUrl: { pathname },
+    headers: { get: k => headers[k.toLowerCase()] ?? null },
+  });
+  assert.equal(hostingerExports.middleware(mkReq('GET', '/api/boq')).status, 200);
+  assert.equal(hostingerExports.middleware(mkReq('POST', '/api/boq', {})).status, 403);
+  assert.equal(hostingerExports.middleware(mkReq('POST', '/api/boq', { origin: 'https://evil.example' })).status, 403);
+  assert.equal(hostingerExports.middleware(mkReq('POST', '/api/boq', { origin: 'https://rticore.example.com', 'sec-fetch-site': 'cross-site' })).status, 403);
+  assert.equal(hostingerExports.middleware(mkReq('POST', '/api/boq', { origin: 'https://rticore.example.com', 'sec-fetch-site': 'same-origin' })).status, 200);
+});
