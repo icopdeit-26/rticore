@@ -121,6 +121,8 @@ test('Batch 19-20: VAPT RoE/Findings/Retest, DFIR Immutable Chain of Custody, SO
         payload: { project_id: 'proj-01', minutes: 480, cost_snapshot_cents: 1_800_000_00 },
       });
       await stmt.run();
+      await assert.rejects(bridge.buildFinanceOutboxStatement(h,{legalEntityId:'le-19-a',eventType:'timesheet.approved',sourceDocumentId:'ts-live-001',idempotencyKey:'x'.repeat(161),payload:{}}),/INVALID finance idempotency key/);
+      assert.equal(await bridge.verifyFinancePayload('[]',await bridge.financePayloadSha256('[]')),false);
       const stored = h.sql.prepare('SELECT payload_json,payload_sha256 FROM rticore_finance_integration_events WHERE id=?').get(eventId);
       assert.equal(stored.payload_sha256, require('node:crypto').createHash('sha256').update(stored.payload_json).digest('hex'));
       h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run('{"minutes":999}',eventId);
@@ -134,7 +136,8 @@ test('Batch 19-20: VAPT RoE/Findings/Retest, DFIR Immutable Chain of Custody, SO
       const proc = await expect(h.call('erp/finance-docking-bridge', 'POST', 'finance', {
         action: 'process_event', event_id: eventId,
       }), 200);
-      assert.equal(proc.body.status, 'processed');
+      assert.equal(proc.body.status, 'validated');
+      assert.deepEqual(h.sql.prepare('SELECT status,processed_at,processed_by,resulting_journal_id FROM rticore_finance_integration_events WHERE id=?').get(eventId), {status:'validated',processed_at:null,processed_by:null,resulting_journal_id:null});
 
       // Reprocessing same event rejected (409)
       await expect(h.call('erp/finance-docking-bridge', 'POST', 'finance', {

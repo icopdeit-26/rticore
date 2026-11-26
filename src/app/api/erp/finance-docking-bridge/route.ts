@@ -17,7 +17,7 @@ async function authorizedEntities(identity: BoQIdentity): Promise<string[]> {
  * Live Finance Docking Outbox Bridge Controller (Section 8.1–8.6).
  * Allows Finance/Approver/Admin to inspect entity-scoped operational events emitted
  * by FlexGuard, Timesheets, and Procurement, validate payload integrity, and transition
- * them cleanly into processed or dead_letter state with full audit trail.
+ * them into validated or dead_letter state; validation does not post a journal with full audit trail.
  * Respects Hostinger Finance fail-closed guard.
  */
 export async function GET(req: Request) {
@@ -68,18 +68,19 @@ export async function POST(req: Request) {
 
     const action = String(v.action || 'process_event');
     if (action === 'process_event') {
+      // Payload validation is not financial settlement. Preserve historical processed events.
+      erpAssert(ev.status === 'received', 'Event sudah divalidasi; financial settlement memerlukan handler tersertifikasi', 409);
       // Legacy pseudo-digests and altered payloads must be reconciled, never silently rehashed.
       erpAssert(await verifyFinancePayload(ev.payload_json, ev.payload_sha256), 'Integritas payload gagal; rekonsiliasi atau karantina event diperlukan', 409);
-      JSON.parse(ev.payload_json);
       await erpAtom(
         a.identity, "EXISTS(SELECT 1 FROM rticore_finance_integration_events WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status=? AND payload_json=? AND payload_sha256=?)", [TENANT, ev.id, ev.legal_entity_id, ev.status, ev.payload_json, ev.payload_sha256],
         [
-          db.prepare("UPDATE rticore_finance_integration_events SET status='processed', processed_at=CURRENT_TIMESTAMP, processed_by=? WHERE tenant_id=? AND id=? AND status IN ('received','validated')")
-            .bind(email, TENANT, ev.id),
+          db.prepare("UPDATE rticore_finance_integration_events SET status='validated', processed_at=NULL, processed_by=NULL WHERE tenant_id=? AND id=? AND status='received'")
+            .bind(TENANT, ev.id),
         ],
-        'finance_docking', ev.id, 'DOCKING_EVENT_PROCESSED', { event_type: ev.event_type, legal_entity_id: ev.legal_entity_id },
+        'finance_docking', ev.id, 'DOCKING_EVENT_VALIDATED', { event_type: ev.event_type, legal_entity_id: ev.legal_entity_id },
       );
-      return erpReply({ success: true, id: ev.id, status: 'processed' });
+      return erpReply({ success: true, id: ev.id, status: 'validated' });
     }
 
     if (action === 'quarantine_event') {

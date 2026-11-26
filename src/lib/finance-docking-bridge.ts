@@ -27,6 +27,7 @@ export async function financePayloadSha256(payloadJson: string): Promise<string>
 
 export async function verifyFinancePayload(payloadJson: string, digest: string): Promise<boolean> {
   if (!/^[a-f0-9]{64}$/.test(digest)) return false;
+  try { const value = JSON.parse(payloadJson); if (!value || typeof value !== 'object' || Array.isArray(value)) return false; } catch { return false; }
   return (await financePayloadSha256(payloadJson)) === digest;
 }
 
@@ -40,6 +41,7 @@ export async function buildFinanceOutboxStatement(
     payload: Record<string, unknown>;
   },
 ): Promise<{ eventId: string; stmt: D1Prepared }> {
+  if (params.idempotencyKey.length < 8 || params.idempotencyKey.length > 160 || params.idempotencyKey.trim() !== params.idempotencyKey) throw new Error('INVALID finance idempotency key');
   const eventId = crypto.randomUUID();
   const payloadJson = JSON.stringify(params.payload);
   const hash = await financePayloadSha256(payloadJson);
@@ -57,7 +59,7 @@ export async function buildFinanceOutboxStatement(
       params.eventType,
       params.sourceDocumentId,
       `DOCK-${params.sourceDocumentId.slice(0, 12)}`,
-      params.idempotencyKey.slice(0, 160),
+      params.idempotencyKey,
       payloadJson,
       hash,
     );

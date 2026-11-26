@@ -1,0 +1,2 @@
+# V5.1 B01 increment 08
+Finance docking legacy process_event now validates only; does not claim processed or create journal. Historical processed events untouched. SHA256 verification rejects non-object JSON; outbox keys rejected rather than truncated. Regression covers validation state and empty settlement metadata, duplicate request, invalid key and array payload. Hostinger Finance guard unchanged. Actual approved posting handlers and reconciliation remain mandatory. No merge/deploy.
