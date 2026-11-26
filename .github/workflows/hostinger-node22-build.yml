@@ -1,0 +1,30 @@
+name: Hostinger Node 22 build hotfix
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'next.config.mjs'
+      - 'tests/**'
+      - '.github/workflows/hostinger-node22-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  node22-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm install --global npm@11.9.0
+      - run: npm --version
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:runtime-compat
+      - run: npm run typecheck
+      - run: npm run build
+      - run: test -f .next/BUILD_ID
