@@ -65,6 +65,13 @@ const V4_ENTERPRISE_DESTINATIONS: readonly PaletteEntry[] = [
     roles: ['admin', 'approver', 'presales', 'project_manager', 'governance_leader', 'governance_member', 'defense_leader', 'defense_member', 'offense_lead', 'finance', 'legal'],
   },
   {
+    label: 'VAPT Lifecycle, DFIR Chain of Custody & SOC SLA (M11/M12/M13)',
+    href: '/erp/cyber-delivery',
+    group: 'V4 Enterprise ERP',
+    keywords: 'm11 m12 m13 vapt roe findings cvss retest dfir chain of custody soc mdr sla mttd mttr',
+    roles: ['admin', 'approver', 'presales', 'project_manager', 'offense_lead', 'offense_member', 'defense_leader', 'defense_member', 'finance'],
+  },
+  {
     label: 'Operations Center, Durable Jobs, DR Drills & Audit Explorer (M30)',
     href: '/erp/operations-center',
     group: 'V4 Enterprise ERP',

@@ -1,5 +1,5 @@
 -- =============================================================================
--- RTICORE ? Complete PostgreSQL Schema & Compatibility Layer (Migrations 0001-0045)
+-- RTICORE - Complete PostgreSQL Schema & Compatibility Layer (Migrations 0001-0056)
 -- Compatible with PostgreSQL 16+ and PGlite
 -- =============================================================================
 
@@ -3697,4 +3697,134 @@ CREATE TABLE IF NOT EXISTS rticore_backup_drills (
  UNIQUE(tenant_id, id),
  CHECK(verified_by IS NULL OR lower(verified_by) != lower(executed_by)),
  CHECK(restore_verified = 0 OR verified_by IS NOT NULL)
+);
+
+-- =============================================================================
+-- Migration 0056: VAPT Operations, DFIR Chain of Custody & SOC/MDR SLA Metrics
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS rticore_vapt_engagements (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ project_id TEXT,
+ engagement_code TEXT NOT NULL CHECK(length(engagement_code) BETWEEN 4 AND 64),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ test_type TEXT NOT NULL CHECK(test_type IN ('web_app','mobile_app','api','network','cloud','active_directory','wireless','red_team','purple_team','source_code')),
+ scope_assets_json TEXT NOT NULL DEFAULT '[]',
+ roe_document_id TEXT,
+ authorization_approved_by TEXT,
+ authorization_notes TEXT,
+ window_start TEXT NOT NULL,
+ window_end TEXT NOT NULL,
+ lead_pentester_email TEXT NOT NULL,
+ assigned_testers_json TEXT NOT NULL DEFAULT '[]',
+ status TEXT NOT NULL DEFAULT 'registered' CHECK(status IN (
+  'registered','scope_validated','roe_approved','scheduled','testing',
+  'qa_review','retest','report_delivered','customer_accepted','closed'
+ )),
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version > 0),
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, engagement_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(window_end >= window_start),
+ CHECK(authorization_approved_by IS NULL OR lower(authorization_approved_by) != lower(created_by)),
+ CHECK(status NOT IN ('roe_approved','scheduled','testing','qa_review','retest','report_delivered','customer_accepted','closed')
+   OR (authorization_approved_by IS NOT NULL AND coalesce(length(authorization_notes), 0) >= 12))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_vapt_eng_entity ON rticore_vapt_engagements(tenant_id, legal_entity_id, status);
+
+CREATE TABLE IF NOT EXISTS rticore_vapt_findings (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ engagement_id TEXT NOT NULL,
+ finding_code TEXT NOT NULL CHECK(length(finding_code) BETWEEN 3 AND 48),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ severity TEXT NOT NULL CHECK(severity IN ('info','low','medium','high','critical')),
+ cvss_score_tenths BIGINT NOT NULL CHECK(cvss_score_tenths BETWEEN 0 AND 100),
+ cwe_owasp_ref TEXT NOT NULL DEFAULT 'OWASP-TOP10',
+ affected_asset TEXT NOT NULL CHECK(length(affected_asset) BETWEEN 3 AND 250),
+ evidence_document_id TEXT,
+ remediation_guidance TEXT NOT NULL CHECK(length(remediation_guidance) BETWEEN 12 AND 3000),
+ retest_status TEXT NOT NULL DEFAULT 'open' CHECK(retest_status IN ('open','qa_approved','retest_requested','verified_fixed','still_vulnerable','risk_accepted')),
+ created_by TEXT NOT NULL,
+ qa_reviewed_by TEXT,
+ qa_notes TEXT,
+ retested_by TEXT,
+ retest_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, engagement_id, finding_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, engagement_id) REFERENCES rticore_vapt_engagements(tenant_id, id),
+ CHECK(qa_reviewed_by IS NULL OR lower(qa_reviewed_by) != lower(created_by))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_vapt_find_eng ON rticore_vapt_findings(tenant_id, engagement_id, severity, retest_status);
+
+CREATE TABLE IF NOT EXISTS rticore_dfir_incidents (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ flexguard_request_id TEXT,
+ incident_code TEXT NOT NULL CHECK(length(incident_code) BETWEEN 4 AND 64),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ severity TEXT NOT NULL CHECK(severity IN ('sev1_critical','sev2_high','sev3_medium','sev4_low')),
+ incident_commander_email TEXT NOT NULL,
+ activated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ contained_at TEXT,
+ recovered_at TEXT,
+ emergency_mandays_tenths BIGINT NOT NULL DEFAULT 0 CHECK(emergency_mandays_tenths >= 0),
+ post_incident_summary TEXT,
+ status TEXT NOT NULL DEFAULT 'intake' CHECK(status IN ('intake','activated','investigating','contained','recovering','post_incident_review','closed')),
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, incident_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_dfir_chain_of_custody (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ incident_id TEXT NOT NULL,
+ evidence_tag TEXT NOT NULL CHECK(length(evidence_tag) BETWEEN 3 AND 64),
+ evidence_description TEXT NOT NULL CHECK(length(evidence_description) BETWEEN 8 AND 500),
+ sha256_hash TEXT NOT NULL CHECK(length(sha256_hash) = 64),
+ custody_action TEXT NOT NULL CHECK(custody_action IN ('collected','transferred','analyzed','sealed','returned','archived')),
+ actor_email TEXT NOT NULL,
+ custodian_to_email TEXT,
+ storage_location TEXT NOT NULL CHECK(length(storage_location) BETWEEN 3 AND 200),
+ notes TEXT NOT NULL CHECK(length(notes) BETWEEN 8 AND 1000),
+ recorded_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, incident_id) REFERENCES rticore_dfir_incidents(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_soc_sla_metrics (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ period_code TEXT NOT NULL,
+ monitored_assets BIGINT NOT NULL CHECK(monitored_assets >= 0),
+ active_use_cases BIGINT NOT NULL CHECK(active_use_cases >= 0),
+ alerts_triaged BIGINT NOT NULL CHECK(alerts_triaged >= 0),
+ incidents_escalated BIGINT NOT NULL CHECK(incidents_escalated >= 0),
+ mttd_minutes BIGINT NOT NULL CHECK(mttd_minutes >= 0),
+ mttr_minutes BIGINT NOT NULL CHECK(mttr_minutes >= 0),
+ sla_compliance_bps BIGINT NOT NULL CHECK(sla_compliance_bps BETWEEN 0 AND 10000),
+ subscription_revenue_cents BIGINT NOT NULL DEFAULT 0 CHECK(subscription_revenue_cents >= 0),
+ direct_soc_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(direct_soc_cost_cents >= 0),
+ recorded_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, customer_id, period_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id)
 );

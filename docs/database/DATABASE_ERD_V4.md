@@ -1,7 +1,7 @@
 # 9. Database Architecture & ERD (Migrations 0001–0055)
 
-**Total Migrations:** 56 SQL files (`0001` through `0055`, including dual `0002_*`)  
-**PostgreSQL Parity:** `rticore_postgresql_schema.sql` (186 tables) + `rticore_postgresql_triggers.sql` (289 PL/pgSQL triggers generated via `scripts/generate-postgres-triggers.mjs`, verified by `npm run test:pg-triggers`).
+**Total Migrations:** 57 SQL files (`0001` through `0056`, including dual `0002_*`)  
+**PostgreSQL Parity:** `rticore_postgresql_schema.sql` (191 tables) + `rticore_postgresql_triggers.sql` (295 PL/pgSQL triggers generated via `scripts/generate-postgres-triggers.mjs`, verified by `npm run test:pg-triggers`).
 
 ## Domain Entity Relationships
 ```mermaid

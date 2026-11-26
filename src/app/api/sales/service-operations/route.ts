@@ -10,6 +10,7 @@ import {isOffenseRole,OFFENSE_TASKS} from '@/lib/offense-team';
 import {isGovernanceRole,GOVERNANCE_TASKS} from '@/lib/governance-team';
 import {isITDevRole,ITDEV_TASKS} from '@/lib/itdev-team';
 import {accessibleDeal,getProject,publicProject,financeRole,supportingOriginal,projectWrite,check,cents,cashSummary,renewalState,ServiceError,validatedParameters,type Contract,type Invoice} from '@/lib/service-operations';
+import {buildFinanceOutboxStatement} from '@/lib/finance-docking-bridge';
 export const dynamic='force-dynamic';
 const reply=(x:unknown,status=200)=>Response.json(x,{status,headers:privateHeaders});
 const fail=(message:string,status=422)=>reply({success:false,message},status);
@@ -191,6 +192,7 @@ export async function POST(req:Request){
    }else if(action==='approve_contract'){
     check(reviewer||role==='legal','Approval kontrak hanya Finance/Legal/Approver/Admin',403);check(c.status==='draft'&&c.configured_by&&c.end_date&&c.renewal_cents,'Lengkapi konfigurasi kontrak',409);check(c.configured_by!==email,'Maker kontrak tidak boleh review sendiri',403);check(txt(v.notes,1500).length>=12,'Catatan review wajib');
     writes.push(db.prepare("UPDATE rticore_service_contracts SET status='active',approved_by=?,version=version+1 WHERE tenant_id=? AND id=?").bind(email,TENANT,c.id));
+    await emitDock('contract.approved',c.id,`contract-approve-${c.id}-v${c.version}`,{project_id:p.id,opportunity_id:d.id,contract_id:c.id,model:c.model,recurring_cents:c.recurring_cents,renewal_cents:c.renewal_cents,approved_by:email});
    }else if(action==='risk'){
     check(financial||role==='sales','Risiko churn hanya Sales/Finance/Admin',403);check(c.status==='active'&&['low','medium','high'].includes(String(v.churn_risk))&&txt(v.notes,1500).length>=12,'Kontrak aktif dan penilaian risiko wajib',409);
     writes.push(db.prepare('UPDATE rticore_service_contracts SET churn_risk=?,churn_reason=?,version=version+1 WHERE tenant_id=? AND id=?').bind(String(v.churn_risk),txt(v.notes,1500),TENANT,c.id));

@@ -18,7 +18,7 @@
    - `npm ci --no-audit --no-fund`
    - `npm run typecheck && NEXT_TELEMETRY_DISABLED=1 RTICORE_BUILD_CPUS=1 npm run build`
 4. **Preflight & Supervised Start:**
-   - `npm run preflight:hostinger` (validates TLS, tables, 289 active triggers, non-privileged DB role, active membership — read-only).
+   - `npm run preflight:hostinger` (validates TLS, tables, 295 active triggers, non-privileged DB role, active membership — read-only).
    - Enable `deployment/hostinger/rticore.service` and `deployment/hostinger/rticore-worker.service`.
    - Deploy hardened `deployment/hostinger/nginx-rticore.conf.example` and verify `nginx -t`.
 5. **Post-Deployment Validation:**
