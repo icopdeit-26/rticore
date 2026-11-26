@@ -19,7 +19,7 @@ export function isLocalMode():boolean{
   return typeof process!=='undefined'&&process?.env?.RTICORE_RUNTIME!=='hostinger'&&process?.env?.RTICORE_LOCAL_MODE==='1';
 }
 
-const LOCAL_KEYS=['RTICORE_ACCESS_AUD','RTICORE_ACCESS_TEAM_DOMAIN','RTICORE_AI_ENCRYPTION_KEY',
+const LOCAL_KEYS=['RTICORE_OIDC_ISSUER','RTICORE_OIDC_CLIENT_ID','RTICORE_OIDC_AUDIENCE','RTICORE_ACCESS_AUD','RTICORE_ACCESS_TEAM_DOMAIN','RTICORE_AI_ENCRYPTION_KEY',
   'RTICORE_DOCUMENT_ENCRYPTION_KEY','RTICORE_SECURITY_ALLOWED_HOSTS','RTICORE_LOCAL_SESSION_SECRET'] as const;
 
 export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
@@ -27,8 +27,8 @@ export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
     if(typeof process!=='undefined'&&process?.env?.RTICORE_RUNTIME==='hostinger'){
       const e=process.env;
       validateHostingerConfig(e);
-      const env:Record<string,unknown>={RTICORE_DB:getLocalPostgresDB(),RTICORE_LOCAL_MODE:'0'};
-      for(const key of LOCAL_KEYS)if(key!=='RTICORE_LOCAL_SESSION_SECRET'&&e[key])env[key]=e[key];
+      const env:Record<string,unknown>={RTICORE_DB:getLocalPostgresDB(),RTICORE_LOCAL_MODE:'0',RTICORE_RUNTIME:'hostinger'};
+      for(const key of LOCAL_KEYS)if(key!=='RTICORE_LOCAL_SESSION_SECRET'&&!key.startsWith('RTICORE_ACCESS_')&&e[key])env[key]=e[key];
       return env as T;
     }
   }

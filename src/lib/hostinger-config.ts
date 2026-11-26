@@ -4,9 +4,7 @@ export function validateHostingerConfig(e: Record<string, string | undefined>): 
       (e.RTICORE_DB_ENGINE && e.RTICORE_DB_ENGINE !== 'postgres') ||
       e.NODE_TLS_REJECT_UNAUTHORIZED === '0')
     throw new Error('Hostinger requires native runtime, external PostgreSQL and disabled local login');
-  if (!/^[a-z0-9][a-z0-9-]*\.cloudflareaccess\.com$/.test(e.RTICORE_ACCESS_TEAM_DOMAIN || '') ||
-      !/^[a-fA-F0-9]{64}$/.test(e.RTICORE_ACCESS_AUD || ''))
-    throw new Error('Hostinger requires valid Cloudflare Access team and application audience');
+  validateNativeOIDC(e);
   if (!e.DATABASE_URL) throw new Error('Hostinger requires DATABASE_URL');
   let url: URL;
   try { url = new URL(e.DATABASE_URL); } catch { throw new Error('Invalid PostgreSQL URL'); }
@@ -18,4 +16,20 @@ export function validateHostingerConfig(e: Record<string, string | undefined>): 
   // Do not let connection-string SSL options override the explicit verified TLS policy.
   url.search = '';
   return url;
+}
+
+/** Keycloak realm issuer and client/audience are operator-controlled, never request-derived. */
+export function validateNativeOIDC(e: Record<string, string | undefined>) {
+  let issuer: URL;
+  try { issuer = new URL(e.RTICORE_OIDC_ISSUER || ''); }
+  catch { throw new Error('Hostinger requires an HTTPS OIDC realm issuer'); }
+  if (issuer.protocol !== 'https:' || issuer.username || issuer.password || issuer.search || issuer.hash ||
+      !/^\/realms\/[A-Za-z0-9_-]+$/.test(issuer.pathname) ||
+      issuer.hostname.endsWith('.cloudflareaccess.com'))
+    throw new Error('Hostinger requires an independent HTTPS Keycloak realm issuer');
+  const clientId = e.RTICORE_OIDC_CLIENT_ID || '';
+  const audience = e.RTICORE_OIDC_AUDIENCE || '';
+  if (!/^[A-Za-z0-9_.-]{1,128}$/.test(clientId) || !/^[A-Za-z0-9_.-]{1,128}$/.test(audience))
+    throw new Error('Hostinger requires OIDC client ID and API audience');
+  return { issuer: issuer.href, clientId, audience };
 }
