@@ -1,0 +1,2 @@
+# V5.1 B01 increment 11
+Read-only contract and FlexGuard source checks add scope, identity, lifecycle, recurring/renewal values, credits, posted status and outbox linkage. Contract amounts compared to current source may require historical version review; no revenue recognition or accounting plan certification is claimed. FlexGuard financial plan/GL settlement remains outstanding. Tests cover empty/missing source on isolated PostgreSQL; populated positive/mismatch fixtures and actual staging certification still required. No merge or deployment. Finance guard preserved.

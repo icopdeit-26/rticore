@@ -83,6 +83,31 @@ export async function scanProcurementSources(client){
  return rows[0];
 }
 
+// Historical source checks: contract lifecycle may legitimately advance after approval.
+export async function scanContractSources(client){
+ const {rows}=await client.query(`SELECT count(*)::text AS total,
+ count(*) FILTER (WHERE c.id IS NULL OR p.id IS NULL)::text AS missing_source,
+ count(*) FILTER (WHERE c.id IS NOT NULL AND (s.project_id IS NULL OR s.status<>'approved' OR s.legal_entity_id IS DISTINCT FROM e.legal_entity_id))::text AS invalid_project_scope,
+ count(*) FILTER (WHERE c.id IS NOT NULL AND p.id IS NOT NULL AND (c.status NOT IN ('active','expired','churned') OR e.payload_json::jsonb->>'contract_id' IS DISTINCT FROM c.id OR e.payload_json::jsonb->>'project_id' IS DISTINCT FROM p.id OR e.payload_json::jsonb->>'opportunity_id' IS DISTINCT FROM p.opportunity_id OR e.payload_json::jsonb->>'model' IS DISTINCT FROM c.model OR e.payload_json::jsonb->>'recurring_cents' IS DISTINCT FROM c.recurring_cents::text OR e.payload_json::jsonb->>'renewal_cents' IS DISTINCT FROM c.renewal_cents::text OR lower(e.payload_json::jsonb->>'approved_by') IS DISTINCT FROM lower(c.approved_by)))::text AS source_mismatch
+ FROM public.rticore_finance_integration_events e
+ LEFT JOIN public.rticore_service_contracts c ON c.tenant_id=e.tenant_id AND c.id=e.source_document_id
+ LEFT JOIN public.rticore_delivery_projects p ON p.tenant_id=c.tenant_id AND p.id=c.project_id
+ LEFT JOIN public.rticore_erp_project_scopes s ON s.tenant_id=c.tenant_id AND s.project_id=c.project_id
+ WHERE e.direction='outbox' AND e.source_system='RTICORE' AND e.event_type='contract.approved'`);
+ return rows[0];
+}
+// No accounting policy inference or automatic financial settlement.
+export async function scanFlexGuardSources(client){
+ const {rows}=await client.query(`SELECT count(*)::text AS total,
+ count(*) FILTER (WHERE l.id IS NULL)::text AS missing_source,
+ count(*) FILTER (WHERE l.id IS NOT NULL AND l.legal_entity_id IS DISTINCT FROM e.legal_entity_id)::text AS invalid_entity_scope,
+ count(*) FILTER (WHERE l.id IS NOT NULL AND (l.approval_status<>'posted' OR l.financial_value_cents<=0 OR l.finance_outbox_event_id IS DISTINCT FROM e.id OR e.payload_json::jsonb->>'wallet_id' IS DISTINCT FROM l.wallet_id OR e.payload_json::jsonb->>'customer_id' IS DISTINCT FROM l.customer_id OR e.payload_json::jsonb->>'credits' IS DISTINCT FROM abs(l.credit_amount)::text OR (e.event_type='flexguard.credit_consumed' AND l.transaction_type<>'consumption') OR (e.event_type='flexguard.credit_purchased' AND l.transaction_type NOT IN ('purchase','top_up'))))::text AS source_mismatch
+ FROM public.rticore_finance_integration_events e
+ LEFT JOIN public.rticore_flexguard_enterprise_ledger l ON l.tenant_id=e.tenant_id AND l.id=e.source_document_id
+ WHERE e.direction='outbox' AND e.source_system='RTICORE' AND e.event_type IN ('flexguard.credit_purchased','flexguard.credit_consumed')`);
+ return rows[0];
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -114,9 +139,11 @@ async function main() {
     const invariantCounts=await scanJournalIntegrity(client);
     const timesheetSources=await scanTimesheetSources(client);
     const procurementSources=await scanProcurementSources(client);
+    const contractSources=await scanContractSources(client);
+    const flexguardSources=await scanFlexGuardSources(client);
     await client.query('ROLLBACK');
-    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
