@@ -1,7 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  ...(process.env.RTICORE_BUILD_CPUS === '1' ? { experimental: { cpus: 1, webpackMemoryOptimizations: true } } : {}),
+  // Shared hosting exposes host CPUs but imposes a much smaller thread quota.
+  experimental: {
+    cpus: 1,
+    workerThreads: false,
+    staticGenerationMaxConcurrency: 1,
+    webpackMemoryOptimizations: true,
+  },
   serverExternalPackages: ['unpdf'],
   webpack: (config, { isServer }) => {
     if (!isServer) {

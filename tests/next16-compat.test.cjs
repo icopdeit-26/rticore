@@ -26,3 +26,11 @@ test('Cloudflare build includes runtime compatibility guard and supported OpenNe
   assert.match(pkg.scripts['build:cf'], /test:runtime-compat/);
   assert.match(pkg.scripts['build:cf'], /opennextjs-cloudflare build/);
 });
+
+
+test('Hostinger build worker limits are active without environment overrides', async () => {
+  const { default: config } = await import(require('node:url').pathToFileURL(path.join(root, 'next.config.mjs')).href);
+  assert.equal(config.experimental.cpus, 1);
+  assert.equal(config.experimental.workerThreads, false);
+  assert.equal(config.experimental.staticGenerationMaxConcurrency, 1);
+});
