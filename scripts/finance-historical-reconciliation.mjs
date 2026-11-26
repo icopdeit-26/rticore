@@ -42,6 +42,22 @@ export async function scanJournalIntegrity(client){
   return Object.fromEntries(Object.entries(integrity).map(([k,v])=>[k,String(v)]));
 }
 
+// Source verification is deliberately limited to the documented timesheet envelope.
+export async function scanTimesheetSources(client){
+ const {rows}=await client.query(`SELECT
+ count(*)::text AS total,
+ count(*) FILTER (WHERE t.id IS NULL)::text AS missing_source,
+ count(*) FILTER (WHERE t.id IS NOT NULL AND (p.project_id IS NULL OR p.status<>'approved' OR p.legal_entity_id<>e.legal_entity_id))::text AS invalid_project_scope,
+ count(*) FILTER (WHERE t.id IS NOT NULL AND (t.status<>'approved' OR e.payload_json::jsonb->>'timesheet_id' IS DISTINCT FROM t.id OR e.payload_json::jsonb->>'project_id' IS DISTINCT FROM t.project_id OR e.payload_json::jsonb->>'minutes' IS DISTINCT FROM t.minutes::text OR e.payload_json::jsonb->>'cost_snapshot_cents' IS DISTINCT FROM t.cost_snapshot_cents::text OR lower(e.payload_json::jsonb->>'approved_by') IS DISTINCT FROM lower(t.reviewed_by)))::text AS source_mismatch,
+ count(*) FILTER (WHERE e.status='processed' AND (c.id IS NULL OR c.status<>'approved' OR c.is_actual<>1 OR c.legal_entity_id<>e.legal_entity_id OR c.project_id IS DISTINCT FROM t.project_id OR c.amount_cents IS DISTINCT FROM t.cost_snapshot_cents))::text AS processed_cost_ledger_review
+ FROM public.rticore_finance_integration_events e
+ LEFT JOIN public.rticore_project_timesheets t ON t.tenant_id=e.tenant_id AND t.id=e.source_document_id
+ LEFT JOIN public.rticore_erp_project_scopes p ON p.tenant_id=t.tenant_id AND p.project_id=t.project_id
+ LEFT JOIN public.rticore_finance_project_cost_ledger c ON c.tenant_id=e.tenant_id AND c.source_domain='psa_timesheet' AND c.source_record_id=e.source_document_id
+ WHERE e.direction='outbox' AND e.source_system='RTICORE' AND e.event_type='timesheet.approved'`);
+ return rows[0];
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -71,9 +87,10 @@ async function main() {
     }
     // Aggregate checks only: no customer data or journal identifiers leave staging.
     const invariantCounts=await scanJournalIntegrity(client);
+    const timesheetSources=await scanTimesheetSources(client);
     await client.query('ROLLBACK');
-    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,automated_scan:ok?'PASS':'FAIL',source_reconciliation_certified:false},null,2));
+    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
