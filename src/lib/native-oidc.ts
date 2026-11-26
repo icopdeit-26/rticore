@@ -11,11 +11,11 @@ export async function verifyNativeOIDCToken(token:string, config:NativeOIDCConfi
  }
  const {payload}=await jwtVerify(token,resolver,{
    issuer:config.issuer,audience:config.audience,algorithms:['RS256'],
-   requiredClaims:['exp','iat','sub','email','email_verified','azp','typ'],
+   requiredClaims:['exp','iat','sub','email','email_verified','azp','typ','sid'],
    clockTolerance:5,maxTokenAge:'15m'
  });
  if(payload.typ!=='Bearer'||payload.email_verified!==true||payload.azp!==config.clientId||
-    typeof payload.email!=='string'||typeof payload.sub!=='string'||!payload.sub||
+    typeof payload.email!=='string'||typeof payload.sub!=='string'||!payload.sub||typeof payload.sid!=='string'||!payload.sid||
     typeof payload.exp!=='number'||typeof payload.iat!=='number'||payload.exp<=payload.iat||payload.exp-payload.iat>900)
    throw new Error('Access token policy rejected');
  const email=payload.email.trim().toLowerCase();

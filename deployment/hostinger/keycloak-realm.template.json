@@ -35,7 +35,8 @@
         "https://rticore.example.invalid"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://rticore.example.invalid/login"
       },
       "protocolMappers": [
         {
@@ -50,5 +51,33 @@
         }
       ]
     }
-  ]
+  ],
+  "browserFlow": "rticore-required-mfa",
+  "authenticationFlows": [
+    {
+      "alias": "rticore-required-mfa",
+      "description": "Mandatory password and OTP for all browser logins; no cookie-only alternative",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "authenticatorFlow": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "authenticatorFlow": false
+        }
+      ]
+    }
+  ],
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA256",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30
 }

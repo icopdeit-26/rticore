@@ -6,6 +6,10 @@ export function validateHostingerConfig(e: Record<string, string | undefined>): 
     throw new Error('Hostinger requires native runtime, external PostgreSQL and disabled local login');
   if (e.HOSTNAME_BIND && !['127.0.0.1','::1'].includes(e.HOSTNAME_BIND)) throw new Error('Hostinger requires loopback origin');
   validateNativeOIDC(e);
+  if (!e.RTICORE_OIDC_CLIENT_SECRET || e.RTICORE_OIDC_CLIENT_SECRET.length < 32) throw new Error('Hostinger requires confidential OIDC client secret');
+  let origin: URL;
+  try { origin = new URL(e.RTICORE_PUBLIC_ORIGIN || ''); } catch { throw new Error('Hostinger requires public HTTPS origin'); }
+  if(origin.protocol!=='https:' || origin.origin!==e.RTICORE_PUBLIC_ORIGIN || origin.username || origin.password) throw new Error('Hostinger requires canonical HTTPS origin');
   if (!e.DATABASE_URL) throw new Error('Hostinger requires DATABASE_URL');
   let url: URL;
   try { url = new URL(e.DATABASE_URL); } catch { throw new Error('Invalid PostgreSQL URL'); }

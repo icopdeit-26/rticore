@@ -40,6 +40,11 @@ export function isEnabledD1ApiRoute(path: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
+  if(process.env.RTICORE_RUNTIME==='hostinger' && !['GET','HEAD','OPTIONS'].includes(request.method)) {
+    const origin=process.env.RTICORE_PUBLIC_ORIGIN;
+    if(!origin||request.headers.get('origin')!==origin||request.headers.get('sec-fetch-site')==='cross-site')
+      return NextResponse.json({success:false,message:'Origin tidak diizinkan.'},{status:403,headers:{'Cache-Control':'no-store'}});
+  }
   if (isEnabledD1ApiRoute(request.nextUrl.pathname)) return NextResponse.next();
   return NextResponse.json(
     { success: false, message: 'API demo nonpersisten dinonaktifkan hingga migrasi otorisasi selesai.' },
