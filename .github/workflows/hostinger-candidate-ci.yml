@@ -22,7 +22,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --test tests/hostinger-config.test.mjs tests/hostinger-production-safety.test.cjs
+      - run: node --test tests/hostinger-config.test.mjs tests/hostinger-production-safety.test.cjs tests/native-oidc.test.mjs
       - run: npm run typecheck
       - run: npm run build
       - name: Native HTTP smoke (no production credentials)

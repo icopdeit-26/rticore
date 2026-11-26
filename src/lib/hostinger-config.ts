@@ -4,6 +4,7 @@ export function validateHostingerConfig(e: Record<string, string | undefined>): 
       (e.RTICORE_DB_ENGINE && e.RTICORE_DB_ENGINE !== 'postgres') ||
       e.NODE_TLS_REJECT_UNAUTHORIZED === '0')
     throw new Error('Hostinger requires native runtime, external PostgreSQL and disabled local login');
+  if (e.HOSTNAME_BIND && !['127.0.0.1','::1'].includes(e.HOSTNAME_BIND)) throw new Error('Hostinger requires loopback origin');
   validateNativeOIDC(e);
   if (!e.DATABASE_URL) throw new Error('Hostinger requires DATABASE_URL');
   let url: URL;

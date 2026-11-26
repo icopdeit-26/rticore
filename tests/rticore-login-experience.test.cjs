@@ -8,7 +8,8 @@ test('RTICORE login is a complete branded entry with Access and logout',()=>{
  assert.match(page,/Login RTICORE/);
  assert.match(page,/RTI/);
  assert.match(page,/Masuk dengan Cloudflare Access/);
- assert.match(page,/<a href="\/" /);
+  assert.match(page,/Masuk dengan SSO perusahaan/);
+ assert.match(page,/href=\{nativeMode\?"\/oauth2\/start\?rd=%2Flogin":"\/"\}/);
  assert.match(page,/LogoutButton/);
  assert.match(page,/LoginSessionStatus/);
  assert.match(page,/min-h-\[100dvh\]/);

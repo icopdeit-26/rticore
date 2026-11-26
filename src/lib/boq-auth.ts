@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { getRuntimeEnv } from './runtime-env';
+import { verifyNativeOIDCToken } from './native-oidc';
 import { emailFromLocalSession, validSessionSecret } from './local-auth';
 import {accessRestricted} from './system-settings';
 import type { BoQRole } from './boq-domain';
@@ -34,13 +35,8 @@ async function verifiedEmail(request:Request,env:CloudEnv):Promise<{email:string
    const token=request.headers.get('x-rticore-oidc-token');
    if(!token)return {error:deny(401,'Login SSO diperlukan.')};
    try{
-     let keys=cache.get(issuer);
-     if(!keys){keys=createRemoteJWKSet(new URL(issuer+'/protocol/openid-connect/certs'));cache.set(issuer,keys);}
-     const verified=await jwtVerify(token,keys,{issuer,audience,algorithms:['RS256'],requiredClaims:['exp','iat','sub','email','email_verified','azp'],clockTolerance:5,maxTokenAge:'15m'});
-     const payload=verified.payload;
-     if(payload.email_verified!==true||payload.azp!==client||typeof payload.email!=='string'||typeof payload.sub!=='string'||!payload.sub)
-       return {error:deny(403,'Identitas OIDC tidak memenuhi kebijakan akses.')};
-     return {email:payload.email.trim().toLowerCase()};
+     const identity=await verifyNativeOIDCToken(token,{issuer,audience,clientId:client});
+     return {email:identity.email};
    }catch{return {error:deny(401,'Token SSO tidak valid atau kedaluwarsa.')};}
  }
  if(env.RTICORE_LOCAL_MODE==='1'){
