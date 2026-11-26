@@ -51,7 +51,8 @@ jobs:
       - run: npm run test:pg-triggers
       - run: npm run test:erp
       - run: npm run test:erp:extensions
-      - run: node --test tests/finance-historical-reconciliation.test.mjs
+      - run: node --test tests/finance-historical-reconciliation.test.mjs tests/foundation-inventory.test.mjs
+      - run: node scripts/foundation-inventory.mjs > /tmp/rticore-foundation-inventory.json
       - run: npm run test:finance-520
       - run: npm run test:enterprise-pricing
       - run: npm run test:flexguard-enterprise

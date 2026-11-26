@@ -6,8 +6,8 @@
  * - Hostinger Web Hosting / Cron: `node scripts/hostinger-worker.mjs --once`
  * - Hostinger VPS KVM (systemd):  `node scripts/hostinger-worker.mjs`
  *
- * Uses PostgreSQL `FOR UPDATE SKIP LOCKED` to guarantee safe concurrent workers,
- * idempotent job processing, exponential retry backoff, and dead-letter quarantine.
+ * Uses PostgreSQL row locking and ownership checks. Uncertified handlers are quarantined;
+ * business execution, retry scheduling and crash recovery require separate certification.
  * Never logs secrets or credentials.
  */
 import os from 'node:os';
@@ -46,23 +46,14 @@ async function processNextJob(pool) {
     await client.query("UPDATE rticore_background_jobs SET status='running', attempts=attempts+1, locked_by=$1 WHERE id=$2", [workerId, job.id]);
     await client.query('COMMIT');
 
-    try {
-      // Execute deterministic, non-destructive job handler (never auto-posts unauthorized GL entries)
-      if (job.job_type === 'backup_verification' || job.job_type === 'renewal_signal_scan' || job.job_type === 'sla_breach_monitor' || job.job_type === 'flexguard_expiry_scan' || job.job_type === 'finance_outbox_dispatch' || job.job_type === 'sales_activity_sla' || job.job_type === 'report_generation') {
-        await pool.query("UPDATE rticore_background_jobs SET status='completed', completed_at=to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), last_error=NULL WHERE id=$1", [job.id]);
-      } else {
-        throw new Error(`Unsupported job_type: ${job.job_type}`);
-      }
-      console.log(JSON.stringify({ level: 'info', event: 'job_completed', workerId, jobId: job.id, jobType: job.job_type, ts: new Date().toISOString() }));
-      return true;
-    } catch (err) {
-      const nextAttempts = Number(job.attempts) + 1;
-      const dead = nextAttempts >= Number(job.max_attempts);
-      const nextStatus = dead ? 'dead_letter' : 'queued';
-      await pool.query('UPDATE rticore_background_jobs SET status=$1, last_error=$2 WHERE id=$3', [nextStatus, String(err instanceof Error ? err.message : err).slice(0, 500), job.id]);
-      console.error(JSON.stringify({ level: 'error', event: dead ? 'job_dead_letter' : 'job_retry_scheduled', workerId, jobId: job.id, attempts: nextAttempts, ts: new Date().toISOString() }));
-      return true;
-    }
+    // No business handler is certified yet. Never fabricate completion or replay money events.
+    const quarantined = await pool.query(
+      "UPDATE rticore_background_jobs SET status='dead_letter', locked_by=NULL, last_error='HANDLER_NOT_CERTIFIED' WHERE id=$1 AND tenant_id=$2 AND status='running' AND locked_by=$3",
+      [job.id, job.tenant_id, workerId],
+    );
+    if (quarantined.rowCount !== 1) throw new Error('Worker ownership changed before quarantine');
+    console.error(JSON.stringify({level:'warn',event:'job_handler_not_certified',workerId,jobId:job.id,jobType:job.job_type,ts:new Date().toISOString()}));
+    return true;
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch { /* ignore */ }
     throw err;
@@ -98,7 +89,7 @@ async function main() {
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}` || process.argv[1]?.endsWith('hostinger-worker.mjs')) {
   main().catch(err => {
-    console.error(JSON.stringify({ level: 'error', event: 'worker_fatal', message: err instanceof Error ? err.message : 'Unknown error', ts: new Date().toISOString() }));
+    console.error(JSON.stringify({ level: 'error', event: 'worker_fatal', message: 'Worker failed; inspect restricted infrastructure diagnostics', ts: new Date().toISOString() }));
     process.exitCode = 1;
   });
 }
