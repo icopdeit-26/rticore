@@ -110,14 +110,11 @@ if(fs.existsSync(pgSchemaFile)){
   const pgSchema=fs.readFileSync(pgSchemaFile,'utf8');
   const pgDataDir=path.join(root,'.pgdata');
   const {PGlite}=await import('@electric-sql/pglite');
-  let pg;
-  try{
-    pg=await PGlite.create(pgDataDir);
-  }catch{
-    console.log('Memulihkan direktori PostgreSQL lokal (.pgdata) yang terputus tidak bersih...');
-    fs.rmSync(pgDataDir,{recursive:true,force:true});
-    pg=await PGlite.create(pgDataDir);
-  }
+  // Opening an existing database must never destroy its contents.
+  // Preserve the directory for operator-led diagnosis and verified restore.
+  const pg=await PGlite.create(pgDataDir).catch(error=>{
+    throw new Error('PostgreSQL lokal gagal dibuka; direktori data dipertahankan. Periksa backup sebelum recovery.',{cause:error});
+  });
   await pg.exec(pgSchema);
   const {ensureTriggers}=await import('./postgres-worker.mjs');
   await ensureTriggers(pg);
