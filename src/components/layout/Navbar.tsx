@@ -1,5 +1,6 @@
 'use client';
 import {LogoutButton} from '@/components/auth/LogoutButton';
+import {EnterpriseCommandPalette} from '@/components/layout/EnterpriseCommandPalette';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -224,6 +225,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Header Actions: AI Trigger, Settings, Approvals, Profile */}
           <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
+            <EnterpriseCommandPalette role={role} />
             {/* AI Assistant Quick Trigger */}
             <button
               onClick={() => setAiAssistantOpen(true)}

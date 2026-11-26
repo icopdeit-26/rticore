@@ -66,7 +66,7 @@
     "test:finance-520": "node --test tests/rti-finance-uat-520.test.cjs",
     "test:enterprise-pricing": "node --test tests/enterprise-pricing-catalog.test.cjs",
     "test:flexguard-enterprise": "node --test tests/flexguard-enterprise-uat.test.cjs",
-    "test:uat-v4": "node --test tests/rticore-enterprise-uat-v4.test.cjs",
+    "test:uat-v4": "node --test tests/rticore-enterprise-uat-v4.test.cjs tests/enterprise-command-palette.test.cjs",
     "test:uat-1200": "npm run test:finance-520 && npm run test:enterprise-pricing && npm run test:flexguard-enterprise && npm run test:uat-v4",
     "drill:backup-restore": "node scripts/hostinger-backup-restore-drill.mjs",
     "test:branding": "node --test tests/rticore-branding.test.cjs tests/rticore-tenant-compat.test.cjs",
