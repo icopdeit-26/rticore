@@ -61,6 +61,20 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES('ci-alert-legacy','ci-tenant','sales_activity_sla','ci-alert-legacy','ci@example.invalid')");
   assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),true);
   assert.equal((await pool.query("SELECT count(*)::int n FROM rticore_sales_activity_alerts WHERE alert_key LIKE 'lead:nurture:ci-lead:2:%'")).rows[0].n,0);
+  // Inject a transient failure after earlier alert statements; verify savepoint rollback and bounded retry.
+  await pool.query("UPDATE rticore_sales_activity_tasks SET revision=revision+1 WHERE id='ci-task'");
+  await pool.query("CREATE FUNCTION ci_fail_alert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.alert_type='manager_escalation' THEN RAISE EXCEPTION 'synthetic transient failure' USING ERRCODE='55P03'; END IF; RETURN NEW; END $$");
+  await pool.query("CREATE TRIGGER ci_fail_alert BEFORE INSERT ON rticore_sales_activity_alerts FOR EACH ROW EXECUTE FUNCTION ci_fail_alert()");
+  await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by,max_attempts) VALUES('ci-retry','ci-tenant','sales_activity_sla','ci-retry-key','ci@example.invalid',2)");
+  assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),true);
+  assert.deepEqual((await pool.query("SELECT status,attempts,last_error FROM rticore_background_jobs WHERE id='ci-retry'")).rows,[{status:'queued',attempts:'1',last_error:'TRANSIENT_HANDLER_FAILURE'}]);
+  assert.equal((await pool.query("SELECT count(*)::int n FROM rticore_sales_activity_alerts WHERE alert_key='task:overdue:ci-task:2'")).rows[0].n,0);
+  assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),false);
+  await pool.query("UPDATE rticore_background_jobs SET next_run_at='2020-01-01 00:00:00' WHERE id='ci-retry'");
+  assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),true);
+  assert.deepEqual((await pool.query("SELECT status,attempts,last_error FROM rticore_background_jobs WHERE id='ci-retry'")).rows,[{status:'dead_letter',attempts:'2',last_error:'HANDLER_FAILED'}]);
+  await pool.query("DROP TRIGGER ci_fail_alert ON rticore_sales_activity_alerts");
+  await pool.query("DROP FUNCTION ci_fail_alert()");
   await pool.query('CREATE TABLE hostinger_batch_probe (id text PRIMARY KEY, amount bigint NOT NULL CHECK(amount>0))');
   const insert=(id,amount)=>({sql:'INSERT INTO hostinger_batch_probe(id,amount) VALUES($1,$2)',args:[id,amount]});
   await assert.rejects(runPostgresBatch(pool,[insert('rollback-a',10),insert('rollback-b',-1)]));
