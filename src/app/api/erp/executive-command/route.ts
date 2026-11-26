@@ -75,7 +75,7 @@ export async function GET(req: Request) {
         .bind(TENANT, legalEntityId).all<FlexGuardLedgerEntry>(),
       db.prepare('SELECT count(*) AS total_requests, sum(CASE WHEN emergency_flag=1 THEN 1 ELSE 0 END) AS emergency_requests FROM rticore_flexguard_service_requests WHERE tenant_id=? AND legal_entity_id=?')
         .bind(TENANT, legalEntityId).first<Record<string, number>>(),
-      db.prepare('SELECT coalesce(sum(allocated_cents),0) AS budget_cents, coalesce(sum(committed_cents),0) AS committed_cents, coalesce(sum(actual_spent_cents),0) AS actual_cents FROM rticore_finance_budgets WHERE tenant_id=? AND legal_entity_id=?')
+      db.prepare('SELECT coalesce(sum(current_approved_cents),0) AS budget_cents, coalesce(sum(committed_cents),0) AS committed_cents, coalesce(sum(actual_realized_cents),0) AS actual_cents FROM rticore_finance_budgets WHERE tenant_id=? AND legal_entity_id=?')
         .bind(TENANT, legalEntityId).first<Record<string, number>>(),
       db.prepare("SELECT count(*) AS open_risks, sum(CASE WHEN (residual_likelihood * residual_impact) >= 15 THEN 1 ELSE 0 END) AS high_risks FROM rticore_enterprise_risk_register WHERE tenant_id=? AND legal_entity_id=? AND status IN ('open','mitigating')")
         .bind(TENANT, legalEntityId).first<Record<string, number>>(),
