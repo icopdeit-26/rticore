@@ -1,0 +1,2 @@
+# V5.1 B01 increment 03
+Native PostgreSQL Sales Activity SLA now also handles lead first-response and mapped-manager escalation for overdue tasks/leads. Populated fixture asserts four alerts, no duplicate on rerun and no other-tenant alert. Candidate CI required. No global-admin fallback until tenant-scoped recipient authorization is defined; nurture remains outstanding. Runtime stays containment-only, Finance guard preserved. No merge or deployment. Previous SHA 2a324b4: 13 workflows passed, 7 running at initial inspection; exact-head CI remains mandatory.
