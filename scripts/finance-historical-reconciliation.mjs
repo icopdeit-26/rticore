@@ -23,6 +23,25 @@ export function summarizeEvents(rows) {
   return counts;
 }
 
+export async function scanJournalIntegrity(client){
+  const integrity = (await client.query(`
+      SELECT
+        (SELECT count(*) FROM (
+          SELECT j.tenant_id,j.id FROM public.rticore_gl_journals j
+          LEFT JOIN public.rticore_gl_lines l ON l.tenant_id=j.tenant_id AND l.journal_id=j.id
+          WHERE j.status='posted' GROUP BY j.tenant_id,j.id
+          HAVING count(l.id)<2 OR coalesce(sum(l.debit_cents),0)<>coalesce(sum(l.credit_cents),0)
+        ) x) AS unbalanced_posted_journals,
+        (SELECT count(*) FROM public.rticore_gl_lines l JOIN public.rticore_gl_journals j ON j.tenant_id=l.tenant_id AND j.id=l.journal_id LEFT JOIN public.rticore_gl_accounts a ON a.tenant_id=l.tenant_id AND a.id=l.account_id AND a.legal_entity_id=j.legal_entity_id WHERE a.id IS NULL) AS invalid_account_scope,
+        (SELECT count(*) FROM public.rticore_finance_integration_events e
+          LEFT JOIN public.rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.resulting_journal_id AND j.legal_entity_id=e.legal_entity_id
+          WHERE e.resulting_journal_id IS NOT NULL AND j.id IS NULL) AS invalid_journal_links,
+        (SELECT count(*) FROM public.rticore_finance_integration_events WHERE status='processed' AND resulting_journal_id IS NULL) AS processed_without_journal_review,
+        (SELECT count(*) FROM (SELECT tenant_id,idempotency_key FROM public.rticore_finance_integration_events GROUP BY tenant_id,idempotency_key HAVING count(*)>1) d) AS duplicate_event_keys
+    `)).rows[0];
+  return Object.fromEntries(Object.entries(integrity).map(([k,v])=>[k,String(v)]));
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -51,23 +70,9 @@ async function main() {
       for (const key of Object.keys(counts)) counts[key] += part[key];
     }
     // Aggregate checks only: no customer data or journal identifiers leave staging.
-    const integrity = (await client.query(`
-      SELECT
-        (SELECT count(*) FROM (
-          SELECT j.tenant_id,j.id FROM public.rticore_gl_journals j
-          LEFT JOIN public.rticore_gl_lines l ON l.tenant_id=j.tenant_id AND l.journal_id=j.id
-          WHERE j.status='posted' GROUP BY j.tenant_id,j.id
-          HAVING count(l.id)<2 OR coalesce(sum(l.debit_cents),0)<>coalesce(sum(l.credit_cents),0)
-        ) x) AS unbalanced_posted_journals,
-        (SELECT count(*) FROM public.rticore_finance_integration_events e
-          LEFT JOIN public.rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.resulting_journal_id AND j.legal_entity_id=e.legal_entity_id
-          WHERE e.resulting_journal_id IS NOT NULL AND j.id IS NULL) AS invalid_journal_links,
-        (SELECT count(*) FROM public.rticore_finance_integration_events WHERE status='processed' AND resulting_journal_id IS NULL) AS processed_without_journal_review,
-        (SELECT count(*) FROM (SELECT tenant_id,idempotency_key FROM public.rticore_finance_integration_events GROUP BY tenant_id,idempotency_key HAVING count(*)>1) d) AS duplicate_event_keys
-    `)).rows[0];
-    const invariantCounts=Object.fromEntries(Object.entries(integrity).map(([k,v])=>[k,String(v)]));
+    const invariantCounts=await scanJournalIntegrity(client);
     await client.query('ROLLBACK');
-    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys'].every(k=>invariantCounts[k]==='0');
+    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0');
     console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,automated_scan:ok?'PASS':'FAIL',source_reconciliation_certified:false},null,2));
     if (!ok) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }

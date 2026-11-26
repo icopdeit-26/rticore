@@ -21,6 +21,20 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   await pool.query(fs.readFileSync('rticore_postgresql_triggers.sql','utf8'));
   const counts=await pool.query("SELECT count(*)::int AS n FROM pg_trigger WHERE NOT tgisinternal AND tgenabled IN ('O','A')");
   assert.ok(counts.rows[0].n>=267,'canonical business triggers must exist');
+  const {scanJournalIntegrity}=await import('../scripts/finance-historical-reconciliation.mjs');
+  const snapshot=await pool.connect();
+  try {
+   await snapshot.query('BEGIN READ ONLY');
+   const result=await scanJournalIntegrity(snapshot);
+   assert.deepEqual(Object.keys(result).sort(),['duplicate_event_keys','invalid_account_scope','invalid_journal_links','processed_without_journal_review','unbalanced_posted_journals']);
+   assert.ok(Object.values(result).every(v=>v==='0'));
+   await snapshot.query('ROLLBACK');
+  }finally{snapshot.release();}
+  const {processNextJob}=await import('../scripts/hostinger-job-engine.mjs');
+  await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES('ci-job','ci-tenant','report_generation','ci-job-key','ci@example.invalid')");
+  const claims=await Promise.all([processNextJob(pool,'ci-a'),processNextJob(pool,'ci-b')]);
+  assert.deepEqual(claims.sort(),[false,true]);
+  assert.deepEqual((await pool.query("SELECT status,attempts,last_error FROM rticore_background_jobs WHERE id='ci-job'")).rows,[{status:'dead_letter',attempts:'1',last_error:'HANDLER_NOT_CERTIFIED'}]);
   await pool.query('CREATE TABLE hostinger_batch_probe (id text PRIMARY KEY, amount bigint NOT NULL CHECK(amount>0))');
   const insert=(id,amount)=>({sql:'INSERT INTO hostinger_batch_probe(id,amount) VALUES($1,$2)',args:[id,amount]});
   await assert.rejects(runPostgresBatch(pool,[insert('rollback-a',10),insert('rollback-b',-1)]));
