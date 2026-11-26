@@ -58,8 +58,10 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   await pool.query("INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES('ci-debit','ci-fin','ci-fin-entity','100','Cash account','asset','maker@example.invalid'),('ci-credit','ci-fin','ci-fin-entity','200','Liability account','liability','maker@example.invalid')");
   await pool.query("INSERT INTO rticore_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by) VALUES('ci-posted','ci-fin','ci-fin-entity','ci-period','test','ci-posted','CI balanced journal','maker@example.invalid'),('ci-draft','ci-fin','ci-fin-entity','ci-period','test','ci-draft','CI draft journal','maker@example.invalid')");
   await pool.query("INSERT INTO rticore_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents) VALUES('ci-line-d','ci-fin','ci-posted','ci-debit',1000,0),('ci-line-c','ci-fin','ci-posted','ci-credit',0,1000)");
-  await pool.query("UPDATE rticore_gl_journals SET status='approved',reviewed_by='checker@example.invalid',review_notes='Independent CI approval' WHERE id='ci-posted'");
-  await pool.query("UPDATE rticore_gl_journals SET status='posted',posted_by='checker@example.invalid',posted_at='2026-01-01T00:00:00Z' WHERE id='ci-posted'");
+  await pool.query("UPDATE rticore_gl_journals SET status='approved',version=version+1,reviewed_by='checker@example.invalid',review_notes='Independent CI approval',reviewed_at='2026-01-01T00:00:00Z' WHERE id='ci-posted'");
+  await pool.query("UPDATE rticore_gl_journals SET status='posted',version=version+1,posted_by='checker@example.invalid',posted_at='2026-01-01T00:00:00Z' WHERE id='ci-posted'");
+  assert.deepEqual((await pool.query("SELECT status,version FROM rticore_gl_journals WHERE id='ci-posted'")).rows,[{status:'posted',version:'3'}]);
+  await assert.rejects(pool.query("UPDATE rticore_gl_journals SET memo='Forbidden historical mutation',version=version+1 WHERE id='ci-posted'"),/GL_JOURNAL_IMMUTABLE/);
   assert.equal((await scanJournalIntegrity(pool)).unbalanced_posted_journals,'0');
   assert.equal((await scanSettlementEvidence(pool)).missing_posting_evidence,'0');
   await pool.query("UPDATE rticore_finance_integration_events SET status='processed',resulting_journal_id='ci-draft' WHERE id='ci-missing-ts'");

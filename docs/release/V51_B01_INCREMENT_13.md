@@ -1,0 +1,2 @@
+# V5.1 B01 increment 13 — CI remediation
+Baseline 2f97efa: 18/20 successful. Candidate gate jobs 140075163747 (SQLite null prototype mismatch) and 140075164465 (GL_JOURNAL_IMMUTABLE due to fixture missing version increments); Sales Multirole job 140075032921 repeats SQLite mismatch. Normalize only the row prototype, retain exact expected fields. Journal fixture follows existing production API version+1 review/post transitions and asserts version 3 plus rejected immutable mutation. No business rule, trigger or guard weakened. Latest CI required; no deployment.

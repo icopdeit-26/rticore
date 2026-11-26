@@ -137,7 +137,7 @@ test('Batch 19-20: VAPT RoE/Findings/Retest, DFIR Immutable Chain of Custody, SO
         action: 'process_event', event_id: eventId,
       }), 200);
       assert.equal(proc.body.status, 'validated');
-      assert.deepEqual(h.sql.prepare('SELECT status,processed_at,processed_by,resulting_journal_id FROM rticore_finance_integration_events WHERE id=?').get(eventId), {status:'validated',processed_at:null,processed_by:null,resulting_journal_id:null});
+      assert.deepEqual({...h.sql.prepare('SELECT status,processed_at,processed_by,resulting_journal_id FROM rticore_finance_integration_events WHERE id=?').get(eventId)}, {status:'validated',processed_at:null,processed_by:null,resulting_journal_id:null});
 
       // Reprocessing same event rejected (409)
       await expect(h.call('erp/finance-docking-bridge', 'POST', 'finance', {
