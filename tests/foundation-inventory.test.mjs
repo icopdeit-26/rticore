@@ -11,7 +11,9 @@ test('repository inventory preserves both existing catalogs',()=>{
 });
 test('uncertified worker has no completion path',()=>{
  const source=fs.readFileSync(new URL('../scripts/hostinger-job-engine.mjs',import.meta.url),'utf8');
- assert.doesNotMatch(source,/SET status='completed'/);
+ assert.match(source,/enableSalesAlerts=false/);
+ assert.match(source,/enableSalesAlerts && job.job_type==='sales_activity_sla' && job.legal_entity_id===null/);
+ assert.match(source,/await salesActivityAlerts\(client,job.tenant_id\)/);
  assert.match(source,/status='dead_letter'.*HANDLER_NOT_CERTIFIED/);
  assert.match(source,/AND tenant_id=\$2 AND status='queued'/);
 });

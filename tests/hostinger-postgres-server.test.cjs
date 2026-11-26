@@ -35,6 +35,12 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   const claims=await Promise.all([processNextJob(pool,'ci-a'),processNextJob(pool,'ci-b')]);
   assert.deepEqual(claims.sort(),[false,true]);
   assert.deepEqual((await pool.query("SELECT status,attempts,last_error FROM rticore_background_jobs WHERE id='ci-job'")).rows,[{status:'dead_letter',attempts:'1',last_error:'HANDLER_NOT_CERTIFIED'}]);
+  await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES('ci-alert-job','ci-tenant','sales_activity_sla','ci-alert-key','ci@example.invalid')");
+  assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),true);
+  assert.deepEqual((await pool.query("SELECT status,attempts FROM rticore_background_jobs WHERE id='ci-alert-job'")).rows,[{status:'completed',attempts:'1'}]);
+  const evidence=(await pool.query("SELECT snapshot_json FROM rticore_operations_events WHERE entity_id='ci-alert-job' AND action='BG_JOB_ALERTS_GENERATED'")).rows;
+  assert.equal(evidence.length,1);
+  assert.deepEqual(JSON.parse(evidence[0].snapshot_json),{alerts_inserted:0,scope:'task_reminder_overdue_only'});
   await pool.query('CREATE TABLE hostinger_batch_probe (id text PRIMARY KEY, amount bigint NOT NULL CHECK(amount>0))');
   const insert=(id,amount)=>({sql:'INSERT INTO hostinger_batch_probe(id,amount) VALUES($1,$2)',args:[id,amount]});
   await assert.rejects(runPostgresBatch(pool,[insert('rollback-a',10),insert('rollback-b',-1)]));
