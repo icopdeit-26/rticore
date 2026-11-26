@@ -72,7 +72,7 @@ export async function POST(req:Request){
     const poWrites=[db.prepare('UPDATE rticore_purchase_orders SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,po.id)];
     if(v.approve){
      const hasDock=await db.prepare("SELECT 1 FROM rticore_schema_migrations WHERE version=52").first().catch(()=>null);
-     if(hasDock)poWrites.push(buildFinanceOutboxStatement(db,{legalEntityId:unit,eventType:'purchase_order.approved',sourceDocumentId:po.id,idempotencyKey:`po-approve-${po.id}-v${po.version}`,payload:{po_id:po.id,opportunity_id:po.opportunity_id,vendor_id:po.vendor_id,qty:po.qty,unit_price_cents:po.unit_price_cents,total_cents:po.qty*po.unit_price_cents,approved_by:email}}).stmt);
+     if(hasDock)poWrites.push((await buildFinanceOutboxStatement(db,{legalEntityId:unit,eventType:'purchase_order.approved',sourceDocumentId:po.id,idempotencyKey:`po-approve-${po.id}-v${po.version}`,payload:{po_id:po.id,opportunity_id:po.opportunity_id,vendor_id:po.vendor_id,qty:po.qty,unit_price_cents:po.unit_price_cents,total_cents:po.qty*po.unit_price_cents,approved_by:email}})).stmt);
     }
     await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_purchase_orders WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,po.id,po.version,email],poWrites,'procurement',po.id,'REVIEW_PO',{approved:v.approve});return erpReply({success:true});
    }
@@ -97,7 +97,7 @@ export async function POST(req:Request){
    erpAssert(invoice&&invoice.status==='draft'&&invoice.version===v.version&&invoice.created_by.toLowerCase()!==email,'Invoice berubah atau self-approval',409);
    const invUnit=await erpOpportunityUnit(db,invoice.opportunity_id);
    await erpGrant(a.identity,'finance_ap',invUnit);
-   const apDock=v.approve&&(await db.prepare('SELECT 1 FROM rticore_schema_migrations WHERE version=52').first().catch(()=>null))?[buildFinanceOutboxStatement(db,{legalEntityId:invUnit,eventType:'vendor_invoice.approved',sourceDocumentId:invoice.id,idempotencyKey:`ap-approve-${invoice.id}-v${invoice.version}`,payload:{invoice_id:invoice.id,po_id:invoice.po_id,vendor_id:invoice.vendor_id,approved_by:email}}).stmt]:[];
+   const apDock=v.approve&&(await db.prepare('SELECT 1 FROM rticore_schema_migrations WHERE version=52').first().catch(()=>null))?[(await buildFinanceOutboxStatement(db,{legalEntityId:invUnit,eventType:'vendor_invoice.approved',sourceDocumentId:invoice.id,idempotencyKey:`ap-approve-${invoice.id}-v${invoice.version}`,payload:{invoice_id:invoice.id,po_id:invoice.po_id,vendor_id:invoice.vendor_id,approved_by:email}})).stmt]:[];
    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_ap_supplier_invoices WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,v.id as string,v.version as number,email],[db.prepare('UPDATE rticore_ap_supplier_invoices SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,v.id as string),...apDock],'ap',v.id as string,'REVIEW_SUPPLIER_INVOICE',{approved:v.approve});
    return erpReply({success:true});
   }

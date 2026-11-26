@@ -1,3 +1,4 @@
+import { verifyFinancePayload } from '@/lib/finance-docking-bridge';
 import { authorizeBoQ, type BoQIdentity } from '@/lib/boq-auth';
 import { readBoundedJSON } from '@/lib/bounded-json';
 import { TENANT } from '@/lib/sales-workflow';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 async function authorizedEntities(identity: BoQIdentity): Promise<string[]> {
   const rows = await identity.db.prepare(
-    "SELECT u.id FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND (EXISTS(SELECT 1 FROM rticore_erp_staff_org s WHERE s.tenant_id=u.tenant_id AND s.unit_id=u.id AND lower(s.email)=? AND s.status='approved') OR EXISTS(SELECT 1 FROM rticore_finance_role_assignments a WHERE a.tenant_id=u.tenant_id AND a.legal_entity_id=u.id AND lower(a.email)=? AND a.status='approved')) ORDER BY u.code",
+    "SELECT u.id FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND (EXISTS(SELECT 1 FROM rticore_erp_staff_org s WHERE s.tenant_id=u.tenant_id AND s.unit_id=u.id AND lower(s.email)=? AND s.status='approved') OR EXISTS(SELECT 1 FROM rticore_finance_role_assignments a WHERE a.tenant_id=u.tenant_id AND a.legal_entity_id=u.id AND lower(a.email)=? AND a.status='approved' AND a.business_unit_id IS NULL AND a.department_id IS NULL)) ORDER BY u.code",
   ).bind(TENANT, identity.email.toLowerCase(), identity.email.toLowerCase()).all<{ id: string }>();
   return rows.results.map(r => r.id);
 }
@@ -27,6 +28,7 @@ export async function GET(req: Request) {
   }
   const { db, role } = a.identity;
   try {
+    erpAssert(!a.identity.rolePreview, 'Role preview tidak diizinkan mengakses docking event', 403);
     erpAssert(['admin', 'finance', 'approver'].includes(role), 'Hanya Finance, Approver, atau Admin yang dapat mengakses Docking Bridge', 403);
     const requestedEntity = new URL(req.url).searchParams.get('legal_entity_id');
     const entities = await authorizedEntities(a.identity);
@@ -57,8 +59,8 @@ export async function POST(req: Request) {
     erpAssert(['finance', 'approver'].includes(role), 'Hanya Finance atau Approver yang dapat memproses outbox event ke RTI Finance', 403);
     const v = (await readBoundedJSON(req, 8000)) as Record<string, unknown>;
     erpAssert(erpId(v.event_id), 'event_id wajib');
-    const ev = await db.prepare('SELECT id, legal_entity_id, event_type, status, payload_json FROM rticore_finance_integration_events WHERE tenant_id=? AND id=?')
-      .bind(TENANT, v.event_id as string).first<{ id: string; legal_entity_id: string; event_type: string; status: string; payload_json: string }>();
+    const ev = await db.prepare('SELECT id, legal_entity_id, event_type, status, payload_json, payload_sha256 FROM rticore_finance_integration_events WHERE tenant_id=? AND id=?')
+      .bind(TENANT, v.event_id as string).first<{ id: string; legal_entity_id: string; event_type: string; status: string; payload_json: string; payload_sha256: string }>();
     erpAssert(ev, 'Docking event tidak ditemukan', 404);
     const entities = await authorizedEntities(a.identity);
     erpAssert(entities.includes(ev.legal_entity_id), 'Akses lintas legal entity ditolak', 403);
@@ -66,10 +68,11 @@ export async function POST(req: Request) {
 
     const action = String(v.action || 'process_event');
     if (action === 'process_event') {
-      // Verify JSON payload parses cleanly
+      // Legacy pseudo-digests and altered payloads must be reconciled, never silently rehashed.
+      erpAssert(await verifyFinancePayload(ev.payload_json, ev.payload_sha256), 'Integritas payload gagal; rekonsiliasi atau karantina event diperlukan', 409);
       JSON.parse(ev.payload_json);
       await erpAtom(
-        a.identity, '1=1', [],
+        a.identity, "EXISTS(SELECT 1 FROM rticore_finance_integration_events WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status=? AND payload_json=? AND payload_sha256=?)", [TENANT, ev.id, ev.legal_entity_id, ev.status, ev.payload_json, ev.payload_sha256],
         [
           db.prepare("UPDATE rticore_finance_integration_events SET status='processed', processed_at=CURRENT_TIMESTAMP, processed_by=? WHERE tenant_id=? AND id=? AND status IN ('received','validated')")
             .bind(email, TENANT, ev.id),
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
     if (action === 'quarantine_event') {
       const reason = String(v.error_message || 'Payload validation failed').slice(0, 500);
       await erpAtom(
-        a.identity, '1=1', [],
+        a.identity, "EXISTS(SELECT 1 FROM rticore_finance_integration_events WHERE tenant_id=? AND id=? AND legal_entity_id=? AND status=? AND payload_json=? AND payload_sha256=?)", [TENANT, ev.id, ev.legal_entity_id, ev.status, ev.payload_json, ev.payload_sha256],
         [
           db.prepare("UPDATE rticore_finance_integration_events SET status='dead_letter', retry_count=retry_count+1, error_message=?, processed_by=? WHERE tenant_id=? AND id=?")
             .bind(reason, email, TENANT, ev.id),

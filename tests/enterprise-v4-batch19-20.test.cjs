@@ -113,7 +113,7 @@ test('Batch 19-20: VAPT RoE/Findings/Retest, DFIR Immutable Chain of Custody, SO
 
     await t.test('Live Finance Docking Outbox Bridge: Inspect, Process, Quarantine & Hostinger Fail-Closed', async () => {
       const bridge = h.load('src/lib/finance-docking-bridge.ts');
-      const { eventId, stmt } = bridge.buildFinanceOutboxStatement(h, {
+      const { eventId, stmt } = await bridge.buildFinanceOutboxStatement(h, {
         legalEntityId: 'le-19-a',
         eventType: 'timesheet.approved',
         sourceDocumentId: 'ts-live-001',
@@ -121,6 +121,12 @@ test('Batch 19-20: VAPT RoE/Findings/Retest, DFIR Immutable Chain of Custody, SO
         payload: { project_id: 'proj-01', minutes: 480, cost_snapshot_cents: 1_800_000_00 },
       });
       await stmt.run();
+      const stored = h.sql.prepare('SELECT payload_json,payload_sha256 FROM rticore_finance_integration_events WHERE id=?').get(eventId);
+      assert.equal(stored.payload_sha256, require('node:crypto').createHash('sha256').update(stored.payload_json).digest('hex'));
+      h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run('{"minutes":999}',eventId);
+      await expect(h.call('erp/finance-docking-bridge','POST','finance',{action:'process_event',event_id:eventId}),409);
+      assert.equal(h.sql.prepare('SELECT status FROM rticore_finance_integration_events WHERE id=?').get(eventId).status,'received');
+      h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run(stored.payload_json,eventId);
 
       const list = await expect(h.call('erp/finance-docking-bridge', 'GET', 'finance', null, '?legal_entity_id=le-19-a'), 200);
       assert.ok(list.body.events.some(e => e.id === eventId && e.status === 'received'));

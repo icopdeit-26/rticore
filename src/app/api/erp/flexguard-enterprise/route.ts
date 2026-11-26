@@ -1,3 +1,4 @@
+import { financePayloadSha256 } from '@/lib/finance-docking-bridge';
 import { authorizeBoQ, type BoQIdentity } from '@/lib/boq-auth';
 import { readBoundedJSON } from '@/lib/bounded-json';
 import { TENANT } from '@/lib/sales-workflow';
@@ -256,6 +257,8 @@ export async function POST(req: Request) {
           finValCents,
         );
         outboxEventId = crypto.randomUUID();
+        const payloadJson = JSON.stringify({ wallet_id: v.wallet_id, customer_id: v.customer_id, credits: Math.abs(creditAmount), accounting: plan });
+        const payloadDigest = await financePayloadSha256(payloadJson);
         writes.push(
           db.prepare(
             `INSERT INTO rticore_finance_integration_events(
@@ -266,8 +269,8 @@ export async function POST(req: Request) {
             outboxEventId, TENANT, legalEntityId,
             txType === 'consumption' ? 'flexguard.credit_consumed' : 'flexguard.credit_purchased',
             txId, `FG-${txId.slice(0, 12)}`, `fg-dock-${idempKey}`,
-            JSON.stringify({ wallet_id: v.wallet_id, customer_id: v.customer_id, credits: Math.abs(creditAmount), accounting: plan }),
-            idempKey.replace(/[^a-f0-9]/gi, '0').padEnd(64, 'a').slice(0, 64),
+            payloadJson,
+            payloadDigest,
           ),
         );
       }

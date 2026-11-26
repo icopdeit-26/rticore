@@ -19,20 +19,18 @@ export type DockingEventType =
   | 'flexguard.credit_purchased'
   | 'flexguard.credit_consumed';
 
-function deterministicHex64(seed: string): string {
-  // Deterministic 64-hex digest safe for sync statement builders; full SHA-256 used in async paths
-  let h1 = 0x811c9dc5;
-  let h2 = 0x9e3779b9;
-  for (let i = 0; i < seed.length; i++) {
-    const c = seed.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
-    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
-  }
-  const part = h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
-  return part.repeat(4).slice(0, 64);
+/** Hash exactly the persisted UTF-8 JSON, consistently across Node and Workers. */
+export async function financePayloadSha256(payloadJson: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payloadJson));
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function buildFinanceOutboxStatement(
+export async function verifyFinancePayload(payloadJson: string, digest: string): Promise<boolean> {
+  if (!/^[a-f0-9]{64}$/.test(digest)) return false;
+  return (await financePayloadSha256(payloadJson)) === digest;
+}
+
+export async function buildFinanceOutboxStatement(
   db: D1DB,
   params: {
     legalEntityId: string;
@@ -41,13 +39,13 @@ export function buildFinanceOutboxStatement(
     idempotencyKey: string;
     payload: Record<string, unknown>;
   },
-): { eventId: string; stmt: D1Prepared } {
+): Promise<{ eventId: string; stmt: D1Prepared }> {
   const eventId = crypto.randomUUID();
   const payloadJson = JSON.stringify(params.payload);
-  const hash = deterministicHex64(`${params.legalEntityId}|${params.eventType}|${params.sourceDocumentId}|${payloadJson}`);
+  const hash = await financePayloadSha256(payloadJson);
   const stmt = db
     .prepare(
-      `INSERT OR IGNORE INTO rticore_finance_integration_events(
+      `INSERT INTO rticore_finance_integration_events(
         id,tenant_id,legal_entity_id,direction,event_type,source_system,source_document_id,
         correlation_id,idempotency_key,schema_version,payload_json,payload_sha256,status,event_timestamp
       ) VALUES(?,?,?,'outbox',?,'RTICORE',?,?,?,'1.0',?,?,'received',CURRENT_TIMESTAMP)`,
