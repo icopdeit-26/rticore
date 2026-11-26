@@ -22,6 +22,7 @@ const D1_ROUTES = new Set([
   '/api/admin/system',
   '/api/admin/options',
   '/api/admin/scoping-model',
+  '/api/admin/feature-flags',
   '/api/scoping/model',
   '/api/reference/options',
   '/api/psa/timesheets',

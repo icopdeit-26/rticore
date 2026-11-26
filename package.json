@@ -64,6 +64,7 @@
     "gate:erp": "npm run typecheck && npm run test:psa-timesheets && npm run test:erp && npm run test:erp:extensions",
     "test:erp:extensions": "node --test tests/rticore-erp-enterprise-extensions.test.cjs",
     "test:finance-520": "node --test tests/rti-finance-uat-520.test.cjs",
+    "test:enterprise-pricing": "node --test tests/enterprise-pricing-catalog.test.cjs",
     "test:branding": "node --test tests/rticore-branding.test.cjs tests/rticore-tenant-compat.test.cjs",
     "test:all": "node tests/run-browser-http-uat.cjs --all",
     "preflight:hostinger": "node scripts/hostinger-preflight.mjs",
