@@ -30,5 +30,14 @@ export async function salesActivityAlerts(client,tenant){
  WHERE s.tenant_id=$1 AND s.first_response_at IS NULL AND l.status NOT IN ('converted','disqualified')
  AND s.response_due_at::timestamptz+coalesce(p.escalation_minutes,60)*interval '1 minute'<=now()
  ON CONFLICT(alert_key) DO NOTHING`,[tenant]);
- return {alerts_inserted:result.rowCount+lead.rowCount+escalation.rowCount+leadEscalation.rowCount,scope:'task_lead_and_mapped_manager_alerts'};
+ const nurture=await client.query(`INSERT INTO rticore_sales_activity_alerts(alert_key,tenant_id,lead_id,recipient_email,alert_type,message)
+ SELECT 'lead:nurture:'||p.lead_id||':'||p.version||':'||p.next_touch_at,p.tenant_id,p.lead_id,l.assigned_sales_email,'reminder','Nurture Lead perlu tindak lanjut: '||l.account_name
+ FROM rticore_lead_nurture_plans p JOIN rticore_marketing_leads l ON l.id=p.lead_id AND l.tenant_id=p.tenant_id
+ JOIN rticore_members m ON m.email=l.assigned_sales_email AND m.active=1 AND m.role IN ('sales','admin')
+ WHERE p.tenant_id=$1 AND p.state='active' AND p.next_touch_at::date<=(now() AT TIME ZONE 'Asia/Jakarta')::date
+ AND (l.status IN ('new','assigned') OR (l.status='disqualified' AND EXISTS(
+ SELECT 1 FROM rticore_lead_disqualifications d WHERE d.tenant_id=p.tenant_id AND d.lead_id=p.lead_id AND d.active=1 AND d.reason_code IN ('NO_BUDGET','TIMING_LATER','NO_RESPONSE'))))
+ AND NOT EXISTS(SELECT 1 FROM rticore_sales_activity_alerts legacy WHERE legacy.tenant_id=p.tenant_id AND legacy.alert_key='nurture:'||p.lead_id||':'||p.version)
+ ON CONFLICT(alert_key) DO NOTHING`,[tenant]);
+ return {alerts_inserted:result.rowCount+lead.rowCount+escalation.rowCount+leadEscalation.rowCount+nurture.rowCount,scope:'task_lead_mapped_manager_and_nurture_alerts'};
 }

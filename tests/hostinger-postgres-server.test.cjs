@@ -40,21 +40,27 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   assert.deepEqual((await pool.query("SELECT status,attempts FROM rticore_background_jobs WHERE id='ci-alert-job'")).rows,[{status:'completed',attempts:'1'}]);
   const evidence=(await pool.query("SELECT snapshot_json FROM rticore_operations_events WHERE entity_id='ci-alert-job' AND action='BG_JOB_ALERTS_GENERATED'")).rows;
   assert.equal(evidence.length,1);
-  assert.deepEqual(JSON.parse(evidence[0].snapshot_json),{alerts_inserted:0,scope:'task_lead_and_mapped_manager_alerts'});
+  assert.deepEqual(JSON.parse(evidence[0].snapshot_json),{alerts_inserted:0,scope:'task_lead_mapped_manager_and_nurture_alerts'});
   // Populated fixtures: tenant-scoped task, lead and mapped manager alerts.
   await pool.query("INSERT INTO rticore_members(email,role) VALUES('ci-sales@example.invalid','sales'),('ci-manager@example.invalid','admin')");
   await pool.query("INSERT INTO rticore_marketing_leads(id,tenant_id,lead_number,account_name,source,service_family,assigned_sales_email,created_by,updated_by) VALUES('ci-lead','ci-tenant','CI-L1','CI customer','test','VAPT','ci-sales@example.invalid','ci-sales@example.invalid','ci-sales@example.invalid'),('ci-other-lead','ci-other','CI-L2','Other customer','test','VAPT','ci-sales@example.invalid','ci-sales@example.invalid','ci-sales@example.invalid')");
   await pool.query("UPDATE rticore_sales_lead_sla SET response_due_at='2020-01-01T00:00:00Z' WHERE tenant_id IN ('ci-tenant','ci-other')");
   await pool.query("INSERT INTO rticore_sales_team_managers(tenant_id,sales_email,manager_email,assigned_by) VALUES('ci-tenant','ci-sales@example.invalid','ci-manager@example.invalid','ci-manager@example.invalid')");
   await pool.query("INSERT INTO rticore_sales_activity_tasks(id,tenant_id,lead_id,owner_email,kind,subject,start_at,due_at,reminder_at,created_by) VALUES('ci-task','ci-tenant','ci-lead','ci-sales@example.invalid','call','CI follow-up','2020-01-01T00:00:00Z','2020-01-01T01:00:00Z','2020-01-01T00:00:00Z','ci-sales@example.invalid')");
+  await pool.query("INSERT INTO rticore_lead_nurture_plans(lead_id,tenant_id,state,cadence_days,channel,next_touch_at,created_by,updated_by) VALUES('ci-lead','ci-tenant','active',14,'follow_up','2020-01-01','ci-sales@example.invalid','ci-sales@example.invalid'),('ci-other-lead','ci-other','active',14,'follow_up','2020-01-01','ci-sales@example.invalid','ci-sales@example.invalid')");
   for(const id of ['ci-alert-populated','ci-alert-repeat']){
    await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES($1,'ci-tenant','sales_activity_sla',$1,'ci@example.invalid')",[id]);
    assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),true);
   }
-  assert.deepEqual((await pool.query("SELECT alert_type,count(*)::int n FROM rticore_sales_activity_alerts WHERE tenant_id='ci-tenant' GROUP BY alert_type ORDER BY alert_type")).rows,[{alert_type:'lead_sla',n:1},{alert_type:'manager_escalation',n:2},{alert_type:'overdue',n:1}]);
+  assert.deepEqual((await pool.query("SELECT alert_type,count(*)::int n FROM rticore_sales_activity_alerts WHERE tenant_id='ci-tenant' GROUP BY alert_type ORDER BY alert_type")).rows,[{alert_type:'lead_sla',n:1},{alert_type:'manager_escalation',n:2},{alert_type:'overdue',n:1},{alert_type:'reminder',n:1}]);
   assert.equal((await pool.query("SELECT count(*)::int n FROM rticore_sales_activity_alerts WHERE tenant_id='ci-other'")).rows[0].n,0);
   const repeated=(await pool.query("SELECT snapshot_json FROM rticore_operations_events WHERE entity_id='ci-alert-repeat'")).rows[0];
   assert.equal(JSON.parse(repeated.snapshot_json).alerts_inserted,0);
+  await pool.query("UPDATE rticore_lead_nurture_plans SET version=2 WHERE lead_id='ci-lead'");
+  await pool.query("INSERT INTO rticore_sales_activity_alerts(alert_key,tenant_id,lead_id,recipient_email,alert_type,message) VALUES('nurture:ci-lead:2','ci-tenant','ci-lead','ci-sales@example.invalid','reminder','Legacy reminder')");
+  await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES('ci-alert-legacy','ci-tenant','sales_activity_sla','ci-alert-legacy','ci@example.invalid')");
+  assert.equal(await processNextJob(pool,'ci-alert-worker',{enableSalesAlerts:true}),true);
+  assert.equal((await pool.query("SELECT count(*)::int n FROM rticore_sales_activity_alerts WHERE alert_key LIKE 'lead:nurture:ci-lead:2:%'")).rows[0].n,0);
   await pool.query('CREATE TABLE hostinger_batch_probe (id text PRIMARY KEY, amount bigint NOT NULL CHECK(amount>0))');
   const insert=(id,amount)=>({sql:'INSERT INTO hostinger_batch_probe(id,amount) VALUES($1,$2)',args:[id,amount]});
   await assert.rejects(runPostgresBatch(pool,[insert('rollback-a',10),insert('rollback-b',-1)]));
