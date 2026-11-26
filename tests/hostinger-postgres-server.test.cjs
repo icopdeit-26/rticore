@@ -21,7 +21,7 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   await pool.query(fs.readFileSync('rticore_postgresql_triggers.sql','utf8'));
   const counts=await pool.query("SELECT count(*)::int AS n FROM pg_trigger WHERE NOT tgisinternal AND tgenabled IN ('O','A')");
   assert.ok(counts.rows[0].n>=267,'canonical business triggers must exist');
-  const {scanJournalIntegrity,scanTimesheetSources}=await import('../scripts/finance-historical-reconciliation.mjs');
+  const {scanJournalIntegrity,scanTimesheetSources,scanProcurementSources}=await import('../scripts/finance-historical-reconciliation.mjs');
   const snapshot=await pool.connect();
   try {
    await snapshot.query('BEGIN READ ONLY');
@@ -29,6 +29,7 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
    assert.deepEqual(Object.keys(result).sort(),['duplicate_event_keys','invalid_account_scope','invalid_journal_links','processed_without_journal_review','unbalanced_posted_journals']);
    assert.ok(Object.values(result).every(v=>v==='0'));
    assert.deepEqual(await scanTimesheetSources(snapshot),{total:'0',missing_source:'0',invalid_project_scope:'0',source_mismatch:'0',processed_cost_ledger_review:'0'});
+   assert.deepEqual(await scanProcurementSources(snapshot),{total:'0',missing_source:'0',invalid_opportunity_scope:'0',source_mismatch:'0'});
    await snapshot.query('ROLLBACK');
   }finally{snapshot.release();}
   await pool.query("INSERT INTO rticore_erp_org_units(id,tenant_id,code,label,kind,created_by) VALUES('ci-fin-entity','ci-fin','CI-FIN','CI Finance','legal_entity','ci@example.invalid')");
@@ -36,6 +37,12 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   const missingDigest=require('node:crypto').createHash('sha256').update(missingPayload).digest('hex');
   await pool.query("INSERT INTO rticore_finance_integration_events(id,tenant_id,legal_entity_id,direction,event_type,source_system,source_document_id,correlation_id,idempotency_key,payload_json,payload_sha256,status,event_timestamp) VALUES('ci-missing-ts','ci-fin','ci-fin-entity','outbox','timesheet.approved','RTICORE','missing-ts','ci-correlation','ci-missing-ts-key',$1,$2,'validated','2026-01-01T00:00:00Z')",[missingPayload,missingDigest]);
   assert.deepEqual(await scanTimesheetSources(pool),{total:'1',missing_source:'1',invalid_project_scope:'0',source_mismatch:'0',processed_cost_ledger_review:'0'});
+  for(const kind of ['purchase_order.approved','vendor_invoice.approved']){
+   const payload=JSON.stringify({po_id:'missing-po',vendor_id:'missing-vendor'});
+   const digest=require('node:crypto').createHash('sha256').update(payload).digest('hex');
+   await pool.query("INSERT INTO rticore_finance_integration_events(id,tenant_id,legal_entity_id,direction,event_type,source_system,source_document_id,correlation_id,idempotency_key,payload_json,payload_sha256,status,event_timestamp) VALUES($1,'ci-fin','ci-fin-entity','outbox',$2,'RTICORE','missing-source','ci-correlation',$1,$3,$4,'validated','2026-01-01T00:00:00Z')",['ci-missing-'+kind,kind,payload,digest]);
+  }
+  assert.deepEqual(await scanProcurementSources(pool),{total:'2',missing_source:'2',invalid_opportunity_scope:'0',source_mismatch:'0'});
   const {processNextJob}=await import('../scripts/hostinger-job-engine.mjs');
   await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by) VALUES('ci-job','ci-tenant','report_generation','ci-job-key','ci@example.invalid')");
   const claims=await Promise.all([processNextJob(pool,'ci-a'),processNextJob(pool,'ci-b')]);

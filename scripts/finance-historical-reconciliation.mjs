@@ -58,6 +58,31 @@ export async function scanTimesheetSources(client){
  return rows[0];
 }
 
+// Validate canonical operational procurement envelopes, not accounting recognition.
+export async function scanProcurementSources(client){
+ const {rows}=await client.query(`WITH sources AS (
+ SELECT e.id,e.event_type,e.legal_entity_id,e.payload_json::jsonb AS payload,
+ p.id AS po_id,p.opportunity_id,p.vendor_id AS po_vendor,p.qty,p.unit_price_cents,p.status AS po_status,p.reviewed_by AS po_reviewer,
+ i.id AS invoice_id,i.vendor_id AS invoice_vendor,i.status AS invoice_status,i.reviewed_by AS invoice_reviewer,
+ o.opportunity_id AS scope_id,o.status AS scope_status,o.legal_entity_id AS scope_entity
+ FROM public.rticore_finance_integration_events e
+ LEFT JOIN public.rticore_ap_supplier_invoices i ON e.event_type='vendor_invoice.approved' AND i.tenant_id=e.tenant_id AND i.id=e.source_document_id
+ LEFT JOIN public.rticore_purchase_orders p ON p.tenant_id=e.tenant_id AND p.id=CASE WHEN e.event_type='purchase_order.approved' THEN e.source_document_id ELSE i.po_id END
+ LEFT JOIN public.rticore_erp_opportunity_scopes o ON o.tenant_id=p.tenant_id AND o.opportunity_id=p.opportunity_id
+ WHERE e.direction='outbox' AND e.source_system='RTICORE' AND e.event_type IN ('purchase_order.approved','vendor_invoice.approved')
+ ) SELECT count(*)::text AS total,
+ count(*) FILTER (WHERE po_id IS NULL OR (event_type='vendor_invoice.approved' AND invoice_id IS NULL))::text AS missing_source,
+ count(*) FILTER (WHERE po_id IS NOT NULL AND (scope_id IS NULL OR scope_status<>'approved' OR scope_entity IS DISTINCT FROM legal_entity_id))::text AS invalid_opportunity_scope,
+ count(*) FILTER (WHERE po_id IS NOT NULL AND (
+ po_status<>'approved' OR
+ (event_type='purchase_order.approved' AND (
+ payload->>'po_id' IS DISTINCT FROM po_id OR payload->>'opportunity_id' IS DISTINCT FROM opportunity_id OR payload->>'vendor_id' IS DISTINCT FROM po_vendor OR payload->>'qty' IS DISTINCT FROM qty::text OR payload->>'unit_price_cents' IS DISTINCT FROM unit_price_cents::text OR payload->>'total_cents' IS DISTINCT FROM (qty::numeric*unit_price_cents::numeric)::text OR lower(payload->>'approved_by') IS DISTINCT FROM lower(po_reviewer)))
+ OR (event_type='vendor_invoice.approved' AND invoice_id IS NOT NULL AND (
+ invoice_status<>'approved' OR invoice_vendor IS DISTINCT FROM po_vendor OR payload->>'invoice_id' IS DISTINCT FROM invoice_id OR payload->>'po_id' IS DISTINCT FROM po_id OR payload->>'vendor_id' IS DISTINCT FROM invoice_vendor OR lower(payload->>'approved_by') IS DISTINCT FROM lower(invoice_reviewer)))
+ ))::text AS source_mismatch FROM sources`);
+ return rows[0];
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -88,9 +113,10 @@ async function main() {
     // Aggregate checks only: no customer data or journal identifiers leave staging.
     const invariantCounts=await scanJournalIntegrity(client);
     const timesheetSources=await scanTimesheetSources(client);
+    const procurementSources=await scanProcurementSources(client);
     await client.query('ROLLBACK');
-    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
