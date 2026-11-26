@@ -21,6 +21,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - run: npm install --global npm@11.9.0
+      - run: npm --version
       - run: npm ci --no-audit --no-fund
       - run: npm run test:runtime-compat
       - run: npm run typecheck
