@@ -36,8 +36,8 @@ export async function processNextJob(pool,workerId,{enableSalesAlerts=false}={})
    if(done.rowCount!==1)throw Error('Job ownership changed');
    await client.query('COMMIT');return true;
   }
-  // Uncertified handlers remain contained.
-  const result=await client.query("UPDATE rticore_background_jobs SET status='dead_letter', attempts=attempts+1, locked_by=NULL, last_error='HANDLER_NOT_CERTIFIED' WHERE id=$1 AND tenant_id=$2 AND status='queued'",[job.id,job.tenant_id]);
+  // Uncertified handlers remain contained; never increment an exhausted attempt counter.
+  const result=await client.query("UPDATE rticore_background_jobs SET status='dead_letter', attempts=CASE WHEN attempts<max_attempts THEN attempts+1 ELSE attempts END, locked_by=NULL, last_error='HANDLER_NOT_CERTIFIED' WHERE id=$1 AND tenant_id=$2 AND status='queued'",[job.id,job.tenant_id]);
   if(result.rowCount!==1)throw Error('Job ownership changed');
   await client.query('COMMIT');
   return true;

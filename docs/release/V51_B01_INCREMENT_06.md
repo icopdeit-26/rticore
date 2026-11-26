@@ -1,0 +1,2 @@
+# V5.1 B01 increment 06
+Queue telemetry now emits aggregate status counts, due jobs and unresolved legacy running jobs without payloads. Legacy running finance jobs remain untouched pending manual source reconciliation; automatic replay is prohibited. Containment never increments exhausted attempts. Poll interval bounded. PostgreSQL fixture checks telemetry, attempt cap and legacy preservation. Runtime remains containment-only; no production writes or deployment. Previous SHA 7ff0d45: 5/20 PASS at initial inspection, 12 running, 3 queued. Exact new SHA CI required.

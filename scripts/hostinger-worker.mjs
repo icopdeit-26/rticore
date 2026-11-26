@@ -13,10 +13,12 @@
 import os from 'node:os';
 import { processNextJob } from './hostinger-job-engine.mjs';
 import pg from 'pg';
+import {scanWorkerQueue} from './hostinger-worker-telemetry.mjs';
 import { validateHostingerConfig } from '../src/lib/hostinger-config.ts';
 
 const runOnce = process.argv.includes('--once');
-const pollMs = Math.max(2000, Number(process.env.RTICORE_WORKER_POLL_MS || 10000));
+const configuredPoll = Number(process.env.RTICORE_WORKER_POLL_MS || 10000);
+const pollMs = Number.isSafeInteger(configuredPoll) && configuredPoll >= 2000 && configuredPoll <= 300000 ? configuredPoll : 10000;
 const workerId = `${os.hostname()}-${process.pid}`;
 let shuttingDown = false;
 
@@ -39,6 +41,8 @@ async function main() {
   try {
     console.log(JSON.stringify({ level: 'info', event: 'worker_started', workerId, mode: runOnce ? 'once' : 'daemon', ts: new Date().toISOString() }));
     do {
+      const telemetry=await scanWorkerQueue(pool);
+      console.log(JSON.stringify({level:'info',event:'worker_queue_snapshot',workerId,...telemetry,ts:new Date().toISOString()}));
       let processed = 0;
       while (!shuttingDown && await processNextJob(pool,workerId)) {
         processed++;

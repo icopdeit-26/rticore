@@ -75,6 +75,15 @@ test('real PostgreSQL: schema, triggers, transaction atomicity and independent c
   assert.deepEqual((await pool.query("SELECT status,attempts,last_error FROM rticore_background_jobs WHERE id='ci-retry'")).rows,[{status:'dead_letter',attempts:'2',last_error:'HANDLER_FAILED'}]);
   await pool.query("DROP TRIGGER ci_fail_alert ON rticore_sales_activity_alerts");
   await pool.query("DROP FUNCTION ci_fail_alert()");
+  const {scanWorkerQueue}=await import('../scripts/hostinger-worker-telemetry.mjs');
+  await pool.query("INSERT INTO rticore_background_jobs(id,tenant_id,job_type,idempotency_key,created_by,status,attempts,max_attempts) VALUES('ci-legacy-running','ci-tenant','finance_outbox_dispatch','ci-legacy-running','ci@example.invalid','running',1,2),('ci-exhausted','ci-tenant','report_generation','ci-exhausted','ci@example.invalid','queued',2,2)");
+  const queueBefore=await scanWorkerQueue(pool);
+  assert.equal(queueBefore.legacy_running_requires_review,'1');
+  assert.equal(queueBefore.due_queued,'1');
+  assert.equal(await processNextJob(pool,'ci-containment'),true);
+  assert.deepEqual((await pool.query("SELECT status,attempts FROM rticore_background_jobs WHERE id='ci-exhausted'")).rows,[{status:'dead_letter',attempts:'2'}]);
+  assert.equal((await pool.query("SELECT status FROM rticore_background_jobs WHERE id='ci-legacy-running'")).rows[0].status,'running');
+  assert.equal((await scanWorkerQueue(pool)).due_queued,'0');
   await pool.query('CREATE TABLE hostinger_batch_probe (id text PRIMARY KEY, amount bigint NOT NULL CHECK(amount>0))');
   const insert=(id,amount)=>({sql:'INSERT INTO hostinger_batch_probe(id,amount) VALUES($1,$2)',args:[id,amount]});
   await assert.rejects(runPostgresBatch(pool,[insert('rollback-a',10),insert('rollback-b',-1)]));
