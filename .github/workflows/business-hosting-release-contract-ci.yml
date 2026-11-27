@@ -5,6 +5,9 @@ on:
   pull_request:
     branches: ['integration/v6-erp-finance-20261127', main]
     paths:
+      - 'scripts/business-iam-cleanup.mjs'
+      - 'deployment/hostinger/business-cron.env.example'
+      - 'tests/business-iam-cleanup-contract.test.mjs'
       - 'scripts/hostinger-preflight.mjs'
       - 'scripts/hostinger-runtime-privileges.mjs'
       - 'tests/hostinger-runtime-privileges.test.mjs'
@@ -21,5 +24,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - run: node --check scripts/business-iam-cleanup.mjs
+      - run: node --test tests/business-iam-cleanup-contract.test.mjs
       - run: node --check scripts/hostinger-preflight.mjs
       - run: node --test tests/hostinger-runtime-privileges.test.mjs tests/hostinger-schema-inventory.test.mjs
