@@ -62,11 +62,36 @@ q -f tests/native-ai-budget-acceptance.sql
 ai_concurrency original
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
 q -f tests/flexguard-product-terms-acceptance.sql
-# Use a separate local database for a real logical backup/restore rehearsal.
+# Persist a separate synthetic CAMS journal and audit trail before logical backup.
+q -f tests/wave09-recovery-posted-fixture.sql
+mkdir -p artifacts/wave09
+fingerprint() {
+ local target="$1" table count hash
+ : >"$target"
+ for table in rticore_members rticore_erp_org_units rticore_sales_ai_audit rticore_delivery_projects rticore_billing_invoices rticore_gl_journals rticore_gl_lines rticore_finance_journal_workflows rticore_operations_events rticore_cams_finance_inbox rticore_iam_credentials rticore_iam_sessions rticore_flexguard_enterprise_ledger; do
+  count="$(q -Atc "SELECT count(*) FROM public.$table")"
+  hash="$(q -Atc "SELECT row_to_json(t)::text FROM public.$table t ORDER BY row_to_json(t)::text COLLATE \"C\"" | sha256sum | cut -d ' ' -f1)"
+  printf '%s\t%s\t%s\n' "$table" "$count" "$hash" >>"$target"
+ done
+}
+fingerprint "$tmp/before.tsv"
+start="$(date +%s%3N)"
 pg_dump --format=custom --file="$tmp/rticore.dump"
+backup_ms=$(( $(date +%s%3N) - start ))
+backup_bytes="$(stat -c %s "$tmp/rticore.dump")"
+backup_hash="$(sha256sum "$tmp/rticore.dump" | cut -d ' ' -f1)"
+start="$(date +%s%3N)"
 createdb cams_docking_restore_ci
 pg_restore --exit-on-error --no-owner --no-privileges --dbname=cams_docking_restore_ci "$tmp/rticore.dump"
+restore_ms=$(( $(date +%s%3N) - start ))
 export PGDATABASE=cams_docking_restore_ci
+fingerprint "$tmp/after.tsv"
+# Compare deterministic row counts and content digests before any post-restore writes.
+diff -u "$tmp/before.tsv" "$tmp/after.tsv"
+[[ "$(q -Atc "SELECT count(*) FROM rticore_gl_journals j JOIN rticore_finance_journal_workflows w ON w.tenant_id=j.tenant_id AND w.journal_id=j.id WHERE j.source_key='OUTBOX-JRN-recovery' AND j.status='posted' AND j.reviewed_by='cams-recovery-check@example.invalid' AND j.posted_by='cams-recovery-post@example.invalid' AND w.lifecycle_stage='posted'")" == 1 ]]
+[[ "$(q -Atc "SELECT count(*) FROM rticore_operations_events e JOIN rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.entity_id WHERE j.source_key='OUTBOX-JRN-recovery' AND e.action IN ('CAMS_JOURNAL_APPROVED','CAMS_JOURNAL_POSTED')")" == 2 ]]
+cp "$tmp/before.tsv" artifacts/wave09/restore-table-digests.tsv
+node -e 'const [backupMs,restoreMs,bytes,hash,sha]=process.argv.slice(1);const fs=require("node:fs");fs.writeFileSync("artifacts/wave09/restore-evidence.json",JSON.stringify({scope:"disposable_logical_restore",source_sha:sha,backup_ms:Number(backupMs),restore_ms:Number(restoreMs),backup_bytes:Number(bytes),backup_sha256:hash,compared_tables:13,row_content_match:true,posted_journal_and_audit_match:true,production_rto_rpo_certified:false,privilege_restore_verified:false},null,2)+"\n")' "$backup_ms" "$restore_ms" "$backup_bytes" "$backup_hash" "$(git rev-parse HEAD)"
 [[ "$(q -Atc "SELECT count(*) FROM rticore_erp_org_units WHERE id IN ('p0-rehearsal-a','p0-rehearsal-b')")" == 2 ]]
 [[ "$(q -Atc "SELECT count(*) FROM pg_constraint WHERE conname LIKE 'p0\\_%\\_entity\\_fk' AND contype='f' AND convalidated")" == 16 ]]
 [[ "$(q -Atc "SELECT to_regclass('public.rticore_iam_credentials') IS NOT NULL AND to_regclass('public.rticore_iam_sessions') IS NOT NULL")" == t ]]
