@@ -1,6 +1,7 @@
 import {authorizeBoQ,privateHeaders} from '@/lib/boq-auth';
 import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {TENANT,safeID} from '@/lib/sales-workflow';
+import {buildFinanceOutboxStatement,operationalFinanceScope,operationalFinanceScopePredicate} from '@/lib/finance-docking-bridge';
 import {atomicSales} from '@/lib/sales-transactions';
 import {operationEvent,jakartaDate} from '@/lib/operations';
 import {isOffenseRole,OFFENSE_PROJECT_SCOPE,offenseScopeArgs,offenseOnProjectId} from '@/lib/offense-team';
@@ -21,7 +22,7 @@ const roles=['admin','presales','project_manager','offense_lead','offense_member
 // itdev_member / itdev_leader: same model as Offense/Governance on allocated Technology & Implementation projects.
 const PM_SCOPE="lower(p.pm_email)=?";
 const iso=(value:unknown)=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
-const error=(e:unknown)=>/CONFLICT|constraint|IMMUTABLE|FOREIGN KEY/i.test(String(e))?fail('Timesheet berubah atau melebihi alokasi. Muat ulang.',409):fail('Timesheet belum tersedia; periksa migrasi 0033.',503);
+const error=(e:unknown)=>/CONFLICT|constraint|IMMUTABLE|FOREIGN KEY|FINANCE_SCOPE_REQUIRED|could not serialize/i.test(String(e))?fail('Timesheet berubah atau melebihi alokasi. Muat ulang.',409):fail('Timesheet belum tersedia; periksa migrasi 0033.',503);
 
 type Row={id:string;tenant_id:string;project_id:string;person_id:string;allocation_id:string;work_date:string;minutes:number;billable:number;description:string;status:string;version:number;created_by:string;reviewed_by:string|null;review_notes:string|null;cost_snapshot_cents:number};
 export async function GET(req:Request){
@@ -64,7 +65,7 @@ export async function POST(req:Request){
    if(isITDevRole(role)&&!await itdevOnProjectId(db,email,projectId))return fail('IT Developer Team hanya mencatat jam pada proyek Technology & Implementation yang dialokasikan',403);
    const id=crypto.randomUUID();
    await atomicSales(db,`EXISTS(SELECT 1 FROM rticore_delivery_projects p JOIN rticore_resource_allocations x ON x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.id=? JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE p.tenant_id=? AND p.id=? AND p.status='active' AND x.status='active' AND r.active=1 AND x.daily_cost_snapshot>=0 AND x.daily_cost_snapshot<=90071992547409 AND lower(r.email)=? AND substr(?,1,7)=x.allocation_month AND ? BETWEEN p.start_date AND p.end_date)`,[allocationId,TENANT,projectId,email,workDate,workDate],[
-    db.prepare('INSERT INTO rticore_project_timesheets(id,tenant_id,project_id,person_id,allocation_id,work_date,minutes,billable,description,cost_snapshot_cents,created_by) SELECT ?,p.tenant_id,p.id,x.person_id,x.id,?,?,?,?,CAST(round(x.daily_cost_snapshot*100*?/480) AS INTEGER),? FROM rticore_delivery_projects p JOIN rticore_resource_allocations x ON x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id WHERE p.tenant_id=? AND p.id=? AND x.id=?').bind(id,workDate,minutes,v.billable?1:0,description,minutes,email,TENANT,projectId,allocationId),
+    db.prepare('INSERT INTO rticore_project_timesheets(id,tenant_id,project_id,person_id,allocation_id,work_date,minutes,billable,description,cost_snapshot_cents,created_by) SELECT ?,p.tenant_id,p.id,x.person_id,x.id,?,?,?,?,CAST(round(x.daily_cost_snapshot*100*?/480) AS BIGINT),? FROM rticore_delivery_projects p JOIN rticore_resource_allocations x ON x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id WHERE p.tenant_id=? AND p.id=? AND x.id=?').bind(id,workDate,minutes,v.billable?1:0,description,minutes,email,TENANT,projectId,allocationId),
     operationEvent(db,'timesheet',id,'SUBMIT',email,{project_id:projectId,work_date:workDate,minutes})
    ]);return reply({success:true,id},201);
   }
@@ -93,12 +94,16 @@ export async function POST(req:Request){
    const scope=scopeByRole[role as keyof typeof scopeByRole];
    const projectGuard=scope?` AND EXISTS(SELECT 1 FROM rticore_delivery_projects p
     WHERE p.tenant_id=t.tenant_id AND p.id=t.project_id AND (${scope.sql}))`:'';
+   const entity=v.approve?await operationalFinanceScope(db,row.project_id):null;
+   const docking=entity?await buildFinanceOutboxStatement(db,{legalEntityId:entity,eventType:'timesheet.approved',sourceDocumentId:row.id,idempotencyKey:'PSA-APPROVED:'+row.id,payload:{project_id:row.project_id,timesheet_id:row.id,allocation_id:row.allocation_id,person_id:row.person_id,work_date:row.work_date,minutes:Number(row.minutes),billable:Boolean(Number(row.billable)),cost_snapshot_cents:String(row.cost_snapshot_cents),approved_by:email}}):null;
+   const financeGuard=entity?' AND '+operationalFinanceScopePredicate:'';
    await atomicSales(db,`EXISTS(SELECT 1 FROM rticore_project_timesheets t
-    WHERE t.tenant_id=? AND t.id=? AND t.version=? AND t.status='submitted' AND lower(t.created_by)!=?${projectGuard})`,
-   [TENANT,row.id,row.version,email,...(scope?.args??[])],[
+    WHERE t.tenant_id=? AND t.id=? AND t.version=? AND t.status='submitted' AND lower(t.created_by)!=?${projectGuard})${financeGuard}`,
+   [TENANT,row.id,row.version,email,...(scope?.args??[]),...(entity?[TENANT,row.project_id,entity]:[])],[
     db.prepare('UPDATE rticore_project_timesheets SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes.trim(),TENANT,row.id),
-    operationEvent(db,'timesheet',row.id,v.approve?'APPROVE':'REJECT',email,{version:row.version,notes:v.notes.trim()})
-   ]);return reply({success:true});
+    operationEvent(db,'timesheet',row.id,v.approve?'APPROVE':'REJECT',email,{version:row.version,notes:v.notes.trim()}),
+    ...(docking?[docking.stmt]:[])
+   ]);return reply({success:true,...(docking?{finance_event_id:docking.eventId}:{})});
   }
   return fail('Aksi tidak dikenal');
  }catch(e){return error(e);}

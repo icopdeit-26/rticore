@@ -65,3 +65,12 @@ export async function buildFinanceOutboxStatement(
     );
   return { eventId, stmt };
 }
+
+/** Hostinger never permits an unscoped financial event. Legacy standalone fixtures
+ * may omit scope; mapped projects always produce the same transactional outbox. */
+export async function operationalFinanceScope(db: D1DB, projectId: string): Promise<string | null> {
+ const row = await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_project_scopes s JOIN rticore_erp_org_units u ON u.tenant_id=s.tenant_id AND u.id=s.legal_entity_id WHERE s.tenant_id=? AND s.project_id=? AND s.status='approved' AND u.kind='legal_entity' AND u.active=1").bind(TENANT,projectId).first<{legal_entity_id:string}>();
+ if(!row && (typeof process !== 'undefined' && process.env.RTICORE_RUNTIME === 'hostinger')) throw new Error('FINANCE_SCOPE_REQUIRED');
+ return row?.legal_entity_id ?? null;
+}
+export const operationalFinanceScopePredicate = "EXISTS(SELECT 1 FROM rticore_erp_project_scopes fs JOIN rticore_erp_org_units fu ON fu.tenant_id=fs.tenant_id AND fu.id=fs.legal_entity_id WHERE fs.tenant_id=? AND fs.project_id=? AND fs.legal_entity_id=? AND fs.status='approved' AND fu.kind='legal_entity' AND fu.active=1)";
