@@ -77,6 +77,51 @@ async function setupFinanceEnvironment(h) {
   await expect(h.call('erp/organization', 'POST', 'approver', { action: 'review_opportunity_scope', opportunity_id: 'opp-qa', version: 1, approve: true }), 200);
 }
 
+// Dedicated negative tests supplement, rather than replace, the 520-case suite.
+test('Security: Finance entity selection and dataset permissions fail closed', async () => {
+  const h = fixture();
+  try {
+    await setupFinanceEnvironment(h);
+    const scoped = await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal}`), 200);
+    assert.deepEqual(scoped.body.legalEntities.map(e => e.id), [legal]);
+    assert.equal(scoped.body.legalEntityId, legal);
+    await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal2}`), 403);
+    await expect(h.call('finance', 'GET', 'viewer', null, `?menu=F01&legal_entity_id=${legal}`), 403);
+    await expect(h.call('finance', 'GET', 'finance', null, '?menu=F03&legal_entity_id=unknown-entity'), 403);
+
+    // Mutations must not accept another legal entity even from a Finance maker.
+    await expect(h.call('finance','POST','finance',{
+      action:'create_profit_center',legal_entity_id:legal2,code:'UNAUTHORIZED',name:'Cross Entity',center_kind:'cost_center'
+    }),403);
+    assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_finance_profit_centers WHERE code='UNAUTHORIZED'").get().n,0);
+    // Create a real GL account in the second entity, inaccessible to the first.
+    h.sql.prepare("INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES(?,?,?,?,?,?,?)")
+      .run('other-entity-secret-account',tenant,legal2,'9001','OTHER-ENTITY-SECRET','asset',users.admin);
+    await expect(h.call('finance','POST','finance',{
+      action:'register_coa_hierarchy',legal_entity_id:legal,account_id:'other-entity-secret-account',
+      account_group:'Cross entity',normal_balance:'debit',effective_from:'2026-01-01'
+    }),403);
+    const response = await expect(h.call('finance', 'GET', 'finance', null, `?menu=F03&legal_entity_id=${legal}`),200);
+    assert.ok(!JSON.stringify(response.body).includes('OTHER-ENTITY-SECRET'));
+
+    // Super admin with approved affiliation may open F01 but not see GL/AP detail.
+    const admin = await expect(h.call('finance', 'GET', 'admin', null, `?menu=F01&legal_entity_id=${legal}`),200);
+    assert.deepEqual(admin.body.data.journals,[]);
+    assert.deepEqual(admin.body.data.payrollBatches,[]);
+    assert.deepEqual(admin.body.data.apInvoices,[]);
+    assert.equal(admin.body.kpis.trialBalanceDebitCents,null);
+    assert.equal(admin.body.kpis.apOutstandingCents,null);
+
+    // An authorized independent role assignment to a second entity may extend access.
+    h.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,'approved',?,?,?)")
+      .run('viewer-entity-2',tenant,users.viewer,'management_viewer',legal2,users.admin,users.approver,'Independent entity assignment');
+    const view = await expect(h.call('finance','GET','viewer',null,`?menu=F01&legal_entity_id=${legal2}`),200);
+    assert.deepEqual(view.body.legalEntities.map(e => e.id),[legal2]);
+    await expect(h.call('finance','GET','viewer',null,`?menu=F01&legal_entity_id=${legal}`),403);
+    await expect(h.call('finance','GET','viewer',null,`?menu=F03&legal_entity_id=${legal2}`),403);
+  } finally { h.close(); }
+});
+
 // =============================================================================
 // DOMAIN 01: FOUNDATION & 18-ROLE RBAC (35 SCENARIOS)
 // =============================================================================
@@ -112,10 +157,21 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
       { role: 'project_manager', menu: 'F22', status: 403 },
     ];
     for (const c of menuChecks) {
+      const roleFixture = fixture();
+      try {
+        await setupFinanceEnvironment(roleFixture);
+      // Seed a real approved assignment in the isolated fixture, never an HTTP role override.
+      const assignmentId = 'uat-menu-role';
+      const def = core.getFinanceRoleDefinition(c.role);
+      roleFixture.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_make,can_check,can_approve,can_post,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,?,?,?,?,?,'approved',?,?,?)")
+        .run(assignmentId, tenant, users.admin, c.role, legal, def.defaultLimitCents, Number(def.canMake), Number(def.canCheck), Number(def.canApprove), Number(def.canPost), users.finance, users.approver, 'Independent fixture approval');
       await expect(
-        h.call('finance', 'GET', 'admin', null, `?menu=${c.menu}&legal_entity_id=${legal}`, { 'x-finance-role': c.role }),
+        roleFixture.call('finance', 'GET', 'admin', null, `?menu=${c.menu}&legal_entity_id=${legal}`),
         c.status,
       );
+      } finally {
+        roleFixture.close();
+      }
       executed++;
     }
 
@@ -132,8 +188,6 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
           target_role: 'finance_manager',
           approval_limit_cents: 500_000_000_00,
         },
-        '',
-        { 'x-finance-role': 'super_admin' },
       ),
       201,
     );
@@ -146,8 +200,6 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
         'POST',
         'admin',
         { action: 'approve_finance_role', id: reqRole.body.id, review_notes: 'Self approval attempt must fail' },
-        '',
-        { 'x-finance-role': 'cfo' },
       ),
       403,
     );
@@ -160,12 +212,23 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
         'POST',
         'finance',
         { action: 'approve_finance_role', id: reqRole.body.id, review_notes: 'Target self approval must fail' },
-        '',
-        { 'x-finance-role': 'cfo' },
       ),
       403,
     );
     executed++;
+
+    // A read-only or unrelated member cannot approve role grants.
+    await expect(h.call('finance', 'POST', 'sales', {
+      action: 'approve_finance_role', id: reqRole.body.id,
+      review_notes: 'Unauthorized sales role approval must fail'
+    }), 403);
+    // A client-controlled header must never elevate privileges.
+    await expect(h.call('finance', 'GET', 'admin', null,
+      `?menu=F03&legal_entity_id=${legal}`, { 'x-finance-role': 'cfo' }), 403);
+    await expect(h.call('finance', 'POST', 'admin', {
+      action: 'approve_finance_role', id: reqRole.body.id,
+      review_notes: 'Client role override must be denied'
+    }, '', { 'x-finance-role': 'cfo' }), 403);
 
     // Independent approver succeeds
     await expect(
@@ -174,8 +237,6 @@ test('Domain 01 (35 UAT Scenarios): Foundation, 18-Role RBAC, Menu Access & Tier
         'POST',
         'approver',
         { action: 'approve_finance_role', id: reqRole.body.id, review_notes: 'Independently approved by CFO' },
-        '',
-        { 'x-finance-role': 'cfo' },
       ),
       200,
     );
@@ -440,6 +501,12 @@ test('Domain 02 (55 UAT Scenarios): General Ledger, 10 COA Classes, 16 Journal T
       403,
     );
     executed++;
+
+    // An authorized reviewer may not use a different entity ID for this journal.
+    await expect(h.call('finance','POST','approver',{
+      action:'approve_and_post_journal', legal_entity_id:legal2,
+      journal_id:firstJournalId, review_notes:'Cross entity approval attempt denied',post_immediately:true,
+    }),403);
 
     // Independent Approver approves and posts
     await expect(
@@ -1393,6 +1460,9 @@ test('Domain 09 (35 UAT Scenarios): Enterprise Multi-Dimensional Budget, Soft/Ha
       executed++;
     }
 
+    // Positive expense flow needs an independently approved legal-entity affiliation.
+    h.sql.prepare("INSERT INTO rticore_erp_staff_org(tenant_id,email,unit_id,position_title,created_by,status,reviewed_by,review_notes) VALUES(?,?,?,?,?,'approved',?,?)")
+      .run(tenant,users.sales,legal,'Sales Staff',users.admin,users.approver,'Independent expense entity approval');
     const expDoc = (await expect(upload(h, 'supporting', 'sales'), 201)).body.id;
     const claim = await expect(
       h.call('finance', 'POST', 'sales', {
@@ -1888,8 +1958,6 @@ test('Domain 12 (35 UAT Scenarios): 17-Point Closing Checklist, 5-Stage Period L
           period_id: periodId,
           reopen_reason: 'Unauthorized attempt to reopen closed period',
         },
-        '',
-        { 'x-finance-role': 'ar_officer' },
       ),
       403,
     );
@@ -1921,6 +1989,13 @@ test('Domain 12 (35 UAT Scenarios): 17-Point Closing Checklist, 5-Stage Period L
     executed++;
 
     // 26-35: Multi-Entity Intercompany Eliminations (5 elimination types) & 5 Subledger Reconciliations
+    // The same Finance user cannot consolidate an unassigned counterparty.
+    await expect(h.call('finance','POST','finance',{
+      action:'record_intercompany_elimination',period_code:'2026-11',source_entity_id:legal,counterparty_entity_id:legal2,
+      elimination_kind:'intercompany_ar_ap',amount_cents:10000,
+    }),403);
+    h.sql.prepare("INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_make,can_check,can_approve,can_post,status,requested_by,reviewed_by,review_notes) VALUES(?,?,?,?,?,?,?,?,?,?,'approved',?,?,?)")
+      .run('consolidation-scope-2',tenant,users.finance,'financial_controller',legal2,100000000,1,1,1,1,users.admin,users.approver,'Independent consolidation authority');
     const elimKinds = ['intercompany_ar_ap', 'intercompany_revenue_expense', 'intercompany_loan', 'dividend_equity', 'fx_translation'];
     for (let i = 0; i < elimKinds.length; i++) {
       await expect(
@@ -2046,6 +2121,12 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
 
     // 35: Scenario H — Failed Event -> Retry -> Move to Dead Letter Queue -> Controlled Reprocessing
     const failedRow = h.sql.prepare("SELECT id FROM rticore_finance_integration_events WHERE status='failed' LIMIT 1").get();
+    const original = h.sql.prepare('SELECT payload_json,payload_sha256,retry_count FROM rticore_finance_integration_events WHERE id=?').get(failedRow.id);
+    h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run('{"amount_cents":999}',failedRow.id);
+    await expect(h.call('finance','POST','finance',{action:'retry_docking_event',event_id:failedRow.id}),409);
+    assert.equal(h.sql.prepare('SELECT retry_count FROM rticore_finance_integration_events WHERE id=?').get(failedRow.id).retry_count,original.retry_count);
+    h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run(original.payload_json,failedRow.id);
+    await expect(h.call('finance','POST','admin',{action:'retry_docking_event',event_id:failedRow.id}),403);
     const dlqRes = await expect(
       h.call('finance', 'POST', 'finance', {
         action: 'retry_docking_event',
@@ -2063,7 +2144,7 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
       }),
       200,
     );
-    assert.equal(reprocessRes.body.status, 'processed');
+    assert.equal(reprocessRes.body.status, 'validated'); // Retry is not a posting or processing acknowledgement.
     executed++;
 
     assert.equal(executed, 35);
