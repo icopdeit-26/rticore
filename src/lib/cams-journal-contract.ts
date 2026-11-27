@@ -20,3 +20,10 @@ export function journalEnvelope(x:unknown):JournalEnvelope {
 export function envelopeHash(e:JournalEnvelope){return createHash('sha256').update(JSON.stringify(e)).digest('hex');}
 export function validToken(received:string|null,secret:string|undefined){if(!secret||secret.length<32||!received?.startsWith('Bearer '))return false;const a=createHash('sha256').update(received.slice(7)).digest(),b=createHash('sha256').update(secret).digest();return timingSafeEqual(a,b);}
 export function lineSignature(lines:{accountId:string;debit:string;credit:string;costCenterId?:string|null}[]){return JSON.stringify(lines.map(l=>[l.accountId,l.costCenterId??null,BigInt(l.debit).toString(),BigInt(l.credit).toString()]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));}
+
+// Historical posted rows without independent lifecycle evidence are not reconciled.
+export function independentPostingEvidence(j:{created_by:string;reviewed_by:string|null;posted_by:string|null;reviewed_at:string|null;posted_at:string|null},w:{lifecycle_stage:string;submitted_by:string|null;checked_by:string|null;approved_by:string|null;posted_by:string|null;checked_at:string|null;approved_at:string|null;posted_at:string|null}|null|undefined){
+ const norm=(v:string|null|undefined)=>v?.trim().toLowerCase()||'';
+ const maker=norm(j.created_by),checker=norm(j.reviewed_by),poster=norm(j.posted_by);
+ return !!(maker&&checker&&poster&&new Set([maker,checker,poster]).size===3&&j.reviewed_at&&j.posted_at&&w?.lifecycle_stage==='posted'&&norm(w.submitted_by)===maker&&norm(w.checked_by)===checker&&norm(w.approved_by)===checker&&norm(w.posted_by)===poster&&w.checked_at&&w.approved_at&&w.posted_at);
+}
