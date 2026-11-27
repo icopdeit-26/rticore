@@ -102,10 +102,10 @@ export async function scanFlexGuardSources(client){
  const {rows}=await client.query(`SELECT count(*)::text AS total,
  count(*) FILTER (WHERE l.id IS NULL)::text AS missing_source,
  count(*) FILTER (WHERE l.id IS NOT NULL AND l.legal_entity_id IS DISTINCT FROM e.legal_entity_id)::text AS invalid_entity_scope,
- count(*) FILTER (WHERE l.id IS NOT NULL AND (l.approval_status<>'posted' OR l.financial_value_cents<=0 OR l.finance_outbox_event_id IS DISTINCT FROM e.id OR e.payload_json::jsonb->>'wallet_id' IS DISTINCT FROM l.wallet_id OR e.payload_json::jsonb->>'customer_id' IS DISTINCT FROM l.customer_id OR e.payload_json::jsonb->>'credits' IS DISTINCT FROM abs(l.credit_amount)::text OR (e.event_type='flexguard.credit_consumed' AND l.transaction_type<>'consumption') OR (e.event_type='flexguard.credit_purchased' AND l.transaction_type NOT IN ('purchase','top_up'))))::text AS source_mismatch
+ count(*) FILTER (WHERE l.id IS NOT NULL AND (l.approval_status<>'posted' OR l.financial_value_cents<=0 OR l.finance_outbox_event_id IS DISTINCT FROM e.id OR e.payload_json::jsonb->>'wallet_id' IS DISTINCT FROM l.wallet_id OR e.payload_json::jsonb->>'customer_id' IS DISTINCT FROM l.customer_id OR e.payload_json::jsonb->>'credits' IS DISTINCT FROM abs(l.credit_amount)::text OR (e.event_type='flexguard.credit_consumed' AND l.transaction_type<>'consumption') OR (e.event_type='flexguard.credit_purchased' AND l.transaction_type NOT IN ('purchase','top_up')) OR (e.event_type='flexguard.credit_expired' AND l.transaction_type<>'expiry') OR (e.event_type='flexguard.credit_adjusted' AND l.transaction_type<>'adjustment') OR e.payload_json::jsonb->>'amount_cents' IS DISTINCT FROM l.financial_value_cents::text OR e.payload_json::jsonb->>'unit_value_cents' IS DISTINCT FROM l.unit_value_cents::text))::text AS source_mismatch
  FROM public.rticore_finance_integration_events e
  LEFT JOIN public.rticore_flexguard_enterprise_ledger l ON l.tenant_id=e.tenant_id AND l.id=e.source_document_id
- WHERE e.direction='outbox' AND e.source_system='RTICORE' AND e.event_type IN ('flexguard.credit_purchased','flexguard.credit_consumed')`);
+ WHERE e.direction='outbox' AND e.source_system='RTICORE' AND e.event_type IN ('flexguard.credit_purchased','flexguard.credit_consumed','flexguard.credit_expired','flexguard.credit_adjusted')`);
  return rows[0];
 }
 

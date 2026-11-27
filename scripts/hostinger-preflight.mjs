@@ -27,6 +27,8 @@ try {
     JOIN pg_namespace n ON n.oid=child.relnamespace JOIN pg_namespace pn ON pn.oid=parent.relnamespace
     WHERE c.contype='f' AND c.convalidated AND n.nspname='public' AND pn.nspname='public'`);
   if(!entityManifest.every(e=>entityFks.rows.some(r=>r.conname===e.name&&r.child===e.table&&r.parent===e.parent&&JSON.stringify(r.child_columns)===JSON.stringify(['tenant_id','legal_entity_id',e.column])&&JSON.stringify(r.parent_columns)===JSON.stringify(['tenant_id','legal_entity_id','id']))))throw new Error('Validated entity FK inventory incomplete');
+  const fg=await client.query("SELECT to_regclass('public.rticore_flexguard_enterprise_ledger') IS NOT NULL AS ledger,to_regclass('public.rticore_flexguard_credit_lots') IS NOT NULL AS lots,to_regclass('public.rticore_flexguard_requests') IS NOT NULL AS requests,to_regprocedure('public.rticore_fg_review(text,text,text,text,boolean,text)') IS NOT NULL AS review,to_regprocedure('public.rticore_fg_submit(text,text,text,text,text,bigint,text,text,text,text,text,text)') IS NOT NULL AS submit");
+  if(!Object.values(fg.rows[0]||{}).every(Boolean)||!fg.rows.length)throw new Error('FlexGuard 0057 migration incomplete');
   const account = await client.query("SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname=current_user");
   if (Object.values(account.rows[0] || {}).some(Boolean)) throw new Error('Runtime role has excessive database privileges');
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
