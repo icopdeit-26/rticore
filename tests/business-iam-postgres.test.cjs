@@ -1,0 +1,40 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {randomBytes}=require('node:crypto'),{Pool}=require('pg'),{buildSync}=require('esbuild');
+test('isolated PostgreSQL enrollment, concurrent TOTP replay, session revocation, idle expiry and rate limit',async()=>{
+ assert.equal(process.env.CI,'true');const url=process.env.RTICORE_ATOMIC_TEST_URL;assert.equal(url,'postgresql://rticore_ci:rticore_ci_only@127.0.0.1:5432/rticore_atomic_ci');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'business-iam-ci-')),schema='iam_'+randomBytes(8).toString('hex');
+ const root=new Pool({connectionString:url,max:1});let pool;
+ try{
+ buildSync({entryPoints:['src/lib/business-iam.ts','src/lib/business-iam-crypto.ts'],bundle:true,platform:'node',format:'cjs',outdir:dir,logLevel:'silent'});
+ const iam=require(path.join(dir,'business-iam.js')),crypto=require(path.join(dir,'business-iam-crypto.js'));
+ process.env.RTICORE_IAM_ENCRYPTION_KEY=randomBytes(32).toString('base64');
+ await root.query('CREATE SCHEMA '+schema);pool=new Pool({connectionString:url,max:4,options:'-c search_path='+schema});
+ await pool.query('CREATE TABLE rticore_members(email text PRIMARY KEY,active bigint NOT NULL)');
+ await pool.query(fs.readFileSync('deployment/hostinger/migrations/0054_business_iam.sql','utf8'));
+ const db={prepare(sql){let i=0;sql=sql.replace(/\?/g,()=>'$'+(++i));const statement={bind(...args){return {async first(){return (await pool.query(sql,args)).rows[0]||null;},async run(){return {success:true,meta:{changes:(await pool.query(sql,args)).rowCount}};}};}};return statement;}};
+ const email='qa@example.invalid',seed=randomBytes(20),invite=crypto.newToken(),password='synthetic long password 123';
+ await pool.query('INSERT INTO rticore_members VALUES($1,1)',[email]);
+ await pool.query("INSERT INTO rticore_iam_credentials(email,totp_cipher,invite_hash,invite_expires) VALUES($1,$2,$3,now()+interval '10 minutes')",[email,crypto.encryptSeed(seed,email),crypto.tokenHash(invite)]);
+ assert.equal(await iam.enrollmentDetails(db,crypto.newToken()),null);
+ assert.equal((await iam.enrollmentDetails(db,invite)).seed,crypto.base32(seed));
+ const step=Math.floor(Date.now()/30000);
+ assert.equal(await iam.enroll(db,invite,password,crypto.totpCode(seed,step-1)),true);
+ assert.equal(await iam.enrollmentDetails(db,invite),null);
+ assert.equal(await iam.enroll(db,invite,password,crypto.totpCode(seed,step-1)),false);
+ assert.equal(await iam.loginBusiness(db,email,'wrong password 123',crypto.totpCode(seed,step)),null);
+ assert.equal(await iam.loginBusiness(db,email,password,crypto.totpCode(seed,step-1)),null);
+ const attempts=await Promise.all([iam.loginBusiness(db,email,password,crypto.totpCode(seed,step)),iam.loginBusiness(db,email,password,crypto.totpCode(seed,step))]);
+ assert.equal(attempts.filter(Boolean).length,1);
+ const token=attempts.find(Boolean),req=new Request('https://qa.invalid/api/sales/identity',{headers:{cookie:crypto.SESSION_COOKIE+'='+token}});
+ assert.equal(await iam.verifyBusinessSession(db,req),email);
+ const session=(await pool.query('SELECT token_hash,email FROM rticore_iam_sessions')).rows;assert.deepEqual(session,[{token_hash:crypto.tokenHash(token),email}]);
+ assert.equal(await iam.verifyBusinessSession(db,new Request('https://qa.invalid',{headers:{'x-rticore-oidc-token':'forged'}})),null);
+ await pool.query('UPDATE rticore_members SET active=0 WHERE email=$1',[email]);assert.equal(await iam.verifyBusinessSession(db,req),null);
+ await pool.query('UPDATE rticore_members SET active=1 WHERE email=$1',[email]);
+ await pool.query("UPDATE rticore_iam_sessions SET last_seen=now()-interval '31 minutes'");assert.equal(await iam.verifyBusinessSession(db,req),null);
+ await iam.logoutBusiness(db,req);assert.equal((await pool.query('SELECT count(*)::int n FROM rticore_iam_sessions')).rows[0].n,0);
+ assert.deepEqual((await pool.query('SELECT action FROM rticore_iam_audit ORDER BY id')).rows.map(x=>x.action),['enrolled','login','logout']);
+ for(let i=0;i<5;i++)assert.equal(await iam.rateAllowed(db,'test','identity'),true);
+ assert.equal(await iam.rateAllowed(db,'test','identity'),false);
+ }finally{delete process.env.RTICORE_IAM_ENCRYPTION_KEY;await pool?.end();await root.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');await root.end();fs.rmSync(dir,{recursive:true,force:true});}
+});

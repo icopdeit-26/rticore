@@ -16,6 +16,7 @@ try {
   if (!expectedTables.length || !expectedTriggers.length) throw new Error('Missing schema manifest');
   const tables = new Set((await client.query("SELECT tablename FROM pg_tables WHERE schemaname='public'")).rows.map(r=>r.tablename));
   const activeTriggers = new Set((await client.query("SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled IN ('O','A') AND n.nspname='public'")).rows.map(r=>r.tgname));
+  if(process.env.RTICORE_AUTH_MODE==='business')expectedTables.push('rticore_iam_credentials','rticore_iam_sessions','rticore_iam_rate','rticore_iam_audit');
   const missingTables = expectedTables.filter(t=>!tables.has(t));
   const missingTriggers = expectedTriggers.filter(t=>!activeTriggers.has(t));
   if (missingTables.length || missingTriggers.length) throw new Error('Schema or trigger migration incomplete');
@@ -23,6 +24,10 @@ try {
   if (Object.values(account.rows[0] || {}).some(Boolean)) throw new Error('Runtime role has excessive database privileges');
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
   if (!active.rowCount) throw new Error('No active membership provisioned');
+  if(process.env.RTICORE_AUTH_MODE==='business'){
+    const enrolled=await client.query("SELECT count(*)::int n FROM rticore_iam_credentials c JOIN rticore_members m ON m.email=c.email WHERE c.enrolled_at IS NOT NULL AND m.active=1 AND m.role='admin'");
+    if(enrolled.rows[0].n<2)throw Error('Two independently enrolled administrators required before cutover');
+  }
   await client.query('ROLLBACK');
   console.log('Hostinger core preflight passed; Finance release certification remains separate.');
 } catch {

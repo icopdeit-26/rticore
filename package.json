@@ -72,7 +72,9 @@
     "cron:sales": "node scripts/run-native-sales-cron.mjs",
     "build:enterprise": "npm run test:pricing && npm run test:quotation-docx && npm run test:post-po && npm run test:boq && npm run test:boq-domain && npm run test:ai && npm run test:boq-workflow && npm run test:sales && npm run test:sales-transactions && npm run test:document-vault && npm run test:activities && npm run test:scoping-upload && npm run test:marketing && npm run test:rticore-negative && npm run test:runtime-compat && npm run test:activities && npm run test:p1-p2 && npm run test:bid-readiness && npm run test:feasibility && npm run test:executive && npm run test:feasibility && npm run test:admin && npm run test:modules-13-15 && npm run test:postal && npm run test:flexguard && npm run test:service-operations && npm run test:psa-timesheets && npm run test:project-manager && npm run typecheck && npm run build",
     "iam:render": "node scripts/render-native-iam.mjs",
-    "iam:invite": "node --experimental-strip-types scripts/business-iam-invite.mjs"
+    "iam:invite": "node --experimental-strip-types scripts/business-iam-invite.mjs",
+    "iam:revoke": "node --experimental-strip-types scripts/business-iam-revoke.mjs",
+    "cron:iam": "node scripts/business-iam-cleanup.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
