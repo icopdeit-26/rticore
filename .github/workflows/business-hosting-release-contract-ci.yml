@@ -1,0 +1,25 @@
+name: Business hosting release contract CI
+on:
+  push:
+    branches: ['fix/p0-business-hosting-certification']
+  pull_request:
+    branches: ['integration/v6-erp-finance-20261127', main]
+    paths:
+      - 'scripts/hostinger-preflight.mjs'
+      - 'scripts/hostinger-runtime-privileges.mjs'
+      - 'tests/hostinger-runtime-privileges.test.mjs'
+      - 'deployment/hostinger/BUSINESS-HOSTING.md'
+      - 'deployment/hostinger/PRODUCTION-CERTIFICATION.md'
+      - '.github/workflows/business-hosting-release-contract-ci.yml'
+permissions:
+  contents: read
+jobs:
+  preflight-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --check scripts/hostinger-preflight.mjs
+      - run: node --test tests/hostinger-runtime-privileges.test.mjs tests/hostinger-schema-inventory.test.mjs
