@@ -1,5 +1,7 @@
 'use client';
 
+import { CamsFinanceInbox } from './CamsFinanceInbox';
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -777,6 +779,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
             </div>
           )}
 
+          {activeMenu === 'F25' && selectedEntity && <CamsFinanceInbox key={selectedEntity} entity={selectedEntity} />}
           {registers.map(register => (
             <div key={register.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="text-base font-extrabold text-slate-900">{currentMenuDef.id} · {register.key}</h3>
