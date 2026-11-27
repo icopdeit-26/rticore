@@ -1,5 +1,10 @@
 export function nativeRequestOriginAllowed(request:Request, origin:string):boolean {
  if(['GET','HEAD','OPTIONS'].includes(request.method))return true;
+ // Never accept an absent/malformed trusted origin, even if a caller supplies a matching header.
+ try {
+  const parsed=new URL(origin);
+  if(parsed.protocol!=='https:'||parsed.origin!==origin||parsed.username||parsed.password)return false;
+ }catch{return false;}
  return request.headers.get('origin')===origin && request.headers.get('sec-fetch-site')!=='cross-site';
 }
 export async function requireActiveNativeSession(token:string, config:{issuer:string;clientId:string;clientSecret:string}, subject:string, fetcher:typeof fetch=fetch):Promise<void>{

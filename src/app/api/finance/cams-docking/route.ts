@@ -3,7 +3,7 @@ import { getLocalPostgresDB } from '@/lib/postgres-db';
 import { camsDatabaseMode } from '@/lib/cams-runtime-boundary';
 import { TENANT } from '@/lib/sales-workflow';
 import { readBoundedJSON, RequestBodyError } from '@/lib/bounded-json';
-import { DockingError, journalEnvelope,envelopeHash,minorUnits,validToken,lineSignature,independentPostingEvidence } from '@/lib/cams-journal-contract';
+import { DockingError, journalEnvelope,envelopeHash,minorUnits,validToken,lineSignature,independentPostingEvidence,serviceRequestContextAllowed } from '@/lib/cams-journal-contract';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 type MappedLine={accountId:string;debit:string;credit:string;costCenterId?:string|null};
@@ -11,6 +11,7 @@ type Receipt={id:string;source_tenant_id:string;source_journal_id:string;idempot
 const reply=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 function context(req:Request){
  if(process.env.CAMS_FINANCE_DOCKING_ENABLED!=='true'||!camsDatabaseMode(process.env))throw new DockingError('DOCKING_DISABLED',503);
+ if(!serviceRequestContextAllowed(req.headers))throw new DockingError('SERVICE_CONTEXT_REQUIRED',403);
  if(!validToken(req.headers.get('authorization'),process.env.CAMS_FINANCE_SERVICE_TOKEN))throw new DockingError('UNAUTHORIZED',401);
  const source=process.env.CAMS_FINANCE_SOURCE_TENANT_ID,entity=process.env.CAMS_FINANCE_LEGAL_ENTITY_ID;
  if(!source||!entity||!process.env.CAMS_FINANCE_COA_MAP_JSON)throw new DockingError('MAPPING_NOT_CONFIGURED',503);
