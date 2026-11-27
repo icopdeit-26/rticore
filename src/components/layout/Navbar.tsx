@@ -26,6 +26,7 @@ import { formatAIChatMessage } from '@/lib/ai-chat-format';
 import { selectConversationHistory, activeChatTopic, type AIConversationTurn } from '@/lib/ai-conversation';
 import {roles} from '@/lib/boq-domain';
 import {canOpenRoute} from '@/lib/enterprise-navigation';
+import {EnterpriseCommandPalette} from '@/components/layout/EnterpriseCommandPalette';
 
 const WELCOME_MESSAGE = {
   sender: 'ai' as const,
@@ -224,6 +225,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Header Actions: AI Trigger, Settings, Approvals, Profile */}
           <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
+            <EnterpriseCommandPalette key={role||'anonymous'} role={role}/>
             {/* AI Assistant Quick Trigger */}
             <button
               onClick={() => setAiAssistantOpen(true)}
