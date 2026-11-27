@@ -6,13 +6,14 @@ import { Bot, CheckCircle2, AlertTriangle, ShieldCheck, KeyRound, ArrowUp,
  ArrowDown, RefreshCcw, Trash2, Save, LoaderCircle, PlugZap, Send } from 'lucide-react';
 import type { AIProviderPublic, ProviderId } from '@/lib/ai-provider-registry';
 
-type ApiResponse={success:boolean;message?:string;code?:string;encryptionReady?:boolean;configs?:AIProviderPublic[];
+type ApiResponse={success:boolean;message?:string;code?:string;encryptionReady?:boolean;openAIOnly?:boolean;configs?:AIProviderPublic[];
   content?:string;providerUsed?:string;modelUsed?:string;latencyMs?:number;isFallback?:boolean};
 const secureHeaders={'Content-Type':'application/json','x-rticore-ai-admin':'1'};
 const smallInput='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100';
 
 export default function AISettingsPage(){
  const [configs,setConfigs]=useState<AIProviderPublic[]>([]);
+ const [openAIOnly,setOpenAIOnly]=useState<boolean|null>(null);
  const [loading,setLoading]=useState(true);
  const [blocked,setBlocked]=useState('');
  const [encryptionReady,setEncryptionReady]=useState<boolean|null>(null);
@@ -30,6 +31,7 @@ export default function AISettingsPage(){
    const data:ApiResponse=await response.json();
    if(!response.ok||!data.success){setBlocked(data.message||'Tidak bisa membuka pengaturan AI.');return;}
    setConfigs(data.configs||[]);
+   setOpenAIOnly(data.openAIOnly===false?false:data.openAIOnly===true?true:null);
    setEncryptionReady(data.encryptionReady??null);
    setBlocked('');
   }catch{setBlocked('Koneksi ke backend RTICORE gagal.');}
@@ -53,6 +55,7 @@ export default function AISettingsPage(){
   finally{setBusy('');}
  };
  const save=(p:AIProviderPublic,enabled=p.enabled)=>{
+  if(openAIOnly!==false&&p.id!=='openai')return;
   const pending=keys[p.id]?.trim();
   const model=(models[p.id]??p.model).trim();
   if(pending&&encryptionReady===false){
@@ -64,11 +67,12 @@ export default function AISettingsPage(){
    ...(pending?{apiKey:pending}:{})},'Pengaturan tersimpan.');
  };
  const order=(idx:number,dir:-1|1)=>{
+  if(openAIOnly!==false)return;
   const next=idx+dir;if(next<0||next>=configs.length)return;
   const ids=configs.map(p=>p.id);[ids[idx],ids[next]]=[ids[next],ids[idx]];
   void action('priority',{action:'reorder',orderedIds:ids},'Prioritas diperbarui.');
  };
- const check=(id:ProviderId)=>void action('test-'+id,{action:'test',id},'Koneksi diuji.');
+ const check=(id:ProviderId)=>{if(openAIOnly===false||id==='openai')void action('test-'+id,{action:'test',id},'Koneksi diuji.');};
  const clear=(id:ProviderId)=>{
   if(!window.confirm('Hapus API key '+id+' dari database? Koneksi akan dinonaktifkan.'))return;
   void action('delete-'+id,{action:'deleteKey',id},'API key dihapus.');
@@ -85,7 +89,8 @@ export default function AISettingsPage(){
   finally{setBusy('');}
  };
  const connected=configs.filter(x=>x.hasKey).length;
- const active=configs.filter(x=>x.enabled&&x.hasKey).length;
+ const allowed=(id:ProviderId)=>openAIOnly===false||id==='openai';
+ const active=configs.filter(x=>allowed(x.id)&&x.enabled&&x.hasKey&&x.testedOk===true).length;
  return <main className="mx-auto max-w-6xl space-y-5 pb-24">
   <AdminNavigation/>
   <header className="rounded-2xl border border-violet-100 bg-gradient-to-r from-white to-violet-50 p-5 sm:p-6">
@@ -96,7 +101,7 @@ export default function AISettingsPage(){
    <div className="mt-4 flex flex-wrap gap-2 text-xs">
     <span className="rounded-lg border border-violet-200 bg-white px-3 py-2 font-semibold text-violet-800">Providers: {configs.length}</span>
     <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700">API key terpasang: {connected}</span>
-    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700">Aktif: {active}</span>
+    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700">Siap digunakan: {active}</span>
    </div>
   </header>
   <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs leading-relaxed text-slate-600">
@@ -129,13 +134,14 @@ export default function AISettingsPage(){
        <div className="flex flex-col items-center gap-1">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-xs font-black text-violet-800">{p.priority}</span>
         <div className="flex">
-         <button type="button" aria-label={'Naikkan prioritas '+p.name} disabled={!!busy||idx===0}
+         <button type="button" aria-label={'Naikkan prioritas '+p.name} disabled={!!busy||openAIOnly!==false||idx===0}
            onClick={()=>order(idx,-1)} className="p-1 text-slate-500 disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5"/></button>
-         <button type="button" aria-label={'Turunkan prioritas '+p.name} disabled={!!busy||idx===configs.length-1}
+         <button type="button" aria-label={'Turunkan prioritas '+p.name} disabled={!!busy||openAIOnly!==false||idx===configs.length-1}
            onClick={()=>order(idx,1)} className="p-1 text-slate-500 disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5"/></button>
         </div>
        </div>
        <div className="min-w-0"><h3 className="text-sm font-extrabold text-slate-900">{p.name}</h3>
+        {!allowed(p.id)&&<p className="mt-1 text-xs font-semibold text-amber-800">Arsip provider — tidak diizinkan pada runtime ini</p>}
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
          <span className={'rounded-md px-2 py-0.5 font-semibold '+(p.hasKey?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600')}>
           {p.hasKey?'Key tersimpan':'Belum dikonfigurasi'}</span>
@@ -145,28 +151,28 @@ export default function AISettingsPage(){
        </div>
       </div>
       <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-800">
-       <input type="checkbox" className="h-4 w-4 accent-violet-700" checked={p.enabled}
-         disabled={!!busy||!p.hasKey}
+       <input type="checkbox" className="h-4 w-4 accent-violet-700" checked={allowed(p.id)&&p.enabled}
+         disabled={!!busy||!p.hasKey||!allowed(p.id)}
          onChange={e=>save(p,e.target.checked)}/> Aktifkan
       </label>
      </div>
      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <label className="block min-w-0 text-xs font-bold text-slate-700">Model AI
-       <input list={'models-'+p.id} value={models[p.id]??p.model}
+       <input disabled={!allowed(p.id)||!!busy} list={'models-'+p.id} value={models[p.id]??p.model}
         onChange={e=>setModels(x=>({...x,[p.id]:e.target.value}))} className={'mt-1 '+smallInput}/>
        <datalist id={'models-'+p.id}>{p.availableModels.map(m=><option key={m} value={m}/>)}</datalist>
       </label>
       <label className="block min-w-0 text-xs font-bold text-slate-700">API Key (isi untuk menambah/rotasi)
-       <input type="password" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+       <input disabled={!allowed(p.id)||!!busy} type="password" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false}
         placeholder={p.hasKey?'Key telah disimpan aman - masukkan baru untuk mengganti':'Masukkan API key provider'}
         value={keys[p.id]||''} onChange={e=>setKeys(x=>({...x,[p.id]:e.target.value}))}
         className={'mt-1 '+smallInput}/>
       </label>
      </div>
      <div className="mt-4 flex flex-wrap gap-2">
-      <button type="button" disabled={!!busy} onClick={()=>save(p)} className="inline-flex items-center gap-2 rounded-lg bg-violet-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+      <button type="button" disabled={!!busy||!allowed(p.id)} onClick={()=>save(p)} className="inline-flex items-center gap-2 rounded-lg bg-violet-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
        <Save className="h-3.5 w-3.5"/> Simpan model & key</button>
-      <button type="button" disabled={!!busy||!p.hasKey} onClick={()=>check(p.id)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 disabled:opacity-40">
+      <button type="button" disabled={!!busy||!p.hasKey||!allowed(p.id)} onClick={()=>check(p.id)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 disabled:opacity-40">
        <RefreshCcw className={'h-3.5 w-3.5 '+(busy==='test-'+p.id?'animate-spin':'')}/> Test koneksi</button>
       <button type="button" disabled={!!busy||!p.hasKey} onClick={()=>clear(p.id)} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-40">
        <Trash2 className="h-3.5 w-3.5"/> Hapus key</button>
@@ -182,7 +188,7 @@ export default function AISettingsPage(){
      <textarea rows={3} maxLength={2000} value={prompt} onChange={e=>setPrompt(e.target.value)}
        className={'mt-1 '+smallInput} />
     </label>
-    <button type="button" disabled={!!busy||prompt.trim().length<2} onClick={runTest}
+    <button type="button" disabled={!!busy||active===0||prompt.trim().length<2} onClick={runTest}
        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">
        <Send className="h-3.5 w-3.5"/>{busy==='playground'?'Meminta respons...':'Jalankan tes AI'}</button>
     {result?.content&&<div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-800">

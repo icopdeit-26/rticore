@@ -20,7 +20,7 @@ export async function GET(req:Request){
   const configs=await listProviders(auth.identity.db);
   // Report readiness only to an authenticated RTICORE Admin; never return secret material.
   const encryptionReady=await encryptionKey().then(()=>true,()=>false);
-  return json({success:true,configs,encryptionReady});
+  return json({success:true,configs,encryptionReady,openAIOnly:process.env.RTICORE_RUNTIME==='hostinger'});
  }
  catch{return json({success:false,message:'Skema AI PostgreSQL belum tersedia. Jalankan migrasi AI Connections.'},503);}
 }
@@ -36,6 +36,7 @@ export async function POST(req:Request){
  if(!body||typeof body!=='object'||Array.isArray(body))return json({success:false,message:'Permintaan tidak valid.'},400);
  const db=auth.identity.db,email=auth.identity.email,action=body.action;
  if(action==='reorder'){
+  if(process.env.RTICORE_RUNTIME==='hostinger')return json({success:false,message:'Prioritas tidak dapat diubah pada runtime OpenAI-only.'},403);
   const ids=body.orderedIds;
   if(!Array.isArray(ids)||ids.length!==AI_PROVIDERS.length||new Set(ids).size!==ids.length||
     !ids.every(isProviderId))return json({success:false,message:'Urutan provider harus lengkap dan unik.'},400);

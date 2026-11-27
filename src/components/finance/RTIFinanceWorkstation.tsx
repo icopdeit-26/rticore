@@ -72,6 +72,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
     setPayload(null);
     setAiResult(null);
     setLoading(true);
+    setFeedback(null);
     try {
       const q = new URLSearchParams({ menu: activeMenu, period });
       if (selectedEntity) q.set('legal_entity_id', selectedEntity);
@@ -131,7 +132,8 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   const data = (payload?.data as Record<string, Array<Record<string, unknown>>>) || {};
   const registers = FINANCE_REGISTERS[activeMenu].map(key => ({ key, rows: registerRows(data[key] || []) }));
   const authorizedMenus = Array.isArray(identity.allowedMenus) ? identity.allowedMenus as string[] : null;
-  const visibleMenus = filteredMenus.filter(m => !authorizedMenus || authorizedMenus.includes(m.id));
+  // Unverified main API never grants Finance menus. F25 exposes only the independently scoped inbox.
+  const visibleMenus = filteredMenus.filter(m => authorizedMenus ? authorizedMenus.includes(m.id) : m.id === 'F25');
 
   async function executeFinanceAction(body: Record<string, unknown>, successMsg: string) {
     if (actionRef.current || !payload || !selectedEntity || loading) return;
@@ -194,8 +196,8 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 <span className="rounded bg-[#C0C0C0]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#C0C0C0]">
                   {RTI_FINANCE_BRAND.name} V1.0
                 </span>
-                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-200">
-                  Finance · {payload ? 'API verified' : 'Unverified'}
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                  Finance · {payload ? 'API verified' : 'Belum terverifikasi'}
                 </span>
               </div>
               <h1 className="mt-0.5 text-lg font-extrabold tracking-tight sm:text-xl">
@@ -217,12 +219,12 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
             <select
               aria-label="Pilih Legal Entity"
               value={selectedEntity}
-              disabled={busy}
+              disabled={busy || legalEntities.length === 0}
               onChange={e => { invalidateScope(); setSelectedEntity(e.target.value); }}
               className="h-9 rounded-xl border border-[#C0C0C0]/30 bg-[#050505]/70 px-3 text-xs font-semibold text-white outline-none"
             >
               {legalEntities.length === 0 ? (
-                <option value="">Legal Entity Default</option>
+                <option value="">Scope belum terverifikasi</option>
               ) : (
                 legalEntities.map(ent => (
                   <option key={ent.id} value={ent.id}>
@@ -269,6 +271,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 type="search"
+                aria-label="Cari menu Finance"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Cari F01–F25 (PSAK 115, GL, Tax…)"
@@ -276,7 +279,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
               />
             </div>
 
-            <nav aria-label="25 Menu RTI Finance" className="max-h-[68vh] space-y-1 overflow-y-auto pr-1">
+            <nav aria-label="Menu Finance sesuai akses" className="max-h-[68vh] space-y-1 overflow-y-auto pr-1">
               {visibleMenus.map(m => {
                 const active = m.id === activeMenu;
                 return (
@@ -284,9 +287,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                     key={m.id}
                     type="button"
                     disabled={busy}
+                    aria-current={active ? 'page' : undefined}
                     onClick={() => { if (m.id !== activeMenu) { invalidateScope(); setActiveMenu(m.id); } }}
                     className={[
-                      'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition',
+                      'flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition focus-visible:outline-2 focus-visible:outline-violet-600',
                       active
                         ? 'bg-[#2B124C] font-bold text-white shadow-sm'
                         : 'font-medium text-slate-700 hover:bg-slate-100',
@@ -372,7 +376,8 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
             </div>
           )}
 
-          {!payload ? <div role="status" className="rounded-2xl bg-white p-5 text-sm text-slate-600">{loading ? 'Memuat data Finance terotorisasi…' : 'Data tidak tersedia atau akses ditolak. Tidak ada data transaksi yang ditampilkan.'}</div> : <>
+          {activeMenu === 'F25' && !loading && <CamsFinanceInbox key={selectedEntity || 'configured-scope'} entity={selectedEntity} />}
+          {!payload ? <div role="status" className="rounded-2xl bg-white p-5 text-sm text-slate-600">{loading ? 'Memuat data Finance terotorisasi…' : 'Data Finance utama tidak tersedia atau akses ditolak. Tidak ada saldo atau register transaksi utama yang ditampilkan. Inbox CAMSRTI memiliki pemeriksaan akses terpisah.'}</div> : <>
           {/* Global Financial Integrity KPI Strip */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -779,7 +784,6 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
             </div>
           )}
 
-          {activeMenu === 'F25' && <CamsFinanceInbox key={selectedEntity || 'configured-scope'} entity={selectedEntity} />}
           {registers.map(register => (
             <div key={register.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="text-base font-extrabold text-slate-900">{currentMenuDef.id} · {register.key}</h3>

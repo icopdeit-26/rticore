@@ -3,6 +3,7 @@ import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {reserveAIRequest} from '@/lib/ai-request-budget';
 import { authorizeBoQ, privateHeaders } from '@/lib/boq-auth';
 import { listProviders, readProvider, decryptProviderKey, invokeAI, runPriorityChain } from '@/lib/ai-credential-vault';
+import {providerAllowed} from '@/lib/ai-runtime-policy';
 import { isProviderId } from '@/lib/ai-provider-registry';
 import { TENANT } from '@/lib/sales-workflow';
 import { containsPersonalIdentifier,containsRestrictedAIData,aiOriginAllowed,AI_DRAFT_BOUNDARY } from '@/lib/ai-data-policy';
@@ -16,7 +17,7 @@ export async function GET(req:Request){
  if(a.identity.rolePreview||!roles.includes(a.identity.role))return json({success:false,message:'AI hanya untuk peran yang diberi izin.'},403);
  try{
   const providers=await listProviders(a.identity.db);
-  return json({success:true,providers:providers.filter(x=>x.enabled&&x.hasKey&&x.testedOk===true)
+  return json({success:true,providers:providers.filter(x=>x.enabled&&x.hasKey&&x.testedOk===true&&providerAllowed(x.id,process.env.RTICORE_RUNTIME))
    .map(x=>({id:x.id,name:x.name,model:x.model,priority:x.priority})),role:a.identity.role});
  }catch{return json({success:false,message:'Daftar AI belum tersedia. Admin perlu mengaktifkan/menguji koneksi AI.'},503);}
 }
