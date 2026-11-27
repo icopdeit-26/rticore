@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 // This is a route availability gate, NOT an authorization bypass.
-// Every permitted D1 handler independently validates Cloudflare Access JWT,
+// Every permitted D1 handler independently validates native IAM session or signed OIDC,
 // membership, role, object ownership and transaction permissions server-side.
 // Legacy demo APIs remain disabled until explicitly migrated and reviewed.
 const D1_ROUTES = new Set([
@@ -29,6 +29,7 @@ const D1_ROUTES = new Set([
   '/api/platform/diagnostics',
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
+  '/api/business-auth',
   // RTI Finance Enterprise Suite API (migration 0052).
   '/api/finance',
 ]);

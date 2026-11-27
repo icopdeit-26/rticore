@@ -6,7 +6,7 @@ try {
  validateHostingerConfig(process.env);
  const port=process.env.PORT || '3000';
  if(!/^\d{1,5}$/.test(port)||Number(port)<1||Number(port)>65535)throw Error('Invalid port');
- const host=process.env.HOSTNAME_BIND||'127.0.0.1';
+ const host=process.env.HOSTNAME_BIND||(process.env.RTICORE_AUTH_MODE==='business'?'0.0.0.0':'127.0.0.1');
  const child=spawn(process.execPath,[require.resolve('next/dist/bin/next'),'start','-H',host,'-p',port],{stdio:'inherit',env:process.env});
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>child.kill(signal));
  child.once('error',()=>{console.error('Native application startup failed');process.exitCode=1;});

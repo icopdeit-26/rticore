@@ -4,9 +4,15 @@ export function validateHostingerConfig(e: Record<string, string | undefined>): 
       (e.RTICORE_DB_ENGINE && e.RTICORE_DB_ENGINE !== 'postgres') ||
       e.NODE_TLS_REJECT_UNAUTHORIZED === '0')
     throw new Error('Hostinger requires native runtime, external PostgreSQL and disabled local login');
-  if (e.HOSTNAME_BIND && !['127.0.0.1','::1'].includes(e.HOSTNAME_BIND)) throw new Error('Hostinger requires loopback origin');
-  validateNativeOIDC(e);
-  if (!e.RTICORE_OIDC_CLIENT_SECRET || e.RTICORE_OIDC_CLIENT_SECRET.length < 32) throw new Error('Hostinger requires confidential OIDC client secret');
+  if(e.RTICORE_AUTH_MODE && !['oidc','business'].includes(e.RTICORE_AUTH_MODE))throw Error('Unknown native authentication mode');
+  if (e.RTICORE_AUTH_MODE!=='business' && e.HOSTNAME_BIND && !['127.0.0.1','::1'].includes(e.HOSTNAME_BIND)) throw new Error('Hostinger requires loopback origin');
+  if(e.RTICORE_AUTH_MODE==='business'){
+    if(!e.RTICORE_IAM_ENCRYPTION_KEY||!/^[A-Za-z0-9+/]{43}=$/.test(e.RTICORE_IAM_ENCRYPTION_KEY))throw Error('Business IAM requires dedicated 32-byte encryption key');
+    if(e.HOSTNAME_BIND&&!['127.0.0.1','0.0.0.0','::1','::'].includes(e.HOSTNAME_BIND))throw Error('Invalid managed bind');
+  }else{
+    validateNativeOIDC(e);
+    if (!e.RTICORE_OIDC_CLIENT_SECRET || e.RTICORE_OIDC_CLIENT_SECRET.length < 32) throw new Error('Hostinger requires confidential OIDC client secret');
+  }
   let origin: URL;
   try { origin = new URL(e.RTICORE_PUBLIC_ORIGIN || ''); } catch { throw new Error('Hostinger requires public HTTPS origin'); }
   if(origin.protocol!=='https:' || origin.origin!==e.RTICORE_PUBLIC_ORIGIN || origin.username || origin.password) throw new Error('Hostinger requires canonical HTTPS origin');

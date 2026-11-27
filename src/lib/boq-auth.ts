@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRuntimeEnv } from './runtime-env';
+import {verifyBusinessSession} from './business-iam';
 import { verifyNativeOIDCToken } from './native-oidc';
 import {nativeRequestOriginAllowed,requireActiveNativeSession} from './native-session';
 import { emailFromLocalSession, validSessionSecret } from './local-auth';
@@ -28,6 +29,11 @@ const deny=(status:number,message:string):Result=>({ok:false,response:NextRespon
 /** Native: verified OIDC + MFA + active session. Local: signed loopback cookie. */
 async function verifiedEmail(request:Request,env:CloudEnv):Promise<{email:string}|{error:Result}>{
  if(env.RTICORE_RUNTIME==='hostinger'){
+   if(process.env.RTICORE_AUTH_MODE==='business'){
+     if(!env.RTICORE_DB||!env.RTICORE_PUBLIC_ORIGIN)return {error:deny(503,'Business IAM belum dikonfigurasi.')};
+     if(!nativeRequestOriginAllowed(request,env.RTICORE_PUBLIC_ORIGIN))return {error:deny(403,'Origin tidak diizinkan.')};
+     try{const email=await verifyBusinessSession(env.RTICORE_DB,request);return email?{email}:{error:deny(401,'Login dan MFA diperlukan.')};}catch{return {error:deny(503,'Business IAM tidak tersedia.')};}
+   }
    const issuer=env.RTICORE_OIDC_ISSUER, audience=env.RTICORE_OIDC_AUDIENCE, client=env.RTICORE_OIDC_CLIENT_ID;
    if(!issuer||!audience||!client||!env.RTICORE_OIDC_CLIENT_SECRET||!env.RTICORE_PUBLIC_ORIGIN)return {error:deny(503,'OIDC production belum dikonfigurasi.')};
    if(!nativeRequestOriginAllowed(request,env.RTICORE_PUBLIC_ORIGIN))return {error:deny(403,'Origin tidak diizinkan.')};

@@ -19,7 +19,7 @@ async function localContext(request:Request){
 }
 
 export async function GET(request:Request){
-  if(!isLocalMode())return process.env.RTICORE_RUNTIME==='hostinger'?json({success:true,localMode:false,authMode:'oidc'}):json({success:false,localMode:false},503);
+  if(!isLocalMode())return process.env.RTICORE_RUNTIME==='hostinger'?json({success:true,localMode:false,authMode:process.env.RTICORE_AUTH_MODE==='business'?'business':'oidc'}):json({success:false,localMode:false},503);
   const ctx=await localContext(request);
   if('error' in ctx)return ctx.error;
   try{
