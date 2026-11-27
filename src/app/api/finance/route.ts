@@ -2597,35 +2597,24 @@ export async function POST(req: Request) {
         );
       }
       erpAssert(erpText(v.query, 4, 600), 'Pertanyaan finansial minimal 4 karakter');
-      const q = String(v.query).toLowerCase();
-
+      // Evidence-only local diagnostic: do not pretend that forecasts or an LLM were executed.
+      const period = v.period === undefined ? new Date().toISOString().slice(0,7) : v.period;
+      erpAssert(erpPeriod(period), 'Periode akuntansi tidak valid', 422);
+      const summary = await db.prepare(
+        "SELECT count(DISTINCT j.id) AS journal_count,COALESCE(sum(l.debit_cents),0) AS debit_cents,COALESCE(sum(l.credit_cents),0) AS credit_cents FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.legal_entity_id=j.legal_entity_id AND p.id=j.period_id LEFT JOIN rticore_gl_lines l ON l.tenant_id=j.tenant_id AND l.journal_id=j.id WHERE j.tenant_id=? AND j.legal_entity_id=? AND p.period=? AND j.status='posted'"
+      ).bind(TENANT,legalEntityId,String(period)).first<{journal_count:number|string;debit_cents:number|string;credit_cents:number|string}>();
+      const count=Number(summary?.journal_count??0),debit=Number(summary?.debit_cents??0),credit=Number(summary?.credit_cents??0);
+      erpAssert([count,debit,credit].every(Number.isSafeInteger),'Nilai agregat melampaui batas presisi aman',409);
       return erpReply({
         success: true,
         readOnlyGuard: 'ENFORCED_NO_AUTONOMOUS_POSTING_OR_APPROVAL',
-        query: v.query,
         insight: {
-          headline: q.includes('overrun') || q.includes('project')
-            ? 'Analisis Risiko Project Cost Overrun & Margin (Provisional vs Certified)'
-            : q.includes('cash') || q.includes('13')
-            ? 'Proyeksi Likuiditas 13 Minggu & Buffer Modal Kerja'
-            : q.includes('collection') || q.includes('customer') || q.includes('aging')
-            ? 'Prioritas Collection AR Berdasarkan Aging & DSO'
-            : 'Penjelasan Varians Laporan Keuangan & Rekomendasi Klasifikasi Jurnal',
-          explanation:
-            'Rekomendasi dihasilkan secara read-only dari agregasi General Ledger, Subledger AR/AP, PSAK 115 Revenue Schedule, dan Project Cost Ledger pada tenant aktif.',
-          assumptions: [
-            'Hanya jurnal berstatus POSTED yang masuk ke perhitungan saldo aktual GL.',
-            'Profitabilitas proyek yang belum melewati Hard Close periode ditandai sebagai PROVISIONAL.',
-            'Setiap saran jurnal harus dibuat sebagai DRAFT oleh Maker dan disetujui oleh Approver independen.',
-          ],
-          traceableSources: [
-            'rticore_gl_journals',
-            'rticore_billing_invoices',
-            'rticore_ap_supplier_invoices',
-            'rticore_finance_performance_obligations',
-            'rticore_finance_project_snapshots',
-            'rticore_finance_cash_forecasts',
-          ],
+          headline: count===0?'Belum ada bukti jurnal posted pada periode ini':'Ringkasan kontrol jurnal posted — '+String(period),
+          explanation: count===0?'Tidak ada jurnal posted dalam scope terpilih. Tidak dapat menyimpulkan saldo, margin atau proyeksi kas.':'Diperiksa '+count+' jurnal posted. Selisih debit dan kredit: '+String(debit-credit)+' minor units. Ringkasan ini bukan saldo akun, forecast, atau analisis margin.',
+          mode:'local_evidence_only',providerUsed:null,requiresReview:true,
+          legalEntityId,period,metrics:{journalCount:count,debitCents:debit,creditCents:credit,varianceCents:debit-credit},
+          assumptions:['Hanya jurnal posted pada legal entity dan periode terpilih.', 'Tidak ada panggilan provider AI atau perubahan transaksi.', 'Pertanyaan di luar ringkasan GL memerlukan dataset dan model analisis yang terverifikasi.'],
+          traceableSources:['rticore_gl_journals','rticore_gl_periods','rticore_gl_lines'],
         },
       });
     }

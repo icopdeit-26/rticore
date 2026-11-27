@@ -51,7 +51,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   const [payload, setPayload] = useState<Record<string, unknown> | null>(null);
 
   // Interactive Form States
-  const [aiQueryText, setAiQueryText] = useState<string>('Project manakah yang berpotensi mengalami cost overrun dan bagaimana proyeksi kas 13 minggu ke depan?');
+  const [aiQueryText, setAiQueryText] = useState<string>('Apakah jurnal posted periode ini seimbang?');
   const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(null);
   const [dockingMode, setDockingMode] = useState<'standalone' | 'docked' | 'multi_entity'>('docked');
   const [dockingEndpoint, setDockingEndpoint] = useState('');
@@ -593,10 +593,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">
-                    AI Financial Assistant — Read-Only Decision Support (Section 23)
+                    Finance Evidence Assistant — Read-Only Decision Support (Section 23)
                   </h3>
                   <p className="text-xs text-slate-600">
-                    AI tidak diperbolehkan memposting jurnal, menyetujui pembayaran, atau menutup periode secara mandiri.
+                    Ringkasan lokal berbasis jurnal posted pada scope terpilih; bukan proyeksi AI. Tidak dapat memposting jurnal, menyetujui pembayaran, atau menutup periode.
                   </p>
                 </div>
                 <span className="rounded-lg bg-[#2B124C]/10 px-2.5 py-1 text-[11px] font-bold text-[#2B124C]">
@@ -610,15 +610,15 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   value={aiQueryText}
                   onChange={e => setAiQueryText(e.target.value)}
                   className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#2B124C]"
-                  placeholder="Tanyakan analisis varians, proyeksi kas 13 minggu, atau prioritas collection..."
+                  placeholder="Masukkan pertanyaan untuk konteks review jurnal posted…"
                 />
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || loading || !payload || !selectedEntity}
                   onClick={() =>
                     void executeFinanceAction(
-                      { action: 'ai_financial_query', query: aiQueryText },
-                      'Analisis AI Financial Intelligence berhasil dijalankan secara read-only',
+                      { action: 'ai_financial_query', query: aiQueryText, period },
+                      'Ringkasan bukti jurnal berhasil dimuat secara read-only',
                     )
                   }
                   className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#2B124C] px-4 py-2 text-xs font-bold text-white hover:bg-[#3c1a69]"
