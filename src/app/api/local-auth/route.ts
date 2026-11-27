@@ -23,7 +23,7 @@ async function localContext(request:Request){
 }
 
 export async function GET(request:Request){
-  if(!isLocalMode())return json({success:true,localMode:false});
+  if(!isLocalMode())return json({success:true,localMode:false,...(process.env.RTICORE_RUNTIME==='hostinger'?{authMode:'oidc'}:{})});
   const ctx=await localContext(request);
   if('error' in ctx)return ctx.error;
   try{
