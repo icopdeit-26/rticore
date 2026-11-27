@@ -1,0 +1,25 @@
+provider = "keycloak-oidc"
+oidc_issuer_url = "https://sso.example.invalid/realms/rticore"
+client_id = "rticore-proxy"
+redirect_url = "https://rticore.example.invalid/oauth2/callback"
+http_address = "127.0.0.1:4180"
+upstreams = ["static://202"]
+reverse_proxy = true
+email_domains = ["example.invalid"]
+scope = "openid email profile"
+code_challenge_method = "S256"
+cookie_name = "__Host-rticore_sso"
+cookie_secure = true
+cookie_httponly = true
+cookie_samesite = "lax"
+cookie_expire = "8h"
+cookie_refresh = "2m"
+set_xauthrequest = true
+pass_access_token = true
+skip_provider_button = true
+# Supply OAUTH2_PROXY_CLIENT_SECRET and OAUTH2_PROXY_COOKIE_SECRET via protected environment file.
+
+# Verify backend logout support on the selected proxy version before activation.
+backend_logout_url = "https://sso.example.invalid/realms/rticore/protocol/openid-connect/logout?id_token_hint={id_token}"
+cookie_csrf_per_request = true
+cookie_csrf_expire = "5m"

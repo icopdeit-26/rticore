@@ -1,0 +1,2 @@
+# V5.1 B01 increment 04
+Native nurture reminders follow canonical Cloudflare conditions, Jakarta date boundary, active assigned recipient, tenant-scoped joins and legacy key deduplication. Populated PostgreSQL fixtures cover due reminder, replay, other tenant and legacy key. Exact-SHA CI pending. Global administrator fallback remains disabled pending scoped authorization. Worker runtime remains containment-only; no Finance guard changes or deployment.

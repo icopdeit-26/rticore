@@ -1,0 +1,99 @@
+name: RTICore Hostinger candidate gates
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hostinger-candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-node:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      RTICORE_BUILD_CPUS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node --test tests/hostinger-config.test.mjs tests/hostinger-production-safety.test.cjs tests/native-oidc.test.mjs tests/native-session.test.mjs
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Native HTTP smoke (no production credentials)
+        run: |
+          PORT=31415 npm start > /tmp/rticore-native.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:31415/api/health/live; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:31415/api/health/live
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:31415/api/health/ready)" = 503
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:sales-transactions
+      - run: npm run test:local-mode
+      - run: npm run test:pg-triggers
+      - run: npm run test:erp
+      - run: npm run test:erp:extensions
+      - run: node --test tests/finance-historical-reconciliation.test.mjs tests/foundation-inventory.test.mjs
+      - run: node scripts/foundation-inventory.mjs > /tmp/rticore-foundation-inventory.json
+      - run: npm run test:finance-520
+      - run: npm run test:enterprise-pricing
+      - run: npm run test:flexguard-enterprise
+      - run: npm run test:uat-v4
+      - run: npm run drill:backup-restore
+  postgres-server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci_test
+          POSTGRES_PASSWORD: ci_test_only
+          POSTGRES_DB: rticore_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_test -d rticore_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      RTICORE_TEST_PG_URL: postgresql://ci_test:ci_test_only@127.0.0.1:5432/rticore_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node --test tests/hostinger-postgres-server.test.cjs

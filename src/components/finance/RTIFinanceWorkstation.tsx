@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity, AlertTriangle, ArrowLeftRight, Banknote, BookOpen, Briefcase,
@@ -17,11 +17,11 @@ import {
   ICOFR_15_AUTOMATED_CONTROLS,
   RTICORE_DOCKING_EVENT_TYPES,
   type FinanceMenuId,
-  type FinanceRoleId,
 } from '@/lib/rti-finance-core';
 
 function formatIDRFromCents(cents: number | null | undefined): string {
-  const val = Number(cents || 0) / 100;
+  if (cents == null || !Number.isFinite(cents)) return '—';
+  const val = cents / 100;
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
@@ -36,7 +36,6 @@ interface RTIFinanceWorkstationProps {
 
 export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorkstationProps) {
   const [activeMenu, setActiveMenu] = useState<FinanceMenuId>(initialMenu);
-  const [selectedRolePreview, setSelectedRolePreview] = useState<FinanceRoleId | ''>('');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [period, setPeriod] = useState<string>(new Date().toISOString().slice(0, 7));
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -51,14 +50,18 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(null);
   const [dockingMode, setDockingMode] = useState<'standalone' | 'docked' | 'multi_entity'>('docked');
   const [dockingStatus, setDockingStatus] = useState<'connected' | 'disconnected'>('connected');
+  const [dockingSecret, setDockingSecret] = useState('');
 
+  const requestVersion = useRef(0);
   const loadFinanceData = useCallback(async () => {
+    const version = ++requestVersion.current;
     setLoading(true);
+    setPayload(null);
+    setAiResult(null);
     try {
       const q = new URLSearchParams({ menu: activeMenu, period });
       if (selectedEntity) q.set('legal_entity_id', selectedEntity);
       const headers: Record<string, string> = {};
-      if (selectedRolePreview) headers['x-finance-role'] = selectedRolePreview;
 
       const res = await fetch(`/api/finance?${q.toString()}`, {
         method: 'GET',
@@ -67,6 +70,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
         headers,
       });
       const json = await res.json();
+      if (version !== requestVersion.current) return;
       if (!res.ok || !json.success) {
         setFeedback({ kind: 'err', text: json.message || 'Gagal memuat data RTI Finance' });
       } else {
@@ -76,14 +80,15 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
         }
       }
     } catch {
-      setFeedback({ kind: 'err', text: 'Tidak dapat menghubungi endpoint /api/finance' });
+      if (version === requestVersion.current) setFeedback({ kind: 'err', text: 'Tidak dapat menghubungi endpoint /api/finance' });
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [activeMenu, period, selectedEntity, selectedRolePreview]);
+  }, [activeMenu, period, selectedEntity]);
 
   useEffect(() => {
     void loadFinanceData();
+    return () => { requestVersion.current++; };
   }, [loadFinanceData]);
 
   const currentMenuDef = useMemo(
@@ -102,28 +107,35 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
     );
   }, [searchQuery]);
 
-  const identity = (payload?.identity as Record<string, unknown>) || {};
-  const kpis = (payload?.kpis as Record<string, number | boolean>) || {};
-  const data = (payload?.data as Record<string, Array<Record<string, unknown>>>) || {};
+  const scopedPayload = payload && payload.menu === activeMenu && payload.period === period && (!selectedEntity || payload.legalEntityId === selectedEntity) ? payload : null;
+  const identity = (scopedPayload?.identity as Record<string, unknown>) || {};
+  const kpis = (scopedPayload?.kpis as Record<string, number | boolean | null>) || {};
+  const data = (scopedPayload?.data as Record<string, Array<Record<string, unknown>>>) || {};
   const legalEntities = (payload?.legalEntities as Array<{ id: string; code: string; label: string }>) || [];
 
   async function executeFinanceAction(body: Record<string, unknown>, successMsg: string) {
+    if (!scopedPayload || loading || busy || !selectedEntity) return;
+    const version = requestVersion.current;
     setBusy(true);
     setFeedback(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (selectedRolePreview) headers['x-finance-role'] = selectedRolePreview;
       const res = await fetch('/api/finance', {
         method: 'POST',
         credentials: 'same-origin',
         headers,
-        body: JSON.stringify({ legal_entity_id: selectedEntity, ...body }),
+        body: JSON.stringify({ ...body, legal_entity_id: selectedEntity }),
       });
       const json = await res.json();
+      if (version !== requestVersion.current) return;
       if (!res.ok || !json.success) {
         setFeedback({ kind: 'err', text: json.message || 'Transaksi ditolak oleh kontrol keuangan' });
       } else {
         setFeedback({ kind: 'ok', text: successMsg });
+        if (body.action === 'configure_docking') {
+          setDockingStatus(body.connection_status === 'disconnected' ? 'disconnected' : 'connected');
+          setDockingSecret('');
+        }
         if (body.action === 'ai_financial_query' && json.insight) {
           setAiResult(json.insight);
         }
@@ -137,6 +149,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   }
 
   function exportCurrentRegisterCSV() {
+    if (!scopedPayload || loading) return;
     const rows = data.trialBalance || data.journals || [];
     const header = ['Code/ID', 'Name/Memo', 'Category/Status', 'Debit_Cents', 'Credit_Cents'];
     const csvLines = [
@@ -222,19 +235,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
               className="h-9 rounded-xl border border-[#C0C0C0]/30 bg-[#050505]/70 px-3 text-xs font-semibold text-white outline-none"
             />
 
-            <select
-              aria-label="Simulasi 18 Role RTI Finance"
-              value={selectedRolePreview}
-              onChange={e => setSelectedRolePreview(e.target.value as FinanceRoleId | '')}
-              className="h-9 rounded-xl border border-[#C0C0C0]/40 bg-[#2B124C] px-3 text-xs font-semibold text-white outline-none"
-            >
-              <option value="">Role Aktif: {String(identity.financeRoleLabel || 'Auto Mapped')}</option>
-              {RTI_FINANCE_ROLES.map(r => (
-                <option key={r.id} value={r.id}>
-                  {String(r.number).padStart(2, '0')} · {r.label}
-                </option>
-              ))}
-            </select>
+            <span className="text-xs font-semibold text-white">Role Aktif: {String(identity.financeRoleLabel || 'Server assigned')}</span>
           </div>
         </div>
       </header>
@@ -366,11 +367,11 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 GL Trial Balance Equilibrium
               </p>
               <p className="mt-1 text-lg font-extrabold text-slate-900">
-                {formatIDRFromCents(Number(kpis.trialBalanceDebitCents || 0))}
+                {formatIDRFromCents(typeof kpis.trialBalanceDebitCents === 'number' ? kpis.trialBalanceDebitCents : null)}
               </p>
               <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {kpis.trialBalanceBalanced !== false ? 'Debit = Kredit (Balanced)' : 'Unbalanced Exception'}
+                {kpis.trialBalanceBalanced === true ? 'Debit = Kredit (Balanced)' : kpis.trialBalanceBalanced === false ? 'Unbalanced Exception' : 'Belum tersedia / tidak berwenang'}
               </p>
             </div>
 
@@ -379,11 +380,11 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 AR Outstanding (Order-to-Cash)
               </p>
               <p className="mt-1 text-lg font-extrabold text-slate-900">
-                {formatIDRFromCents(Number(kpis.arOutstandingCents || 0))}
+                {formatIDRFromCents(typeof kpis.arOutstandingCents === 'number' ? kpis.arOutstandingCents : null)}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                Billed: {formatIDRFromCents(Number(kpis.arBilledCents || 0))} · Collected:{' '}
-                {formatIDRFromCents(Number(kpis.arCollectedCents || 0))}
+                Billed: {formatIDRFromCents(typeof kpis.arBilledCents === 'number' ? kpis.arBilledCents : null)} · Collected:{' '}
+                {formatIDRFromCents(typeof kpis.arCollectedCents === 'number' ? kpis.arCollectedCents : null)}
               </p>
             </div>
 
@@ -392,10 +393,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 AP Outstanding (Procure-to-Pay)
               </p>
               <p className="mt-1 text-lg font-extrabold text-slate-900">
-                {formatIDRFromCents(Number(kpis.apOutstandingCents || 0))}
+                {formatIDRFromCents(typeof kpis.apOutstandingCents === 'number' ? kpis.apOutstandingCents : null)}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                3-Way Matched AP: {formatIDRFromCents(Number(kpis.apApprovedCents || 0))}
+                3-Way Matched AP: {formatIDRFromCents(typeof kpis.apApprovedCents === 'number' ? kpis.apApprovedCents : null)}
               </p>
             </div>
 
@@ -404,10 +405,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                 ICOFR & Docking Health
               </p>
               <p className="mt-1 text-lg font-extrabold text-[#2B124C]">
-                {Number(kpis.openExceptionsCount || 0)} Open Exceptions
+                {(typeof kpis.openExceptionsCount === 'number' ? kpis.openExceptionsCount : '—')} Open Exceptions
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
-                DLQ / Failed Events: {Number(kpis.failedEventsCount || 0)} · Limit:{' '}
+                DLQ / Failed Events: {(typeof kpis.failedEventsCount === 'number' ? kpis.failedEventsCount : '—')} · Limit:{' '}
                 {formatIDRFromCents(Number(identity.approvalLimitCents || 0))}
               </p>
             </div>
@@ -456,17 +457,17 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Total Recognized Revenue & Growth</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(Number(kpis.glRevenueCents || 0))}
+                      {formatIDRFromCents(typeof kpis.glRevenueCents === 'number' ? kpis.glRevenueCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">PSAK 115 Verified Contract Revenue</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Gross Profit, EBITDA & Net Profit</p>
                     <p className="mt-1 text-xl font-extrabold text-emerald-700">
-                      {formatIDRFromCents(Number(kpis.glNetIncomeCents || 0))}
+                      {formatIDRFromCents(typeof kpis.glNetIncomeCents === 'number' ? kpis.glNetIncomeCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Total Expenses: {formatIDRFromCents(Number(kpis.glExpenseCents || 0))}
+                      Total Expenses: {formatIDRFromCents(typeof kpis.glExpenseCents === 'number' ? kpis.glExpenseCents : null)}
                     </p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -486,7 +487,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Working Capital & Liquidity</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(Number(kpis.glAssetCents || 0) - Number(kpis.glLiabilityCents || 0))}
+                      {formatIDRFromCents(typeof kpis.glAssetCents === 'number' && typeof kpis.glLiabilityCents === 'number' ? kpis.glAssetCents - kpis.glLiabilityCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       13-Week Forecast Buckets: {(data.cashForecasts || []).length}
@@ -495,7 +496,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">AR vs AP Aging Balance</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(Number(kpis.arOutstandingCents || 0) - Number(kpis.apOutstandingCents || 0))}
+                      {formatIDRFromCents(typeof kpis.arOutstandingCents === 'number' && typeof kpis.apOutstandingCents === 'number' ? kpis.arOutstandingCents - kpis.apOutstandingCents : null)}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       Reconciliations: {(data.reconciliations || []).length} records
@@ -507,7 +508,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                       {(data.taxTransactions || []).length} Tax Records
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Open ICOFR Exceptions: {Number(kpis.openExceptionsCount || 0)}
+                      Open ICOFR Exceptions: {(typeof kpis.openExceptionsCount === 'number' ? kpis.openExceptionsCount : '—')}
                     </p>
                   </div>
                 </div>
@@ -563,7 +564,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Failed Docking Events</p>
                     <p className="mt-1 text-xl font-extrabold text-rose-700">
-                      {Number(kpis.failedEventsCount || 0)}
+                      {(typeof kpis.failedEventsCount === 'number' ? kpis.failedEventsCount : '—')}
                     </p>
                   </div>
                 </div>
@@ -655,18 +656,19 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                     <option value="docked">Mode B — RTICore Docked</option>
                     <option value="multi_entity">Mode C — Enterprise Multi-Entity</option>
                   </select>
+                  <input type="password" aria-label="Docking secret" autoComplete="new-password" value={dockingSecret} onChange={e => setDockingSecret(e.target.value)} minLength={32} maxLength={512} placeholder="Secret (min. 32 karakter)" className="h-9 rounded-xl border border-slate-200 px-3 text-xs" />
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || loading || !scopedPayload || dockingSecret.length < 32 || dockingSecret.trim() !== dockingSecret}
                     onClick={() => {
                       const nextStatus = dockingStatus === 'connected' ? 'disconnected' : 'connected';
-                      setDockingStatus(nextStatus);
                       void executeFinanceAction(
                         {
                           action: 'configure_docking',
                           operating_mode: dockingMode,
                           connection_status: nextStatus,
-                          rticore_endpoint: 'https://github.com/elanghaqeem-hash/India',
+                          rticore_endpoint: 'https://rticore.store',
+                          webhook_secret: dockingSecret,
                         },
                         `Status RTICore Docking diperbarui ke ${nextStatus.toUpperCase()} (data historis tetap dipertahankan)`,
                       );

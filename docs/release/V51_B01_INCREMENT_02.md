@@ -1,0 +1,2 @@
+# V5.1 B01 increment 02
+Baseline 40e1300 passed all 20 CI. Native Sales Activity SLA handler implements task reminder/overdue subset, preserving existing alert keys, active recipient checks and tenant filtering. Atomic alert insert, audit evidence and completion share a transaction. Default runtime remains containment-only; no activation in staging or production. Explicit test-only opt-in does not certify lead SLA, manager escalation, nurture, positive populated fixtures or all business handlers. Actual PostgreSQL CI pending. Finance guard unchanged. No merge or deploy.

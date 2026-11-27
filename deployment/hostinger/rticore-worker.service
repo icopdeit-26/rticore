@@ -1,0 +1,25 @@
+[Unit]
+Description=RTICore Hostinger Durable Background Job Worker (H08)
+After=network-online.target rticore.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rticore
+Group=rticore
+WorkingDirectory=/opt/rticore/current
+EnvironmentFile=/etc/rticore/rticore.env
+Environment=NODE_ENV=production
+Environment=RTICORE_WORKER_POLL_MS=10000
+ExecStart=/usr/bin/node scripts/hostinger-worker.mjs
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

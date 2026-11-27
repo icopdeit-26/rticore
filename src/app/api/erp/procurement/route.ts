@@ -3,6 +3,7 @@ import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal} from '@/lib/service-operations';
 import {TENANT} from '@/lib/sales-workflow';
 import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpOpportunityUnit,erpPositiveCents,erpDate,erpPeriod} from '@/lib/erp-core';
+import {buildFinanceOutboxStatement} from '@/lib/finance-docking-bridge';
 export const dynamic='force-dynamic';
 type PO={id:string;opportunity_id:string;vendor_id:string;offer_id:string;status:string;version:number;created_by:string;qty:number;unit_price_cents:number};
 type AP={id:string;po_id:string;vendor_id:string;status:string;version:number;created_by:string;opportunity_id:string};
@@ -68,7 +69,12 @@ export async function POST(req:Request){
     erpAssert(role==='approver','Review PO hanya Approver independen',403);
     await erpGrant(a.identity,'procurement',unit);
     erpAssert(po.status==='draft'&&po.version===v.version&&po.created_by.toLowerCase()!==email&&typeof v.approve==='boolean'&&erpText(v.notes,12,800),'Review PO tidak valid atau self-approval',403);
-    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_purchase_orders WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,po.id,po.version,email],[db.prepare('UPDATE rticore_purchase_orders SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,po.id)],'procurement',po.id,'REVIEW_PO',{approved:v.approve});return erpReply({success:true});
+    const poWrites=[db.prepare('UPDATE rticore_purchase_orders SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,po.id)];
+    if(v.approve){
+     const hasDock=await db.prepare("SELECT 1 FROM rticore_schema_migrations WHERE version=52").first().catch(()=>null);
+     if(hasDock)poWrites.push((await buildFinanceOutboxStatement(db,{legalEntityId:unit,eventType:'purchase_order.approved',sourceDocumentId:po.id,idempotencyKey:`po-approve-${po.id}-v${po.version}`,payload:{po_id:po.id,opportunity_id:po.opportunity_id,vendor_id:po.vendor_id,qty:po.qty,unit_price_cents:po.unit_price_cents,total_cents:po.qty*po.unit_price_cents,approved_by:email}})).stmt);
+    }
+    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_purchase_orders WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,po.id,po.version,email],poWrites,'procurement',po.id,'REVIEW_PO',{approved:v.approve});return erpReply({success:true});
    }
    if(v.action==='receipt'){
     erpAssert(['presales','admin'].includes(role),'Penerimaan harus Procurement yang bergrant',403);await erpGrant(a.identity,'procurement',unit);
@@ -89,8 +95,10 @@ export async function POST(req:Request){
    erpAssert(erpId(v.id)&&Number.isSafeInteger(v.version)&&typeof v.approve==='boolean'&&erpText(v.notes,12,800),'Keputusan AP tidak valid');
    const invoice=await db.prepare('SELECT i.*,p.opportunity_id FROM rticore_ap_supplier_invoices i JOIN rticore_purchase_orders p ON p.id=i.po_id AND p.tenant_id=i.tenant_id WHERE i.tenant_id=? AND i.id=?').bind(TENANT,v.id as string).first<AP>();
    erpAssert(invoice&&invoice.status==='draft'&&invoice.version===v.version&&invoice.created_by.toLowerCase()!==email,'Invoice berubah atau self-approval',409);
-   await erpGrant(a.identity,'finance_ap',await erpOpportunityUnit(db,invoice.opportunity_id));
-   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_ap_supplier_invoices WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,v.id as string,v.version as number,email],[db.prepare('UPDATE rticore_ap_supplier_invoices SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,v.id as string)],'ap',v.id as string,'REVIEW_SUPPLIER_INVOICE',{approved:v.approve});
+   const invUnit=await erpOpportunityUnit(db,invoice.opportunity_id);
+   await erpGrant(a.identity,'finance_ap',invUnit);
+   const apDock=v.approve&&(await db.prepare('SELECT 1 FROM rticore_schema_migrations WHERE version=52').first().catch(()=>null))?[(await buildFinanceOutboxStatement(db,{legalEntityId:invUnit,eventType:'vendor_invoice.approved',sourceDocumentId:invoice.id,idempotencyKey:`ap-approve-${invoice.id}-v${invoice.version}`,payload:{invoice_id:invoice.id,po_id:invoice.po_id,vendor_id:invoice.vendor_id,approved_by:email}})).stmt]:[];
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_ap_supplier_invoices WHERE tenant_id=? AND id=? AND status='draft' AND version=? AND lower(created_by)!=?)",[TENANT,v.id as string,v.version as number,email],[db.prepare('UPDATE rticore_ap_supplier_invoices SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes as string,TENANT,v.id as string),...apDock],'ap',v.id as string,'REVIEW_SUPPLIER_INVOICE',{approved:v.approve});
    return erpReply({success:true});
   }
   throw new ERPError('Aksi procurement/AP tidak dikenali');

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import type { D1DB, D1Prepared } from './boq-auth';
+import { validateHostingerConfig } from './hostinger-config';
 
 function normalizeRow(row: Record<string, unknown> | undefined | null): Record<string, unknown> | null {
   if (!row) return null;
@@ -53,6 +54,23 @@ type QueryExecutor = {
   batch?(statements: { sql: string; args: unknown[] }[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }[]>;
 };
 
+type BatchClient = { query: QueryExecutor['query']; release(): void };
+
+/** A pool transaction must run on one leased connection, including rollback. */
+export async function runPostgresBatch(pool: { connect(): Promise<BatchClient> }, statements: {sql:string;args:unknown[]}[]) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const results = [];
+    for (const stmt of statements) results.push(await client.query(stmt.sql, stmt.args));
+    await client.query('COMMIT');
+    return results;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+    throw error;
+  } finally { client.release(); }
+}
+
 const globalPg = globalThis as unknown as {
   __rticorePgExecutorPromiseV3?: Promise<QueryExecutor> | null;
 };
@@ -70,22 +88,28 @@ async function ensureSchema(exec: QueryExecutor, schemaSQL: string): Promise<voi
 }
 
 async function createExecutor(): Promise<QueryExecutor> {
-  const pgUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const hostinger = process.env.RTICORE_RUNTIME === 'hostinger';
+  const pgUrl = hostinger ? validateHostingerConfig(process.env).toString() : process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
   if (pgUrl) {
     const schemaPath = path.join(process.cwd(), 'rticore_postgresql_schema.sql');
     const schemaSQL = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, 'utf8') : '';
-    type PgPool = {
-      query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
-    };
+    type PgClient = { query: QueryExecutor['query']; release(): void };
+    type PgPool = { query: QueryExecutor['query']; connect(): Promise<PgClient> };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
-      Pool: new (opts: { connectionString: string }) => PgPool;
+      Pool: new (opts: { connectionString: string; ssl?: { rejectUnauthorized: boolean }; connectionTimeoutMillis?: number; max?: number }) => PgPool;
     };
-    const pool = new pgMod.Pool({ connectionString: pgUrl });
+    const pool = new pgMod.Pool({ connectionString: pgUrl, ...(hostinger ? { ssl: { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, max: 5 } : {}) });
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
+      batch: (statements) => runPostgresBatch(pool, statements),
     };
+    // Public hosting must never bootstrap or modify the production schema on request.
+    if (hostinger) {
+      await exec.query('SELECT 1 FROM rticore_members LIMIT 1');
+      return exec;
+    }
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.
     const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');

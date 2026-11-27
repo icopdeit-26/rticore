@@ -6,6 +6,7 @@ const nextConfig = {
     cpus: 1,
     workerThreads: false,
     staticGenerationMaxConcurrency: 1,
+    webpackMemoryOptimizations: true,
   },
   serverExternalPackages: ['unpdf'],
   webpack: (config, { isServer }) => {

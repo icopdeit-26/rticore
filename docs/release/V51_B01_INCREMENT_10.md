@@ -1,0 +1,2 @@
+# V5.1 B01 increment 10
+Read-only source checks for purchase_order.approved and vendor_invoice.approved. Validates same-tenant source records, approved opportunity entity, source status, vendor and reviewer consistency, exact PO quantity/rate/total using numeric multiplication. AP envelope does not contain amount: no AP amount or GL settlement certification is claimed. Tests cover empty and missing-source cases on isolated PostgreSQL; populated positive/mismatch fixtures and staging evidence remain outstanding. Existing guards preserved. No merge or deployment.

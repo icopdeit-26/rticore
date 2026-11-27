@@ -3,6 +3,7 @@ import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {TENANT,safeID} from '@/lib/sales-workflow';
 import {atomicSales} from '@/lib/sales-transactions';
 import {operationEvent,jakartaDate} from '@/lib/operations';
+import {buildFinanceOutboxStatement} from '@/lib/finance-docking-bridge';
 import {isOffenseRole,OFFENSE_PROJECT_SCOPE,offenseScopeArgs,offenseOnProjectId} from '@/lib/offense-team';
 import {isGovernanceRole,GOVERNANCE_PROJECT_SCOPE,governanceScopeArgs,governanceOnProjectId} from '@/lib/governance-team';
 import {isITDevRole,ITDEV_PROJECT_SCOPE,itdevScopeArgs,itdevOnProjectId} from '@/lib/itdev-team';
@@ -96,7 +97,8 @@ export async function POST(req:Request){
     WHERE t.tenant_id=? AND t.id=? AND t.version=? AND t.status='submitted' AND lower(t.created_by)!=?${projectGuard})`,
    [TENANT,row.id,row.version,email,...(scope?.args??[])],[
     db.prepare('UPDATE rticore_project_timesheets SET status=?,version=version+1,reviewed_by=?,review_notes=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'approved':'rejected',email,v.notes.trim(),TENANT,row.id),
-    operationEvent(db,'timesheet',row.id,v.approve?'APPROVE':'REJECT',email,{version:row.version,notes:v.notes.trim()})
+    operationEvent(db,'timesheet',row.id,v.approve?'APPROVE':'REJECT',email,{version:row.version,notes:v.notes.trim()}),
+    ...(v.approve?(await (async()=>{const hasDock=await db.prepare('SELECT 1 FROM rticore_schema_migrations WHERE version=52').first().catch(()=>null);const ps=hasDock?await db.prepare("SELECT legal_entity_id FROM rticore_erp_project_scopes WHERE tenant_id=? AND project_id=? AND status='approved'").bind(TENANT,row.project_id).first<{legal_entity_id:string}>().catch(()=>null):null;return ps?.legal_entity_id?[(await buildFinanceOutboxStatement(db,{legalEntityId:ps.legal_entity_id,eventType:'timesheet.approved',sourceDocumentId:row.id,idempotencyKey:`ts-approve-${row.id}-v${row.version}`,payload:{timesheet_id:row.id,project_id:row.project_id,minutes:row.minutes,cost_snapshot_cents:row.cost_snapshot_cents,approved_by:email}})).stmt]:[];})()):[])
    ]);return reply({success:true});
   }
   return fail('Aksi tidak dikenal');

@@ -91,7 +91,9 @@ async function main(){
 }
 
 async function runAllTests(env){
-  const generalFiles=fs.readdirSync('tests').filter(name=>name.endsWith('.test.cjs')&&!browserFiles.includes(name));
+  // The real PostgreSQL integration is required in its dedicated service-backed Hostinger CI job.
+ // This generic suite does not provision a disposable PostgreSQL service.
+ const generalFiles=fs.readdirSync('tests').filter(name=>name.endsWith('.test.cjs')&&!browserFiles.includes(name)&&name!=='hostinger-postgres-server.test.cjs');
   const generalStatus=await runTests(generalFiles,env);
   // Reuse the local build but run browser files serially to avoid resource contention.
   const browserStatus=await runTests(browserFiles,env,['--test-concurrency=1']);

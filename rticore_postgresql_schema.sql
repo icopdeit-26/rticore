@@ -1,5 +1,5 @@
 -- =============================================================================
--- RTICORE ? Complete PostgreSQL Schema & Compatibility Layer (Migrations 0001-0045)
+-- RTICORE - Complete PostgreSQL Schema & Compatibility Layer (Migrations 0001-0056)
 -- Compatible with PostgreSQL 16+ and PGlite
 -- =============================================================================
 
@@ -3048,3 +3048,783 @@ CREATE TABLE IF NOT EXISTS rticore_finance_exceptions (
  CHECK(status != 'resolved' OR (resolved_by IS NOT NULL AND coalesce(length(resolution_notes), 0) >= 12))
 );
 CREATE INDEX IF NOT EXISTS idx_rticore_fin_exceptions_open ON rticore_finance_exceptions(tenant_id, legal_entity_id, status, severity);
+
+-- =============================================================================
+-- Migration 0053: Enterprise Feature Flags, Service Catalog V4 & Pricing Engine
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS rticore_feature_flags (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT,
+ flag_key TEXT NOT NULL CHECK(length(flag_key) BETWEEN 3 AND 96),
+ description TEXT NOT NULL CHECK(length(description) BETWEEN 8 AND 500),
+ enabled BIGINT NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+ rollout_scope TEXT NOT NULL DEFAULT 'disabled' CHECK(rollout_scope IN ('disabled','staging_only','entity_pilot','all_certified')),
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','revoked')),
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version > 0),
+ requested_by TEXT NOT NULL,
+ approved_by TEXT,
+ approval_notes TEXT,
+ updated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, flag_key, legal_entity_id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(requested_by)),
+ CHECK(enabled = 0 OR (status = 'active' AND approved_by IS NOT NULL AND coalesce(length(approval_notes), 0) >= 12))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_feature_flags_lookup ON rticore_feature_flags(tenant_id, flag_key, status);
+
+CREATE TABLE IF NOT EXISTS rticore_service_catalog_v2 (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ service_code TEXT NOT NULL CHECK(length(service_code) BETWEEN 3 AND 48),
+ service_name TEXT NOT NULL CHECK(length(service_name) BETWEEN 3 AND 160),
+ service_category TEXT NOT NULL CHECK(service_category IN (
+  'web_app_pentest','mobile_app_pentest','api_pentest','network_pentest',
+  'infrastructure_assessment','cloud_security_assessment','active_directory_assessment',
+  'wireless_security_assessment','red_team_assessment','purple_team_assessment',
+  'vulnerability_assessment','source_code_review','soc_managed_services','mdr',
+  'siem_implementation','digital_forensics','incident_response','cyber_threat_intelligence',
+  'threat_hunting','grc_consulting','iso_27001_consulting','data_privacy_consulting',
+  'it_risk_management','security_architecture_consulting','cybersecurity_awareness',
+  'cybersecurity_training','security_tool_implementation','technology_professional_services',
+  'other_configurable'
+ )),
+ service_owner_email TEXT NOT NULL,
+ description TEXT NOT NULL CHECK(length(description) BETWEEN 8 AND 1000),
+ scope_summary TEXT NOT NULL CHECK(length(scope_summary) BETWEEN 8 AND 2000),
+ deliverables_json TEXT NOT NULL DEFAULT '[]',
+ prerequisites TEXT NOT NULL DEFAULT '',
+ exclusions TEXT NOT NULL DEFAULT '',
+ unit_of_measurement TEXT NOT NULL DEFAULT 'engagement',
+ complexity_level TEXT NOT NULL DEFAULT 'standard' CHECK(complexity_level IN ('basic','standard','medium','high','critical')),
+ min_mandays_tenths BIGINT NOT NULL CHECK(min_mandays_tenths >= 5),
+ standard_mandays_tenths BIGINT NOT NULL CHECK(standard_mandays_tenths >= min_mandays_tenths),
+ max_mandays_tenths BIGINT NOT NULL CHECK(max_mandays_tenths >= standard_mandays_tenths),
+ resource_requirements_json TEXT NOT NULL DEFAULT '[]',
+ skill_requirements_json TEXT NOT NULL DEFAULT '[]',
+ default_tool_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(default_tool_cost_cents >= 0),
+ default_third_party_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(default_third_party_cost_cents >= 0),
+ default_travel_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(default_travel_cost_cents >= 0),
+ overhead_allocation_bps BIGINT NOT NULL DEFAULT 1500 CHECK(overhead_allocation_bps BETWEEN 0 AND 6000),
+ target_gross_margin_bps BIGINT NOT NULL DEFAULT 3500 CHECK(target_gross_margin_bps BETWEEN 500 AND 8500),
+ min_acceptable_margin_bps BIGINT NOT NULL DEFAULT 2000 CHECK(min_acceptable_margin_bps BETWEEN 0 AND target_gross_margin_bps),
+ standard_sla_hours BIGINT NOT NULL DEFAULT 24 CHECK(standard_sla_hours BETWEEN 1 AND 2160),
+ flexguard_eligible BIGINT NOT NULL DEFAULT 1 CHECK(flexguard_eligible IN (0,1)),
+ effective_date TEXT NOT NULL,
+ service_version BIGINT NOT NULL DEFAULT 1 CHECK(service_version > 0),
+ lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK(lifecycle_status IN ('draft','approved','superseded','retired')),
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approved_at TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, service_code, service_version),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by)),
+ CHECK(lifecycle_status != 'approved' OR (approved_by IS NOT NULL AND coalesce(length(approval_notes), 0) >= 12))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_svc_cat_v2_entity ON rticore_service_catalog_v2(tenant_id, legal_entity_id, service_category, lifecycle_status);
+
+CREATE TABLE IF NOT EXISTS rticore_service_activity_templates (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ service_id TEXT NOT NULL,
+ phase_code TEXT NOT NULL CHECK(phase_code IN (
+  'presales_assessment','scope_validation','preparation','kickoff',
+  'technical_execution','analysis','quality_assurance','reporting',
+  'presentation','retest','project_management','closure'
+ )),
+ phase_order BIGINT NOT NULL CHECK(phase_order BETWEEN 1 AND 12),
+ activity_name TEXT NOT NULL CHECK(length(activity_name) BETWEEN 3 AND 160),
+ resource_role TEXT NOT NULL,
+ skill_level TEXT NOT NULL DEFAULT 'standard' CHECK(skill_level IN ('junior','standard','senior','lead','principal')),
+ resource_count BIGINT NOT NULL DEFAULT 1 CHECK(resource_count BETWEEN 1 AND 50),
+ standard_hours_per_unit_hundredths BIGINT NOT NULL CHECK(standard_hours_per_unit_hundredths BETWEEN 0 AND 100000),
+ min_effort_hours_hundredths BIGINT NOT NULL DEFAULT 0 CHECK(min_effort_hours_hundredths >= 0),
+ complexity_factor_bps BIGINT NOT NULL DEFAULT 10000 CHECK(complexity_factor_bps BETWEEN 5000 AND 30000),
+ billable BIGINT NOT NULL DEFAULT 1 CHECK(billable IN (0,1)),
+ depends_on_phase TEXT,
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, service_id, phase_code),
+ FOREIGN KEY(tenant_id, service_id) REFERENCES rticore_service_catalog_v2(tenant_id, id),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_svc_act_tpl_service ON rticore_service_activity_templates(tenant_id, service_id, phase_order);
+
+CREATE TABLE IF NOT EXISTS rticore_complexity_matrices (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ matrix_code TEXT NOT NULL CHECK(length(matrix_code) BETWEEN 3 AND 64),
+ factor_group TEXT NOT NULL CHECK(factor_group IN ('tier','environment','regulatory','delivery','emergency')),
+ factor_key TEXT NOT NULL CHECK(length(factor_key) BETWEEN 2 AND 64),
+ label TEXT NOT NULL CHECK(length(label) BETWEEN 3 AND 160),
+ multiplier_bps BIGINT NOT NULL CHECK(multiplier_bps BETWEEN 5000 AND 40000),
+ status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','superseded')),
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, matrix_code, factor_key),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by)),
+ CHECK(status != 'approved' OR (approved_by IS NOT NULL AND coalesce(length(approval_notes), 0) >= 12))
+);
+
+CREATE TABLE IF NOT EXISTS rticore_enterprise_rate_cards (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ role_code TEXT NOT NULL CHECK(role_code IN (
+  'junior_analyst','analyst','senior_analyst','consultant','senior_consultant',
+  'specialist','lead_pentester','principal_consultant','soc_analyst_l1','soc_analyst_l2',
+  'soc_analyst_l3','incident_responder','digital_forensic_specialist','threat_intelligence_analyst',
+  'grc_consultant','project_manager','solution_architect','subject_matter_expert','external_associate'
+ )),
+ role_label TEXT NOT NULL CHECK(length(role_label) BETWEEN 3 AND 120),
+ monthly_compensation_cents BIGINT NOT NULL CHECK(monthly_compensation_cents >= 0),
+ benefit_allocation_cents BIGINT NOT NULL DEFAULT 0 CHECK(benefit_allocation_cents >= 0),
+ employer_contrib_cents BIGINT NOT NULL DEFAULT 0 CHECK(employer_contrib_cents >= 0),
+ allocated_expense_cents BIGINT NOT NULL DEFAULT 0 CHECK(allocated_expense_cents >= 0),
+ annual_loaded_cost_cents BIGINT NOT NULL CHECK(annual_loaded_cost_cents > 0),
+ available_working_days BIGINT NOT NULL DEFAULT 240 CHECK(available_working_days BETWEEN 100 AND 300),
+ target_utilization_bps BIGINT NOT NULL DEFAULT 7500 CHECK(target_utilization_bps BETWEEN 3000 AND 9500),
+ internal_cost_rate_cents BIGINT NOT NULL CHECK(internal_cost_rate_cents > 0),
+ standard_selling_rate_cents BIGINT NOT NULL CHECK(standard_selling_rate_cents >= internal_cost_rate_cents),
+ min_selling_rate_cents BIGINT NOT NULL CHECK(min_selling_rate_cents >= internal_cost_rate_cents AND min_selling_rate_cents <= standard_selling_rate_cents),
+ overtime_multiplier_bps BIGINT NOT NULL DEFAULT 15000 CHECK(overtime_multiplier_bps BETWEEN 10000 AND 30000),
+ emergency_multiplier_bps BIGINT NOT NULL DEFAULT 20000 CHECK(emergency_multiplier_bps BETWEEN 10000 AND 40000),
+ effective_date TEXT NOT NULL,
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version > 0),
+ status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','superseded')),
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approved_at TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, role_code, effective_date, version),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by)),
+ CHECK(status != 'approved' OR (approved_by IS NOT NULL AND coalesce(length(approval_notes), 0) >= 12))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_ent_rate_cards_active ON rticore_enterprise_rate_cards(tenant_id, legal_entity_id, role_code, status, effective_date);
+
+CREATE TABLE IF NOT EXISTS rticore_pricing_scenarios (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ opportunity_id TEXT,
+ service_id TEXT,
+ scenario_name TEXT NOT NULL CHECK(length(scenario_name) BETWEEN 3 AND 160),
+ pricing_method TEXT NOT NULL CHECK(pricing_method IN (
+  'cost_plus','target_margin','fixed_price','time_and_material','mandays_based',
+  'subscription','retainer','tiered','volume_discount','bundle',
+  'value_based','emergency_service','flexguard_credit','hybrid'
+ )),
+ currency_code TEXT NOT NULL DEFAULT 'IDR',
+ working_hours_per_md BIGINT NOT NULL DEFAULT 8 CHECK(working_hours_per_md BETWEEN 4 AND 12),
+ total_mandays_tenths BIGINT NOT NULL CHECK(total_mandays_tenths > 0),
+ direct_labor_cost_cents BIGINT NOT NULL CHECK(direct_labor_cost_cents >= 0),
+ tools_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(tools_cost_cents >= 0),
+ license_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(license_cost_cents >= 0),
+ travel_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(travel_cost_cents >= 0),
+ third_party_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(third_party_cost_cents >= 0),
+ other_direct_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(other_direct_cost_cents >= 0),
+ total_direct_cost_cents BIGINT NOT NULL CHECK(total_direct_cost_cents >= 0),
+ overhead_cents BIGINT NOT NULL DEFAULT 0 CHECK(overhead_cents >= 0),
+ risk_contingency_cents BIGINT NOT NULL DEFAULT 0 CHECK(risk_contingency_cents >= 0),
+ fully_loaded_cost_cents BIGINT NOT NULL CHECK(fully_loaded_cost_cents > 0),
+ target_margin_bps BIGINT NOT NULL CHECK(target_margin_bps BETWEEN 0 AND 9000),
+ discount_bps BIGINT NOT NULL DEFAULT 0 CHECK(discount_bps BETWEEN 0 AND 8000),
+ gross_selling_price_cents BIGINT NOT NULL CHECK(gross_selling_price_cents > 0),
+ net_selling_price_cents BIGINT NOT NULL CHECK(net_selling_price_cents >= fully_loaded_cost_cents),
+ break_even_price_cents BIGINT NOT NULL CHECK(break_even_price_cents = fully_loaded_cost_cents),
+ min_selling_price_cents BIGINT NOT NULL CHECK(min_selling_price_cents >= fully_loaded_cost_cents),
+ direct_gross_margin_bps BIGINT NOT NULL,
+ fully_loaded_margin_bps BIGINT NOT NULL CHECK(fully_loaded_margin_bps >= 0),
+ tax_amount_cents BIGINT NOT NULL DEFAULT 0 CHECK(tax_amount_cents >= 0),
+ flexguard_credits_equivalent BIGINT NOT NULL DEFAULT 0 CHECK(flexguard_credits_equivalent >= 0),
+ approval_required_level TEXT NOT NULL DEFAULT 'none' CHECK(approval_required_level IN ('none','sales_manager','pricing_manager','finance_manager','director','ceo')),
+ status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','approved','rejected','converted_to_quotation')),
+ inputs_json TEXT NOT NULL,
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approved_at TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by)),
+ CHECK(status NOT IN ('approved','converted_to_quotation') OR (approved_by IS NOT NULL AND coalesce(length(approval_notes), 0) >= 12))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_pricing_scenarios_entity ON rticore_pricing_scenarios(tenant_id, legal_entity_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS rticore_pricing_snapshots (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ scenario_id TEXT NOT NULL,
+ quotation_id TEXT,
+ boq_id TEXT,
+ snapshot_version BIGINT NOT NULL DEFAULT 1 CHECK(snapshot_version > 0),
+ rate_card_snapshot_json TEXT NOT NULL,
+ activity_breakdown_json TEXT NOT NULL,
+ financial_summary_json TEXT NOT NULL,
+ net_selling_price_cents BIGINT NOT NULL CHECK(net_selling_price_cents > 0),
+ fully_loaded_cost_cents BIGINT NOT NULL CHECK(fully_loaded_cost_cents > 0),
+ snapshot_hash TEXT NOT NULL CHECK(length(snapshot_hash) = 64),
+ frozen_by TEXT NOT NULL,
+ frozen_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, scenario_id, snapshot_version),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, scenario_id) REFERENCES rticore_pricing_scenarios(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_historical_effort_benchmarks (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ service_id TEXT NOT NULL,
+ project_id TEXT,
+ planned_mandays_tenths BIGINT NOT NULL CHECK(planned_mandays_tenths > 0),
+ actual_mandays_tenths BIGINT NOT NULL CHECK(actual_mandays_tenths > 0),
+ estimated_cost_cents BIGINT NOT NULL CHECK(estimated_cost_cents > 0),
+ actual_cost_cents BIGINT NOT NULL CHECK(actual_cost_cents > 0),
+ estimated_margin_bps BIGINT NOT NULL,
+ actual_margin_bps BIGINT NOT NULL,
+ delivery_variance_bps BIGINT NOT NULL,
+ retest_count BIGINT NOT NULL DEFAULT 0 CHECK(retest_count >= 0),
+ scope_changes_count BIGINT NOT NULL DEFAULT 0 CHECK(scope_changes_count >= 0),
+ recommended_mandays_tenths BIGINT NOT NULL CHECK(recommended_mandays_tenths > 0),
+ calibration_status TEXT NOT NULL DEFAULT 'recommended' CHECK(calibration_status IN ('recommended','approved','dismissed')),
+ recorded_by TEXT NOT NULL,
+ reviewed_by TEXT,
+ review_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, service_id) REFERENCES rticore_service_catalog_v2(tenant_id, id),
+ CHECK(reviewed_by IS NULL OR lower(reviewed_by) != lower(recorded_by))
+);
+
+-- =============================================================================
+-- Migration 0054: FlexGuard Enterprise Service Credit Management System
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_packages (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ package_code TEXT NOT NULL CHECK(length(package_code) BETWEEN 3 AND 48),
+ package_name TEXT NOT NULL CHECK(length(package_name) BETWEEN 3 AND 160),
+ billing_model TEXT NOT NULL CHECK(billing_model IN (
+  'prepaid_mandays','postpaid_mandays','annual_credits','monthly_allocation',
+  'quarterly_allocation','retainer','committed_capacity','hybrid_subscription'
+ )),
+ credit_pool_mode TEXT NOT NULL DEFAULT 'shared_pool' CHECK(credit_pool_mode IN ('shared_pool','service_specific','multi_entity_contract')),
+ credits_included BIGINT NOT NULL CHECK(credits_included BETWEEN 1 AND 1000000),
+ unit_credit_price_cents BIGINT NOT NULL CHECK(unit_credit_price_cents > 0),
+ package_price_cents BIGINT NOT NULL CHECK(package_price_cents > 0),
+ validity_days BIGINT NOT NULL DEFAULT 365 CHECK(validity_days BETWEEN 30 AND 1825),
+ carry_forward_allowed BIGINT NOT NULL DEFAULT 0 CHECK(carry_forward_allowed IN (0,1)),
+ carry_forward_max_bps BIGINT NOT NULL DEFAULT 0 CHECK(carry_forward_max_bps BETWEEN 0 AND 10000),
+ emergency_reserve_credits BIGINT NOT NULL DEFAULT 0 CHECK(emergency_reserve_credits >= 0),
+ overdraft_limit_credits BIGINT NOT NULL DEFAULT 0 CHECK(overdraft_limit_credits >= 0),
+ sla_ack_hours BIGINT NOT NULL DEFAULT 4 CHECK(sla_ack_hours BETWEEN 1 AND 168),
+ sla_mobilize_hours BIGINT NOT NULL DEFAULT 24 CHECK(sla_mobilize_hours BETWEEN 1 AND 720),
+ sla_delivery_hours BIGINT NOT NULL DEFAULT 120 CHECK(sla_delivery_hours BETWEEN 4 AND 4320),
+ eligible_services_json TEXT NOT NULL DEFAULT '[]',
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version > 0),
+ status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','superseded','retired')),
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, package_code, version),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by)),
+ CHECK(status != 'approved' OR (approved_by IS NOT NULL AND coalesce(length(approval_notes), 0) >= 12))
+);
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_conversion_matrix (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ contract_id TEXT NOT NULL,
+ contract_version BIGINT NOT NULL DEFAULT 1 CHECK(contract_version > 0),
+ service_tier TEXT NOT NULL CHECK(service_tier IN (
+  'standard_analyst','senior_specialist','lead_specialist',
+  'principal_consultant','emergency_response','specialized_forensic','custom'
+ )),
+ service_category TEXT,
+ multiplier_bps BIGINT NOT NULL CHECK(multiplier_bps BETWEEN 5000 AND 50000),
+ effective_from TEXT NOT NULL,
+ effective_to TEXT,
+ status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('draft','active','superseded')),
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, contract_id, contract_version, service_tier),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by))
+);
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_credit_lots (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT NOT NULL,
+ contract_id TEXT NOT NULL,
+ wallet_id TEXT NOT NULL,
+ lot_code TEXT NOT NULL CHECK(length(lot_code) BETWEEN 3 AND 64),
+ lot_kind TEXT NOT NULL CHECK(lot_kind IN ('initial_allocation','purchase','top_up','carry_forward','emergency_reserve')),
+ credits_total BIGINT NOT NULL CHECK(credits_total > 0),
+ unit_value_cents BIGINT NOT NULL CHECK(unit_value_cents > 0),
+ overdraft_limit_credits BIGINT NOT NULL DEFAULT 0 CHECK(overdraft_limit_credits >= 0),
+ carry_forward_cap_credits BIGINT NOT NULL DEFAULT 0 CHECK(carry_forward_cap_credits >= 0),
+ issued_at TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','depleted','expired','carried_forward')),
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, wallet_id, lot_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, customer_id) REFERENCES rticore_sales_accounts(tenant_id, id),
+ CHECK(expires_at >= issued_at)
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_fg_lots_wallet ON rticore_flexguard_credit_lots(tenant_id, legal_entity_id, wallet_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_enterprise_ledger (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT NOT NULL,
+ contract_id TEXT NOT NULL,
+ wallet_id TEXT NOT NULL,
+ lot_id TEXT,
+ service_request_id TEXT,
+ transaction_type TEXT NOT NULL CHECK(transaction_type IN (
+  'initial_allocation','purchase','top_up','reservation','reservation_release',
+  'consumption','adjustment','reversal','transfer','carry_forward','expiry','refund'
+ )),
+ credit_amount BIGINT NOT NULL CHECK(credit_amount != 0 AND credit_amount BETWEEN -1000000 AND 1000000),
+ actual_mandays_tenths BIGINT NOT NULL DEFAULT 0 CHECK(actual_mandays_tenths >= 0),
+ billable_mandays_tenths BIGINT NOT NULL DEFAULT 0 CHECK(billable_mandays_tenths >= 0),
+ multiplier_bps BIGINT NOT NULL DEFAULT 10000 CHECK(multiplier_bps BETWEEN 5000 AND 50000),
+ financial_value_cents BIGINT NOT NULL DEFAULT 0 CHECK(financial_value_cents >= 0),
+ source_tx_id TEXT,
+ reference_code TEXT NOT NULL CHECK(length(reference_code) BETWEEN 3 AND 128),
+ idempotency_key TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 12 AND 128),
+ actor_email TEXT NOT NULL,
+ approval_status TEXT NOT NULL DEFAULT 'posted' CHECK(approval_status IN ('pending_approval','posted','rejected')),
+ approved_by TEXT,
+ approved_at TEXT,
+ reason TEXT NOT NULL CHECK(length(reason) BETWEEN 12 AND 1000),
+ finance_outbox_event_id TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, idempotency_key),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, customer_id) REFERENCES rticore_sales_accounts(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(actor_email)),
+ CHECK(transaction_type != 'adjustment' OR approval_status = 'pending_approval' OR approved_by IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_fg_ent_ledger_wallet ON rticore_flexguard_enterprise_ledger(tenant_id, legal_entity_id, wallet_id, created_at);
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_service_requests (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT NOT NULL,
+ contract_id TEXT NOT NULL,
+ contract_version BIGINT NOT NULL DEFAULT 1 CHECK(contract_version > 0),
+ wallet_id TEXT NOT NULL,
+ request_number TEXT NOT NULL CHECK(length(request_number) BETWEEN 4 AND 64),
+ service_category TEXT NOT NULL,
+ service_tier TEXT NOT NULL DEFAULT 'standard_analyst',
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ scope_description TEXT NOT NULL CHECK(length(scope_description) BETWEEN 12 AND 3000),
+ emergency_flag BIGINT NOT NULL DEFAULT 0 CHECK(emergency_flag IN (0,1)),
+ priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low','normal','high','emergency')),
+ status TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN (
+  'submitted','scope_validated','estimated','credit_quoted','customer_approved',
+  'credits_reserved','resource_assigned','in_execution','timesheet_approved',
+  'qa_passed','customer_accepted','consumed','reconciled',
+  'revision_requested','cancelled','disputed','additional_credit_pending'
+ )),
+ estimated_mandays_tenths BIGINT NOT NULL DEFAULT 0 CHECK(estimated_mandays_tenths >= 0),
+ estimated_credits BIGINT NOT NULL DEFAULT 0 CHECK(estimated_credits >= 0),
+ reserved_credits BIGINT NOT NULL DEFAULT 0 CHECK(reserved_credits >= 0),
+ reservation_tx_id TEXT,
+ assigned_resource_email TEXT,
+ actual_mandays_tenths BIGINT NOT NULL DEFAULT 0 CHECK(actual_mandays_tenths >= 0),
+ multiplier_bps BIGINT NOT NULL DEFAULT 10000 CHECK(multiplier_bps BETWEEN 5000 AND 50000),
+ consumed_credits BIGINT NOT NULL DEFAULT 0 CHECK(consumed_credits >= 0),
+ additional_credits_requested BIGINT NOT NULL DEFAULT 0 CHECK(additional_credits_requested >= 0),
+ additional_credits_approved_by TEXT,
+ deliverable_document_id TEXT,
+ internal_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(internal_cost_cents >= 0),
+ customer_accepted_by TEXT,
+ customer_accepted_at TEXT,
+ sla_ack_due_at TEXT,
+ sla_ack_at TEXT,
+ sla_mobilize_due_at TEXT,
+ sla_mobilize_at TEXT,
+ sla_delivery_due_at TEXT,
+ sla_completed_at TEXT,
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version > 0),
+ requested_by TEXT NOT NULL,
+ updated_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ updated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, request_number),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, customer_id) REFERENCES rticore_sales_accounts(tenant_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_fg_sr_customer ON rticore_flexguard_service_requests(tenant_id, legal_entity_id, customer_id, status);
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_sla_events (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ service_request_id TEXT NOT NULL,
+ sla_stage TEXT NOT NULL CHECK(sla_stage IN ('acknowledgment','scope_assessment','mobilization','delivery','emergency_response')),
+ target_hours BIGINT NOT NULL CHECK(target_hours > 0),
+ actual_hours_hundredths BIGINT NOT NULL CHECK(actual_hours_hundredths >= 0),
+ breached BIGINT NOT NULL DEFAULT 0 CHECK(breached IN (0,1)),
+ escalated_to TEXT,
+ remedy_credits BIGINT NOT NULL DEFAULT 0 CHECK(remedy_credits >= 0),
+ notes TEXT NOT NULL CHECK(length(notes) BETWEEN 8 AND 1000),
+ recorded_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, service_request_id) REFERENCES rticore_flexguard_service_requests(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_flexguard_portal_grants (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT NOT NULL,
+ portal_email TEXT NOT NULL,
+ portal_role TEXT NOT NULL CHECK(portal_role IN ('customer_admin','customer_user')),
+ active BIGINT NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+ created_by TEXT NOT NULL,
+ approved_by TEXT,
+ approval_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, customer_id, portal_email),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, customer_id) REFERENCES rticore_sales_accounts(tenant_id, id),
+ CHECK(approved_by IS NULL OR lower(approved_by) != lower(created_by))
+);
+
+-- =============================================================================
+-- Migration 0055: CTI, GRC, Enterprise Risk & Control, Background Jobs & Backup Drills
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS rticore_cti_cases (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ case_code TEXT NOT NULL CHECK(length(case_code) BETWEEN 4 AND 64),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ request_type TEXT NOT NULL CHECK(request_type IN ('intelligence_request','threat_monitoring','ioc_investigation','brand_monitoring','darkweb_advisory','vulnerability_intel')),
+ tlp_classification TEXT NOT NULL DEFAULT 'TLP:AMBER' CHECK(tlp_classification IN ('TLP:CLEAR','TLP:GREEN','TLP:AMBER','TLP:AMBER+STRICT','TLP:RED')),
+ severity TEXT NOT NULL DEFAULT 'medium' CHECK(severity IN ('low','medium','high','critical')),
+ assigned_analyst_email TEXT,
+ workload_hours_hundredths BIGINT NOT NULL DEFAULT 0 CHECK(workload_hours_hundredths >= 0),
+ report_summary TEXT,
+ status TEXT NOT NULL DEFAULT 'intake' CHECK(status IN ('intake','monitoring','analyzing','qa_review','disseminated','closed')),
+ created_by TEXT NOT NULL,
+ reviewed_by TEXT,
+ disseminated_at TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, case_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(reviewed_by IS NULL OR lower(reviewed_by) != lower(created_by))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_cti_cases_entity ON rticore_cti_cases(tenant_id, legal_entity_id, status, severity);
+
+CREATE TABLE IF NOT EXISTS rticore_cti_iocs (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ cti_case_id TEXT NOT NULL,
+ ioc_type TEXT NOT NULL CHECK(ioc_type IN ('ipv4','ipv6','domain','url','sha256','md5','cve','email','yara')),
+ indicator_value TEXT NOT NULL CHECK(length(indicator_value) BETWEEN 3 AND 512),
+ confidence_score BIGINT NOT NULL DEFAULT 75 CHECK(confidence_score BETWEEN 0 AND 100),
+ tlp_classification TEXT NOT NULL DEFAULT 'TLP:AMBER' CHECK(tlp_classification IN ('TLP:CLEAR','TLP:GREEN','TLP:AMBER','TLP:AMBER+STRICT','TLP:RED')),
+ active BIGINT NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, cti_case_id, ioc_type, indicator_value),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, cti_case_id) REFERENCES rticore_cti_cases(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_grc_engagements (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ project_id TEXT,
+ engagement_code TEXT NOT NULL CHECK(length(engagement_code) BETWEEN 4 AND 64),
+ framework TEXT NOT NULL CHECK(framework IN ('ISO_27001','UU_PDP','OJK_POJK','BI_PBI','NIST_CSF','PCI_DSS','COBIT','IT_RISK','SECURITY_ARCH','CUSTOM')),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ total_controls BIGINT NOT NULL DEFAULT 0 CHECK(total_controls >= 0),
+ compliant_controls BIGINT NOT NULL DEFAULT 0 CHECK(compliant_controls >= 0),
+ open_gaps BIGINT NOT NULL DEFAULT 0 CHECK(open_gaps >= 0),
+ audit_readiness_bps BIGINT NOT NULL DEFAULT 0 CHECK(audit_readiness_bps BETWEEN 0 AND 10000),
+ roadmap_summary TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'assessment' CHECK(status IN ('assessment','gap_analysis','policy_dev','remediation','audit_ready','closed')),
+ lead_consultant_email TEXT NOT NULL,
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, engagement_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(compliant_controls <= total_controls)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_enterprise_risk_register (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ risk_code TEXT NOT NULL CHECK(length(risk_code) BETWEEN 3 AND 48),
+ risk_domain TEXT NOT NULL CHECK(risk_domain IN ('strategic','financial','operational','cybersecurity','compliance','third_party','business_continuity')),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ description TEXT NOT NULL CHECK(length(description) BETWEEN 12 AND 2000),
+ inherent_likelihood BIGINT NOT NULL CHECK(inherent_likelihood BETWEEN 1 AND 5),
+ inherent_impact BIGINT NOT NULL CHECK(inherent_impact BETWEEN 1 AND 5),
+ residual_likelihood BIGINT NOT NULL CHECK(residual_likelihood BETWEEN 1 AND 5),
+ residual_impact BIGINT NOT NULL CHECK(residual_impact BETWEEN 1 AND 5),
+ kri_metric TEXT,
+ kri_threshold TEXT,
+ risk_owner_email TEXT NOT NULL,
+ remediation_plan TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','mitigating','accepted','remediated','closed')),
+ created_by TEXT NOT NULL,
+ reviewed_by TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, risk_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(reviewed_by IS NULL OR lower(reviewed_by) != lower(risk_owner_email))
+);
+
+CREATE TABLE IF NOT EXISTS rticore_enterprise_control_register (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ risk_id TEXT,
+ control_code TEXT NOT NULL CHECK(length(control_code) BETWEEN 3 AND 48),
+ regulatory_ref TEXT NOT NULL DEFAULT 'ISO_27001',
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ control_type TEXT NOT NULL CHECK(control_type IN ('preventive','detective','corrective')),
+ control_owner_email TEXT NOT NULL,
+ assessment_status TEXT NOT NULL DEFAULT 'not_tested' CHECK(assessment_status IN ('not_tested','effective','partially_effective','ineffective')),
+ tested_by TEXT,
+ tested_at TEXT,
+ test_notes TEXT,
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, control_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(tested_by IS NULL OR lower(tested_by) != lower(control_owner_email))
+);
+
+CREATE TABLE IF NOT EXISTS rticore_background_jobs (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT,
+ job_type TEXT NOT NULL CHECK(job_type IN (
+  'finance_outbox_dispatch','flexguard_expiry_scan','sla_breach_monitor',
+  'sales_activity_sla','backup_verification','report_generation','renewal_signal_scan'
+ )),
+ idempotency_key TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 8 AND 160),
+ payload_json TEXT NOT NULL DEFAULT '{}',
+ status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed','dead_letter')),
+ attempts BIGINT NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+ max_attempts BIGINT NOT NULL DEFAULT 5 CHECK(max_attempts BETWEEN 1 AND 20),
+ next_run_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ locked_by TEXT,
+ last_error TEXT,
+ completed_at TEXT,
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_bg_jobs_poll ON rticore_background_jobs(tenant_id, status, next_run_at);
+
+CREATE TABLE IF NOT EXISTS rticore_backup_drills (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ environment_name TEXT NOT NULL CHECK(environment_name IN ('local_rehearsal','staging','production')),
+ backup_kind TEXT NOT NULL CHECK(backup_kind IN ('postgresql_logical','postgresql_pitr','sqlite_rehearsal','document_vault')),
+ encrypted BIGINT NOT NULL DEFAULT 1 CHECK(encrypted IN (0,1)),
+ sha256_checksum TEXT NOT NULL CHECK(length(sha256_checksum) = 64),
+ rpo_minutes BIGINT NOT NULL CHECK(rpo_minutes >= 0),
+ rto_minutes BIGINT NOT NULL CHECK(rto_minutes >= 0),
+ restore_verified BIGINT NOT NULL DEFAULT 0 CHECK(restore_verified IN (0,1)),
+ reconciliation_passed BIGINT NOT NULL DEFAULT 0 CHECK(reconciliation_passed IN (0,1)),
+ notes TEXT NOT NULL CHECK(length(notes) BETWEEN 12 AND 1000),
+ executed_by TEXT NOT NULL,
+ verified_by TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ CHECK(verified_by IS NULL OR lower(verified_by) != lower(executed_by)),
+ CHECK(restore_verified = 0 OR verified_by IS NOT NULL)
+);
+
+-- =============================================================================
+-- Migration 0056: VAPT Operations, DFIR Chain of Custody & SOC/MDR SLA Metrics
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS rticore_vapt_engagements (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ project_id TEXT,
+ engagement_code TEXT NOT NULL CHECK(length(engagement_code) BETWEEN 4 AND 64),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ test_type TEXT NOT NULL CHECK(test_type IN ('web_app','mobile_app','api','network','cloud','active_directory','wireless','red_team','purple_team','source_code')),
+ scope_assets_json TEXT NOT NULL DEFAULT '[]',
+ roe_document_id TEXT,
+ authorization_approved_by TEXT,
+ authorization_notes TEXT,
+ window_start TEXT NOT NULL,
+ window_end TEXT NOT NULL,
+ lead_pentester_email TEXT NOT NULL,
+ assigned_testers_json TEXT NOT NULL DEFAULT '[]',
+ status TEXT NOT NULL DEFAULT 'registered' CHECK(status IN (
+  'registered','scope_validated','roe_approved','scheduled','testing',
+  'qa_review','retest','report_delivered','customer_accepted','closed'
+ )),
+ version BIGINT NOT NULL DEFAULT 1 CHECK(version > 0),
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, engagement_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ CHECK(window_end >= window_start),
+ CHECK(authorization_approved_by IS NULL OR lower(authorization_approved_by) != lower(created_by)),
+ CHECK(status NOT IN ('roe_approved','scheduled','testing','qa_review','retest','report_delivered','customer_accepted','closed')
+   OR (authorization_approved_by IS NOT NULL AND coalesce(length(authorization_notes), 0) >= 12))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_vapt_eng_entity ON rticore_vapt_engagements(tenant_id, legal_entity_id, status);
+
+CREATE TABLE IF NOT EXISTS rticore_vapt_findings (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ engagement_id TEXT NOT NULL,
+ finding_code TEXT NOT NULL CHECK(length(finding_code) BETWEEN 3 AND 48),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ severity TEXT NOT NULL CHECK(severity IN ('info','low','medium','high','critical')),
+ cvss_score_tenths BIGINT NOT NULL CHECK(cvss_score_tenths BETWEEN 0 AND 100),
+ cwe_owasp_ref TEXT NOT NULL DEFAULT 'OWASP-TOP10',
+ affected_asset TEXT NOT NULL CHECK(length(affected_asset) BETWEEN 3 AND 250),
+ evidence_document_id TEXT,
+ remediation_guidance TEXT NOT NULL CHECK(length(remediation_guidance) BETWEEN 12 AND 3000),
+ retest_status TEXT NOT NULL DEFAULT 'open' CHECK(retest_status IN ('open','qa_approved','retest_requested','verified_fixed','still_vulnerable','risk_accepted')),
+ created_by TEXT NOT NULL,
+ qa_reviewed_by TEXT,
+ qa_notes TEXT,
+ retested_by TEXT,
+ retest_notes TEXT,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, engagement_id, finding_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, engagement_id) REFERENCES rticore_vapt_engagements(tenant_id, id),
+ CHECK(qa_reviewed_by IS NULL OR lower(qa_reviewed_by) != lower(created_by))
+);
+CREATE INDEX IF NOT EXISTS idx_rticore_vapt_find_eng ON rticore_vapt_findings(tenant_id, engagement_id, severity, retest_status);
+
+CREATE TABLE IF NOT EXISTS rticore_dfir_incidents (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ flexguard_request_id TEXT,
+ incident_code TEXT NOT NULL CHECK(length(incident_code) BETWEEN 4 AND 64),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 5 AND 200),
+ severity TEXT NOT NULL CHECK(severity IN ('sev1_critical','sev2_high','sev3_medium','sev4_low')),
+ incident_commander_email TEXT NOT NULL,
+ activated_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ contained_at TEXT,
+ recovered_at TEXT,
+ emergency_mandays_tenths BIGINT NOT NULL DEFAULT 0 CHECK(emergency_mandays_tenths >= 0),
+ post_incident_summary TEXT,
+ status TEXT NOT NULL DEFAULT 'intake' CHECK(status IN ('intake','activated','investigating','contained','recovering','post_incident_review','closed')),
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, incident_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_dfir_chain_of_custody (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ incident_id TEXT NOT NULL,
+ evidence_tag TEXT NOT NULL CHECK(length(evidence_tag) BETWEEN 3 AND 64),
+ evidence_description TEXT NOT NULL CHECK(length(evidence_description) BETWEEN 8 AND 500),
+ sha256_hash TEXT NOT NULL CHECK(length(sha256_hash) = 64),
+ custody_action TEXT NOT NULL CHECK(custody_action IN ('collected','transferred','analyzed','sealed','returned','archived')),
+ actor_email TEXT NOT NULL,
+ custodian_to_email TEXT,
+ storage_location TEXT NOT NULL CHECK(length(storage_location) BETWEEN 3 AND 200),
+ notes TEXT NOT NULL CHECK(length(notes) BETWEEN 8 AND 1000),
+ recorded_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id),
+ FOREIGN KEY(tenant_id, incident_id) REFERENCES rticore_dfir_incidents(tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS rticore_soc_sla_metrics (
+ id TEXT PRIMARY KEY,
+ tenant_id TEXT NOT NULL,
+ legal_entity_id TEXT NOT NULL,
+ customer_id TEXT,
+ period_code TEXT NOT NULL,
+ monitored_assets BIGINT NOT NULL CHECK(monitored_assets >= 0),
+ active_use_cases BIGINT NOT NULL CHECK(active_use_cases >= 0),
+ alerts_triaged BIGINT NOT NULL CHECK(alerts_triaged >= 0),
+ incidents_escalated BIGINT NOT NULL CHECK(incidents_escalated >= 0),
+ mttd_minutes BIGINT NOT NULL CHECK(mttd_minutes >= 0),
+ mttr_minutes BIGINT NOT NULL CHECK(mttr_minutes >= 0),
+ sla_compliance_bps BIGINT NOT NULL CHECK(sla_compliance_bps BETWEEN 0 AND 10000),
+ subscription_revenue_cents BIGINT NOT NULL DEFAULT 0 CHECK(subscription_revenue_cents >= 0),
+ direct_soc_cost_cents BIGINT NOT NULL DEFAULT 0 CHECK(direct_soc_cost_cents >= 0),
+ recorded_by TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+ UNIQUE(tenant_id, id),
+ UNIQUE(tenant_id, legal_entity_id, customer_id, period_code),
+ FOREIGN KEY(tenant_id, legal_entity_id) REFERENCES rticore_erp_org_units(tenant_id, id)
+);

@@ -6,7 +6,7 @@ export const isDefenseRole=(role:string|null|undefined):role is DefenseRole=>rol
  * APIs a Defense Team account may call at all (checked in authorizeBoQ before any handler), so
  * handlers written as deny-lists never widen Defense access. Each handler still authorizes object scope.
  */
-const DEFENSE_API:readonly string[]=['/api/sales/identity','/api/sales/approval-queue','/api/sales','/api/erp/cyber-operations','/api/erp/security-integrations','/api/psa/timesheets','/api/sales/document-vault'];
+const DEFENSE_API:readonly string[]=['/api/sales/identity','/api/sales/approval-queue','/api/sales','/api/erp/cyber-operations','/api/erp/security-integrations','/api/erp/cyber-delivery','/api/erp/cyber-grc-cti','/api/psa/timesheets','/api/sales/document-vault'];
 export function defenseRouteAllowed(path:string,role:string):boolean{
  if(!isDefenseRole(role))return true;
  const p=path.replace(/\/+$/,'')||'/';

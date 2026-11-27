@@ -1,0 +1,9 @@
+# 18. Known Issues & External Blockers Register
+
+| ID | Severity | Description | Root Cause / Scope | Mitigation / Owner |
+|---|---|---|---|---|
+| **KI-001** | BLOCKER (Gate B) | Live Hostinger VPS, external TLS PostgreSQL 16, and Keycloak OIDC IdP are not provisioned in this local development workspace. | External hosting/infrastructure dependency. | Deploy to isolated Hostinger staging VPS per `docs/deployment/HOSTINGER_DEPLOYMENT_RUNBOOK.md` before Gate B sign-off. |
+| **KI-002** | BLOCKER (Gate B) | RTI Finance API (`/api/finance`) remains intentionally fail-closed (`HTTP 503`) when `RTICORE_RUNTIME === 'hostinger'`. | Intentional safety control pending live PostgreSQL reconciliation, business UAT, and Finance/Security sign-off. | Do NOT remove guard until Gate B Finance sign-off is explicitly approved. |
+| **KI-003** | MEDIUM (Gate A) | External PostgreSQL 16 integration test (`tests/hostinger-postgres-server.test.cjs`) and Playwright browser matrix could not run locally (`psql`/`docker` not installed locally; private GitHub API requires auth). | Local workstation environment lacks Docker/PostgreSQL daemon & `gh` auth. | Verified 12/12 SQLite↔PGlite trigger parity locally; push branch to trigger GitHub Actions `hostinger-candidate-ci.yml` (`postgres-server` job) & Ubuntu 24.04 Playwright jobs. |
+| **KI-004** | LOW | `npm audit` reports 1 moderate transitive vulnerability (0 critical, 0 high). | Transitive dependency in dev/tooling tree. | Track during next routine dependency upgrade window; verify `npm ci` lockfile parity. |
+| **KI-005** | LOW | Next.js 16.4.2 emits deprecation warning recommending migrating `src/middleware.ts` to `proxy.ts`. | Next.js 16 convention change; existing tests (`tests/middleware-route-gate.test.cjs`, `scripts/rticore-automated-functional-gate.mjs`) target `src/middleware.ts`. | Retain `src/middleware.ts` for backward test & Cloudflare OpenNext compatibility until full OpenNext retirement batch. |

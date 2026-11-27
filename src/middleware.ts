@@ -22,6 +22,7 @@ const D1_ROUTES = new Set([
   '/api/admin/system',
   '/api/admin/options',
   '/api/admin/scoping-model',
+  '/api/admin/feature-flags',
   '/api/scoping/model',
   '/api/reference/options',
   '/api/psa/timesheets',
@@ -29,8 +30,12 @@ const D1_ROUTES = new Set([
   '/api/platform/diagnostics',
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
+  '/api/health/live',
+  '/api/health/ready',
   // RTI Finance Enterprise Suite API (migration 0052).
   '/api/finance',
+  // FlexGuard Customer Portal API (migration 0054).
+  '/api/portal/flexguard',
 ]);
 
 export function isEnabledD1ApiRoute(path: string): boolean {
@@ -38,6 +43,16 @@ export function isEnabledD1ApiRoute(path: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  if (env?.RTICORE_RUNTIME === 'hostinger' && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+    const origin = env.RTICORE_PUBLIC_ORIGIN;
+    if (!origin || request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site') {
+      return NextResponse.json(
+        { success: false, message: 'Origin tidak diizinkan.' },
+        { status: 403, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } },
+      );
+    }
+  }
   if (isEnabledD1ApiRoute(request.nextUrl.pathname)) return NextResponse.next();
   return NextResponse.json(
     { success: false, message: 'API demo nonpersisten dinonaktifkan hingga migrasi otorisasi selesai.' },

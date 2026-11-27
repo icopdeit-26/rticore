@@ -20,8 +20,9 @@ test('RTICORE login page uses Cloudflare Access instead of a second insecure pas
   const page=read('src/app/login/page.tsx');
   const shell=read('src/components/layout/AppShell.tsx');
   assert.match(page, /Login RTICORE/);
-  assert.match(page, /Masuk dengan Cloudflare Access/);
-  assert.match(page, /<a href="\/" /);
+  assert.match(page,/Masuk dengan Cloudflare Access/);
+  assert.match(page,/Masuk dengan SSO perusahaan/);
+  assert.match(page, /href=\{nativeMode\?"\/oauth2\/start\?rd=%2Flogin":"\/"\}/);
   assert.match(page, /LogoutButton/);
   assert.doesNotMatch(page, /type=["']password["']|localStorage\.setItem|jwtVerify\(/);
   assert.match(shell, /const isLoginPage=pathname==='\/login'/);
