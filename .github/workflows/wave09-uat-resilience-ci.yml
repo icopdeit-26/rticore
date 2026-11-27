@@ -1,0 +1,79 @@
+name: Wave 09 UAT evidence and isolated performance
+on:
+  pull_request:
+  push:
+    branches: [main, 'integration/v6-erp-finance-20261127']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Validate evidence schema and 420 definitions
+        run: |
+          node --test tests/wave09-uat-evidence.test.mjs
+          export RTICORE_EVIDENCE_SHA="$(git rev-parse HEAD)"
+          for batch in 1 2 3 4 5 6 7; do node scripts/rticore-uat-420-batches.mjs --batch="$batch"; done
+      - name: Finance grouped technical suite (not signed individual UAT)
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/wave09
+          node --test --test-reporter=tap tests/rti-finance-uat-520.test.cjs | tee artifacts/wave09/finance.tap
+      - name: Build case evidence register
+        if: always()
+        run: node scripts/wave09-uat-evidence.mjs
+      - name: Publish synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wave09-uat-evidence
+          path: |
+            artifacts/wave09
+            artifacts/rticore-uat420
+          retention-days: 14
+  performance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Isolated loopback performance (no production secrets)
+        run: |
+          set -eu
+          export RTICORE_RUNTIME=hostinger RTICORE_AUTH_MODE=business RTICORE_LOCAL_MODE=0 RTICORE_DB_ENGINE=postgres RTICORE_PUBLIC_ORIGIN=https://example.invalid
+          node node_modules/next/dist/bin/next start --hostname 127.0.0.1 -p 3199 >/tmp/wave09-http.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3199/api/health/live >/dev/null 2>&1; then ready=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          node scripts/wave09-http-performance.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: wave09-loopback-performance
+          path: artifacts/wave09/http-performance.json
+          retention-days: 14

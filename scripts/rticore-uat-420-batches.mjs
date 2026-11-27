@@ -48,7 +48,7 @@ const wave=waves.find(x=>x.batch===batch);
 const selected=wave.source==='legacy'?old:erp.filter(c=>c.id.startsWith('ERP-'+wave.prefix+'-'));
 const row={
  schema:'rticore-uat420-catalog-batch-v1',
- created_at:new Date().toISOString(),repo:'elanghaqeem-hash/RTICore',source_sha:process.env.GITHUB_SHA||null,
+ created_at:new Date().toISOString(),repo:process.env.GITHUB_REPOSITORY||'icopdeit-26/rticore',source_sha:process.env.RTICORE_EVIDENCE_SHA||process.env.GITHUB_SHA||null,
  batch:wave.batch,domain:wave.name,case_count:selected.length,
  case_ids:selected.map(c=>c.id),
  catalog_integrity:errors.length?'FAIL':'PASS',
