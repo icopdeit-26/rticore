@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 // Read-only classification. Never repair a digest from an untrusted historical payload.
 export function classifyEvent(row) {
@@ -118,6 +119,40 @@ export async function scanSettlementEvidence(client){
  return rows[0];
 }
 
+// No writes or automatic backfill; a single candidate still requires independent evidence review.
+export async function scanVendorBankScopes(client){
+ const available=(await client.query("SELECT to_regclass('public.rticore_finance_vendor_bank_scopes') IS NOT NULL AS ready")).rows[0].ready;
+ if(!available)return {schema_status:'MIGRATION_0053_REQUIRED'};
+ const {rows}=await client.query(`WITH candidates AS (
+ SELECT b.tenant_id,b.id,count(DISTINCT os.legal_entity_id) AS entity_count
+ FROM public.rticore_finance_vendor_bank_accounts b
+ LEFT JOIN public.rticore_document_library d ON d.tenant_id=b.tenant_id AND d.id=b.evidence_document_id
+ LEFT JOIN public.rticore_purchase_orders p ON p.tenant_id=b.tenant_id AND p.vendor_id=b.vendor_id AND p.opportunity_id=d.opportunity_id AND p.status='approved'
+ LEFT JOIN public.rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id AND os.status='approved'
+ GROUP BY b.tenant_id,b.id
+)
+SELECT count(*)::text AS total,
+ count(*) FILTER(WHERE sc.bank_account_id IS NULL)::text AS unassigned,
+ count(*) FILTER(WHERE sc.bank_account_id IS NULL AND c.entity_count=0)::text AS no_evidenced_candidate,
+ count(*) FILTER(WHERE sc.bank_account_id IS NULL AND c.entity_count=1)::text AS single_candidate_review_required,
+ count(*) FILTER(WHERE sc.bank_account_id IS NULL AND c.entity_count>1)::text AS ambiguous,
+ count(*) FILTER(WHERE sc.bank_account_id IS NOT NULL AND (p.id IS NULL OR p.vendor_id IS DISTINCT FROM b.vendor_id OR p.status IS DISTINCT FROM 'approved' OR os.status IS DISTINCT FROM 'approved' OR os.legal_entity_id IS DISTINCT FROM sc.legal_entity_id OR d.id IS NULL OR d.opportunity_id IS DISTINCT FROM p.opportunity_id))::text AS invalid_assigned_scope
+FROM public.rticore_finance_vendor_bank_accounts b
+JOIN candidates c ON c.tenant_id=b.tenant_id AND c.id=b.id
+LEFT JOIN public.rticore_finance_vendor_bank_scopes sc ON sc.tenant_id=b.tenant_id AND sc.bank_account_id=b.id
+LEFT JOIN public.rticore_purchase_orders p ON p.tenant_id=sc.tenant_id AND p.id=sc.purchase_order_id
+LEFT JOIN public.rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id
+LEFT JOIN public.rticore_document_library d ON d.tenant_id=b.tenant_id AND d.id=b.evidence_document_id`);
+ return {schema_status:'AVAILABLE',...rows[0]};
+}
+export async function scanEntityConstraints(client){
+ const manifest=JSON.parse(readFileSync(new URL('../deployment/hostinger/migrations/0054_entity_constraints.json',import.meta.url),'utf8'));
+ if(manifest.length!==16||!manifest.every(e=>[e.table,e.column,e.parent,e.name].every(x=>typeof x==='string'&&/^[a-z_][a-z0-9_]*$/.test(x))))throw Error('Invalid entity manifest');
+ const queries=manifest.map(e=>`SELECT '${e.name}' AS constraint_name,count(*)::text AS invalid FROM public.${e.table} c LEFT JOIN public.${e.parent} p ON p.tenant_id=c.tenant_id AND p.legal_entity_id=c.legal_entity_id AND p.id=c.${e.column} WHERE c.${e.column} IS NOT NULL AND p.id IS NULL`);
+ const {rows}=await client.query(queries.join(' UNION ALL '));
+ return Object.fromEntries(rows.map(r=>[r.constraint_name,r.invalid]));
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -150,12 +185,15 @@ async function main() {
     const timesheetSources=await scanTimesheetSources(client);
     const procurementSources=await scanProcurementSources(client);
     const contractSources=await scanContractSources(client);
-    const flexguardSources=await scanFlexGuardSources(client);
+    const flexguardAvailable=(await client.query("SELECT to_regclass('public.rticore_flexguard_enterprise_ledger') IS NOT NULL AS ready")).rows[0].ready;
+    const flexguardSources=flexguardAvailable?await scanFlexGuardSources(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
+    const vendorBankScopes=await scanVendorBankScopes(client);
+    const entityConstraints=await scanEntityConstraints(client);
     const settlementEvidence=await scanSettlementEvidence(client);
     await client.query('ROLLBACK');
-    const ok = counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
-    if (!ok) process.exitCode = 1;
+    const ok = flexguardAvailable && vendorBankScopes.schema_status==='AVAILABLE' && vendorBankScopes.unassigned==='0' && vendorBankScopes.invalid_assigned_scope==='0' && Object.values(entityConstraints).every(v=>v==='0') && counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope','processed_without_journal_review'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    if (!ok || counts.total===0) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
