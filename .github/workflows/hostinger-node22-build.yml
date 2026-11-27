@@ -2,23 +2,29 @@ name: Hostinger Node 22 build hotfix
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'next.config.mjs'
-      - 'src/app/api/finance/**'
-      - 'src/lib/finance-docking-bridge.ts'
-      - 'src/lib/postgres*.ts'
-      - 'src/lib/native-*.ts'
-      - 'src/lib/hostinger-config.ts'
-      - 'src/lib/runtime-env.ts'
-      - 'src/lib/boq-auth.ts'
-      - 'deployment/hostinger/**'
-      - 'scripts/hostinger-preflight.mjs'
-      - 'tests/**'
-      - '.github/workflows/hostinger-node22-build.yml'
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  runner-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify runner and lockfile without PostgreSQL or project secrets
+        run: |
+          node --version
+          npm --version
+          git rev-parse HEAD
+          node -e "require('node:sqlite'); JSON.parse(require('node:fs').readFileSync('package-lock.json','utf8'))"
+      - name: Historical Finance digest classification (synthetic, no database)
+        run: node --test tests/finance-historical-reconciliation.test.mjs
   node22-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
