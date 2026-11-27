@@ -17,6 +17,26 @@ export default function RTICoreLoginPage() {
   const localMode=isLocalMode();
   const nativeMode=process.env.RTICORE_RUNTIME==='hostinger';
   const businessMode=nativeMode&&process.env.RTICORE_AUTH_MODE==='business';
+  if(businessMode)return (
+    <main className="min-h-[100dvh] bg-[#f5f7fa] px-4 py-10 text-slate-900 sm:px-8">
+      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] max-w-md flex-col justify-center">
+        <header className="mb-7 text-center">
+          <img src="/logo-rti-light.png" alt="Logo RTI" width={64} height={64} className="mx-auto h-16 w-16 object-contain"/>
+          <p className="mt-3 text-sm font-bold uppercase tracking-widest text-teal-800">RTICORE · RTI Enterprise OS</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight">Login RTICORE</h1>
+          <p className="mt-2 text-sm text-slate-600">Akses perusahaan dengan verifikasi dua faktor (2FA).</p>
+        </header>
+        <section aria-label="Login perusahaan" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="flex items-center gap-2 text-sm font-semibold text-teal-800"><ShieldCheck className="h-5 w-5" aria-hidden="true"/> Native Secure Login</div>
+          <BusinessLoginPanel/>
+          <LoginSessionStatus/>
+          <LogoutButton className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600"/>
+          <p className="mt-4 border-t pt-3 text-xs leading-5 text-slate-500">Gunakan akun terdaftar dan aplikasi autentikator. Aktivasi pertama dan pemulihan akun melalui administrator RTICORE.</p>
+        </section>
+        <footer className="mt-6 text-center text-xs text-slate-500">© 2026 RTI · Protected enterprise workspace</footer>
+      </div>
+    </main>
+  );
   return (
     <main className="relative isolate min-h-[100dvh] overflow-x-hidden bg-[#f5f7fa] text-slate-900">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_100%_0%,rgba(45,212,191,0.12),transparent_45%)]" />

@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className="antialiased font-sans">
-        <AppShell>{children}</AppShell>
+        <AppShell nativeBusiness={process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_AUTH_MODE==='business'}>{children}</AppShell>
       </body>
     </html>
   );

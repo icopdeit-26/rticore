@@ -9,7 +9,7 @@ import {Sidebar} from './Sidebar';
 import {MobileNav} from './MobileNav';
 const AIWorkbench=dynamic(()=>import('@/components/ai/AIWorkbench').then(module=>module.AIWorkbench));
 
-interface AppShellProps { children:React.ReactNode; }
+interface AppShellProps { children:React.ReactNode; nativeBusiness?:boolean; }
 type Identity={email:string;role:string;assignedRole:string;rolePreview:boolean};
 type Session={status:'checking'|'ready'|'denied';identity:Identity|null};
 // Mirrors the role check in /api/sales/approval-queue.
@@ -18,7 +18,7 @@ const APPROVAL_QUEUE_ROLES=['admin','sales','presales','finance','approver','leg
 /** Cloudflare Access + D1 decide the assigned role. Optional Admin-only
  * simulation is downscoped on the server for every API, never only in the UI.
  */
-export const AppShell:React.FC<AppShellProps> = ({children})=>{
+export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false})=>{
   const pathname=usePathname();
   const isLoginPage=pathname==='/login';
   const [session,setSession]=useState<Session>({status:'checking',identity:null});
@@ -49,10 +49,11 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
     else setMobileMenuOpen(false);
   },[]);
   useEffect(()=>{
-    if(isLoginPage)return; // Public-facing login UI must not fetch a protected identity endpoint.
+    if(isLoginPage||(nativeBusiness&&pathname==='/'))return; // Login and server-side native entry have no shell identity request.
     const controller=new AbortController();
     fetch('/api/sales/identity',{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal})
       .then(async res=>{
+        if(nativeBusiness&&(res.status===401||res.status===403)){if(!controller.signal.aborted)window.location.replace('/login');return;}
         if(!res.ok)throw Error('Sesi autentikasi / database belum dapat diverifikasi.');
         const data=await res.json();
         if(data.success!==true||typeof data.identity?.role!=='string'||typeof data.identity?.email!=='string')
@@ -61,7 +62,7 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
       })
       .catch(()=>{if(!controller.signal.aborted)setSession({status:'denied',identity:null});});
     return ()=>controller.abort();
-  },[isLoginPage]);
+  },[isLoginPage,nativeBusiness,pathname]);
   // The bell count is real, role-scoped D1 data, or null when not verified. Never assume zero on failure.
   // Only roles the approval-queue API serves ask for it; others would get a 403 on every page.
   const queueRole=session.status==='ready'&&APPROVAL_QUEUE_ROLES.includes(session.identity?.role??'');
@@ -83,7 +84,8 @@ export const AppShell:React.FC<AppShellProps> = ({children})=>{
   },[queueRole]);
   const role=session.status==='ready'?session.identity?.role??null:null;
   // The sign-in page has its own minimal layout (no authenticated header or navigation).
-  if(isLoginPage)return <>{children}</>;
+  if(isLoginPage||(nativeBusiness&&pathname==='/'))return <>{children}</>;
+  if(nativeBusiness&&session.status!=='ready')return <main className="mx-auto max-w-md p-8"><p role="status">{session.status==='checking'?'Memverifikasi sesi…':'Layanan identitas belum tersedia.'}</p><Link href="/login" className="mt-3 block underline">Buka login RTICORE</Link></main>;
   return (
     <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#f5f7fa] text-slate-900">
       <Navbar role={role} assignedRole={session.identity?.assignedRole??null} rolePreview={session.identity?.rolePreview===true} email={session.identity?.email??null} pendingApprovalsCount={pendingApprovalsCount} onToggleMenu={onToggleMenu} desktopMenuOpen={desktopMenuOpen} mobileMenuOpen={mobileMenuOpen}/>
