@@ -1,5 +1,6 @@
 'use client';
 
+import { CamsFinanceInbox } from './CamsFinanceInbox';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -764,6 +765,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
 
           {/* =============================================================== */}
           {/* TRANSACTION & LEDGER DATA GRID FOR CURRENT ACTIVE MENU          */}
+          {activeMenu==='F25' && selectedEntity && <CamsFinanceInbox key={selectedEntity} entity={selectedEntity} />}
           {/* =============================================================== */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

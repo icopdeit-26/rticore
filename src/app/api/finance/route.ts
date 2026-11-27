@@ -824,12 +824,13 @@ export async function POST(req: Request) {
       erpAssert(erpId(v.journal_id) && erpText(v.review_notes, 12, 500), 'ID jurnal dan catatan review wajib');
       const j = await db
         .prepare(
-          'SELECT j.id, j.legal_entity_id, j.created_by, j.status, j.version, coalesce((SELECT sum(l.debit_cents) FROM rticore_gl_lines l WHERE l.tenant_id=j.tenant_id AND l.journal_id=j.id),0) AS debit_cents FROM rticore_gl_journals j WHERE j.tenant_id=? AND j.id=?',
+          'SELECT j.id, j.legal_entity_id, j.created_by, j.status, j.version, j.source_type, coalesce((SELECT sum(l.debit_cents) FROM rticore_gl_lines l WHERE l.tenant_id=j.tenant_id AND l.journal_id=j.id),0) AS debit_cents FROM rticore_gl_journals j WHERE j.tenant_id=? AND j.id=?',
         )
         .bind(TENANT, v.journal_id as string)
-        .first<{ id: string; legal_entity_id: string; created_by: string; status: string; version: number; debit_cents: number }>();
+        .first<{ id: string; legal_entity_id: string; created_by: string; status: string; version: number; debit_cents: number; source_type:string }>();
       erpAssert(j, 'Jurnal tidak ditemukan', 404);
       erpAssert(j.status === 'draft', 'Jurnal sudah diproses', 409);
+      erpAssert(j.source_type !== 'camsrti', 'Use scoped CAMS Inbox independent approval', 403);
 
       const authCheck = validateFinanceApprovalAuthority({
         makerEmail: j.created_by,

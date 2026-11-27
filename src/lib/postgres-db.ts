@@ -75,9 +75,10 @@ async function createExecutor(): Promise<QueryExecutor> {
   if (pgUrl) {
     const schemaPath = path.join(process.cwd(), 'rticore_postgresql_schema.sql');
     const schemaSQL = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, 'utf8') : '';
-    type PgPool = {
+    type PgConnection = {
       query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
     };
+    type PgPool = PgConnection & { connect(): Promise<PgConnection & {release():void}> };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
       Pool: new (opts: { connectionString: string }) => PgPool;
     };
@@ -85,6 +86,19 @@ async function createExecutor(): Promise<QueryExecutor> {
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
+      batch: async statements => {
+        const client=await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const results=[];
+          for(const stmt of statements) results.push(await client.query(stmt.sql,stmt.args));
+          await client.query('COMMIT');
+          return results;
+        } catch(e) {
+          await client.query('ROLLBACK').catch(()=>{});
+          throw e;
+        } finally {client.release();}
+      },
     };
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.

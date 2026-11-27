@@ -19,4 +19,4 @@ export function journalEnvelope(x:unknown):JournalEnvelope {
 }
 export function envelopeHash(e:JournalEnvelope){return createHash('sha256').update(JSON.stringify(e)).digest('hex');}
 export function validToken(received:string|null,secret:string|undefined){if(!secret||secret.length<32||!received?.startsWith('Bearer '))return false;const a=createHash('sha256').update(received.slice(7)).digest(),b=createHash('sha256').update(secret).digest();return timingSafeEqual(a,b);}
-export function lineSignature(lines:{accountId:string;debit:string;credit:string}[]){return JSON.stringify(lines.map(l=>[l.accountId,BigInt(l.debit).toString(),BigInt(l.credit).toString()]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));}
+export function lineSignature(lines:{accountId:string;debit:string;credit:string;costCenterId?:string|null}[]){return JSON.stringify(lines.map(l=>[l.accountId,l.costCenterId??null,BigInt(l.debit).toString(),BigInt(l.credit).toString()]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));}
