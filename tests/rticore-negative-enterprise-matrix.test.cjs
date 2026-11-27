@@ -27,11 +27,13 @@ const actionRoles={
  approve:['admin','approver'],
  manage_members:['admin']
 };
-test('canonical baseline: all identities, 42 unique navigable pages and 13 business groups',()=>{
+test('canonical baseline: all identities, 43 unique navigable pages and 13 business groups',()=>{
  assert.deepEqual([...roles].sort(),[...roleSet].sort());
  // 41 = previous 40 + Admin-only "Model Scoping & Harga" (/settings/scoping-model).
  // 42 = + "Platform Diagnostics" (/platform/diagnostics, group 13) for Admin and IT Developer Team (0051).
- assert.equal(items.length,42);
+ // 43 = approved Service Catalog & Pricing workspace, Finance/Approver only.
+ assert.equal(items.length,43);
+ assert.deepEqual(items.find(x=>x.href==='/erp/service-catalog')?.roles,['finance','approver']);
  assert.deepEqual(items.find(x=>x.href==='/settings/scoping-model')?.roles,['admin']);
  assert.deepEqual(items.find(x=>x.href==='/platform/diagnostics')?.roles,['admin','itdev_leader','itdev_member']);
  assert.equal(RTICORE_NAVIGATION.length,13);
