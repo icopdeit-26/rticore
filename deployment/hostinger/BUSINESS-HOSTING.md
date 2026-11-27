@@ -14,3 +14,14 @@ Node built-in scrypt (N=32768,r=8,p=3), AES-256-GCM protected TOTP seed bound to
 Use `PRODUCTION-CERTIFICATION.md` as the current decision register. Run `npm run uat:native-iam` with `RTICORE_AUTH_MODE=business` and the approved staging origin. Public boundary smoke is not an authenticated MFA test. Keep `RTICORE_FLEXGUARD_PRODUCT_ENABLED` unset until independently reviewed business evidence, migration and runtime acceptance pass. Do not bypass the Finance release hold.
 
 Keep `RTICORE_SERVICE_CATALOG_ENABLED` unset until native catalog and pricing UAT plus independent approval are certified. The new workspace supports target-margin and cost-plus pre-tax snapshots; BoQ/FlexGuard binding is not automatically enabled.
+
+## Managed hosting hPanel release settings
+Use Next.js preset, Node.js 22, npm, build command npm run build, output .next, and the reviewed candidate branch on an isolated staging website. Confirm whether the managed launcher uses npm start; runtime authentication remains fail-closed independently of the launcher. Never configure a custom listening port. Production environment variables are set under Website Dashboard > Environment variables, not in Git. Keep automatic production deployment disabled until release approval.
+
+## Native cron configuration
+Hostinger cron does not inherit website environment variables; use its protected env file through --env-file, or a separate private operator-provisioned file with least-privilege cron credentials. Schedule in UTC; each invocation must exit within 30 minutes and the command must fit 255 characters. Example (replace account and domain, verify actual deployed paths):
+```sh
+/opt/alt/alt-nodejs22/root/bin/node --env-file=/home/USER/domains/DOMAIN/hbuilds/config/.env /home/USER/domains/DOMAIN/hbuilds/current/nodejs/scripts/run-native-sales-cron.mjs
+/opt/alt/alt-nodejs22/root/bin/node --env-file=/home/USER/domains/DOMAIN/hbuilds/config/.env /home/USER/domains/DOMAIN/hbuilds/current/nodejs/scripts/business-iam-cleanup.mjs
+```
+Keep both disabled until isolated DB testing and privileges review. Stagger schedules (e.g. sales minute 5 hourly, cleanup minute 35 hourly); confirm no overlap and resource capacity. Do not include secrets in URLs or command text.
