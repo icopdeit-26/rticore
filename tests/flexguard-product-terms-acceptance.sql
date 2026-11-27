@@ -171,6 +171,32 @@ BEGIN
   RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_IMMUTABLE' THEN RAISE; END IF; END;
 END $cat$;
+DO $cat$
+DECLARE snap text; rid text; r jsonb; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid';
+BEGIN
+ IF rticore_catalog_boq_subtotal('[{"quantity":1.25,"unit_price":10.25},{"quantity":2,"unit_price":2.01}]')<>1683 THEN RAISE EXCEPTION 'BOQ_ROUNDING_FAILED'; END IF;
+ IF rticore_catalog_boq_subtotal('[{"quantity":1,"unit_price":0.001}]') IS NOT NULL THEN RAISE EXCEPTION 'BOQ_INVALID_MONEY'; END IF;
+ SELECT id INTO snap FROM rticore_catalog_pricing_snapshots WHERE opportunity_id='fg-ci-opportunity' AND status='approved';
+ BEGIN
+  PERFORM rticore_catalog_boq_binding_command('defendit360','fg-terms-a',maker,'create_boq_binding',NULL,jsonb_build_object('snapshot_id',snap,'boq_id','fg-ci-boq'));
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_BOQ_PRICE_MISMATCH' THEN RAISE; END IF; END;
+ -- Separate approved quote fixture; the original delivery release and BoQ are never changed.
+ INSERT INTO rticore_boq(id,tenant_id,project_name,customer_name,quotation_number,service_type,opportunity_id,status,line_items_json,created_by,updated_by,approved_by)
+ VALUES('fg-ci-priced-boq','defendit360','Synthetic project','Synthetic customer','FG-CI-PRICE','FlexGuard','fg-ci-opportunity','approved','[{"quantity":1,"unit_price":1666.67,"description":"CI service","unit":"package","service_type":"FlexGuard"}]','ci-maker','ci-maker','ci-checker');
+ r:=rticore_catalog_boq_binding_command('defendit360','fg-terms-a',maker,'create_boq_binding',NULL,jsonb_build_object('snapshot_id',snap,'boq_id','fg-ci-priced-boq'));rid:=r->>'id';
+ IF rticore_catalog_boq_binding_valid('defendit360','fg-terms-a','fg-ci-priced-boq') THEN RAISE EXCEPTION 'UNAPPROVED_BINDING_VALID'; END IF;
+ BEGIN
+  PERFORM rticore_catalog_boq_binding_command('defendit360','fg-terms-a',maker,'approve_boq_binding',rid,'{"notes":"Synthetic self approval"}');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_APPROVAL_DENIED' THEN RAISE; END IF; END;
+ PERFORM rticore_catalog_boq_binding_command('defendit360','fg-terms-a',checker,'approve_boq_binding',rid,'{"notes":"Independent BoQ review"}');
+ IF NOT rticore_catalog_boq_binding_valid('defendit360','fg-terms-a','fg-ci-priced-boq') OR rticore_catalog_boq_binding_valid('defendit360','fg-terms-b','fg-ci-priced-boq') THEN RAISE EXCEPTION 'BOQ_BINDING_SCOPE_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_catalog_bind_priced_contract('defendit360','fg-terms-a',maker,'create','fg-ci-contract','fg-terms-one',NULL);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_PRICED_CONTRACT_REQUIRED' THEN RAISE; END IF; END;
+END $cat$;
 DO $fg$
 DECLARE n bigint; lid text;
 BEGIN
