@@ -119,4 +119,56 @@ BEGIN
  r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
  IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
 END $fg$;
+DO $cat$
+DECLARE r jsonb; sid text; rate text; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid'; payload jsonb:='{"service_code":"FG-CI-SVC","service_name":"CI service","service_category":"web_app_pentest","description":"Synthetic service description","scope_summary":"Synthetic service scope","complexity_level":"standard","min_mandays_tenths":10,"standard_mandays_tenths":20,"max_mandays_tenths":50,"effective_date":"2026-11-27","service_version":1}';
+BEGIN
+ r:=rticore_catalog_command('defendit360','fg-terms-a',maker,'create_service',NULL,payload);sid:=r->>'id';
+ IF r->>'status'<>'draft' THEN RAISE EXCEPTION 'SERVICE_DRAFT_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_catalog_command('defendit360','fg-terms-b',maker,'create_service',NULL,payload);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_ACCESS_DENIED' THEN RAISE; END IF; END;
+ BEGIN
+  PERFORM rticore_catalog_command('defendit360','fg-terms-a',maker,'approve_service',sid,'{"notes":"Synthetic self approval"}');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_APPROVAL_DENIED' THEN RAISE; END IF; END;
+ r:=rticore_catalog_command('defendit360','fg-terms-a',checker,'approve_service',sid,'{"notes":"Independent synthetic approval"}');
+ IF r->>'status'<>'approved' THEN RAISE EXCEPTION 'SERVICE_APPROVAL_FAILED'; END IF;
+ BEGIN
+  UPDATE rticore_service_catalog_v2 SET service_name='Changed' WHERE id=sid;
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_IMMUTABLE' THEN RAISE; END IF; END;
+ r:=rticore_catalog_command('defendit360','fg-terms-a',maker,'create_rate_card',NULL,'{"role_code":"analyst","monthly_compensation_cents":1500000,"benefit_allocation_cents":0,"employer_contrib_cents":0,"allocated_expense_cents":0,"available_working_days":240,"target_utilization_bps":7500,"target_margin_bps":4000,"min_margin_bps":2000,"effective_date":"2026-11-27","version":1}');
+ rate:=r->>'id';
+ IF NOT EXISTS(SELECT 1 FROM rticore_enterprise_rate_cards WHERE id=rate AND internal_cost_rate_cents=100000 AND standard_selling_rate_cents=166667 AND min_selling_rate_cents=125000 AND annual_loaded_cost_cents=18000000) THEN RAISE EXCEPTION 'RATE_CALCULATION_FAILED'; END IF;
+ r:=rticore_catalog_command('defendit360','fg-terms-a',checker,'approve_rate_card',rate,'{"notes":"Independent rate approval"}');
+ IF r->>'status'<>'approved' THEN RAISE EXCEPTION 'RATE_APPROVAL_FAILED'; END IF;
+ IF (SELECT count(*) FROM rticore_operations_events WHERE entity_id IN (sid,rate))<>4 THEN RAISE EXCEPTION 'CATALOG_AUDIT_FAILED'; END IF;
+END $cat$;
+INSERT INTO rticore_erp_opportunity_scopes(tenant_id,opportunity_id,legal_entity_id,status,requested_by,reviewed_by) VALUES('defendit360','fg-ci-opportunity','fg-terms-a','approved','ci-maker','ci-checker');
+DO $cat$
+DECLARE sid text; pid text; mid text; sid2 text; r jsonb; payload jsonb; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid';
+BEGIN
+ SELECT id INTO sid FROM rticore_service_catalog_v2 WHERE service_code='FG-CI-SVC';
+ r:=rticore_catalog_workflow_command('defendit360','fg-terms-a',maker,'create_activity_profile',NULL,jsonb_build_object('service_id',sid,'version',1,'activities','[{"phase_code":"technical_execution","resource_role":"analyst","activity_name":"CI work","resource_count":1,"hours_hundredths":800,"billable":true}]'::jsonb));pid:=r->>'id';
+ PERFORM rticore_catalog_workflow_command('defendit360','fg-terms-a',checker,'approve_activity_profile',pid,'{"notes":"Independent profile approval"}');
+ r:=rticore_catalog_workflow_command('defendit360','fg-terms-a',maker,'create_complexity',NULL,'{"matrix_code":"FG-CI-STANDARD","label":"Standard fixture","version":1,"factor_bps":10000}');mid:=r->>'id';
+ payload:=jsonb_build_object('service_id',sid,'profile_id',pid,'complexity_id',mid,'opportunity_id','fg-ci-opportunity','quantity',1,'pricing_method','target_margin','overhead_bps',0,'risk_bps',0,'target_bps',4000,'minimum_margin_bps',2000);
+ BEGIN
+  PERFORM rticore_catalog_workflow_command('defendit360','fg-terms-a',maker,'create_pricing_snapshot',NULL,payload);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_SCOPE_INVALID' THEN RAISE; END IF; END;
+ PERFORM rticore_catalog_workflow_command('defendit360','fg-terms-a',checker,'approve_complexity',mid,'{"notes":"Independent matrix approval"}');
+ r:=rticore_catalog_workflow_command('defendit360','fg-terms-a',maker,'create_pricing_snapshot',NULL,payload);sid2:=r->>'id';
+ IF NOT EXISTS(SELECT 1 FROM rticore_catalog_pricing_snapshots WHERE id=sid2 AND billable_mandays_tenths=10 AND direct_cost_cents=100000 AND net_price_cents=166667 AND status='draft') THEN RAISE EXCEPTION 'PRICING_CALCULATION_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_catalog_workflow_command('defendit360','fg-terms-a',maker,'approve_pricing_snapshot',sid2,'{"notes":"Synthetic self approval"}');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_APPROVAL_DENIED' THEN RAISE; END IF; END;
+ PERFORM rticore_catalog_workflow_command('defendit360','fg-terms-a',checker,'approve_pricing_snapshot',sid2,'{"notes":"Independent pricing approval"}');
+ BEGIN
+  UPDATE rticore_catalog_pricing_snapshots SET net_price_cents=170000 WHERE id=sid2;
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_IMMUTABLE' THEN RAISE; END IF; END;
+END $cat$;
 ROLLBACK;
