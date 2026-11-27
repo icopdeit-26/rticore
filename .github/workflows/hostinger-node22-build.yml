@@ -7,6 +7,12 @@ on:
       - 'src/app/api/finance/**'
       - 'src/lib/finance-docking-bridge.ts'
       - 'src/lib/postgres*.ts'
+      - 'src/lib/native-*.ts'
+      - 'src/lib/hostinger-config.ts'
+      - 'src/lib/runtime-env.ts'
+      - 'src/lib/boq-auth.ts'
+      - 'deployment/hostinger/**'
+      - 'scripts/hostinger-preflight.mjs'
       - 'tests/**'
       - '.github/workflows/hostinger-node22-build.yml'
   workflow_dispatch:
@@ -38,6 +44,7 @@ jobs:
       - run: npm --version
       - run: npm ci --no-audit --no-fund
       - run: npm run test:runtime-compat
+      - run: node --experimental-strip-types --test tests/native-oidc.test.mjs tests/native-session.test.mjs tests/hostinger-config.test.mjs
       - run: npm run test:finance-520
       - run: node --experimental-strip-types --test tests/rticore-postgres-atomic-live.test.cjs
         env:
