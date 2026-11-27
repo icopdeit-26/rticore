@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {executeAtomicBatch} from './postgres-atomic-batch';
 import fs from 'node:fs';
 import type { D1DB, D1Prepared } from './boq-auth';
 
@@ -86,20 +87,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
-      batch: async (statements) => {
-        const client=await pool.connect();
-        let discard:Error|undefined;
-        try {
-          await client.query('BEGIN');
-          const results=[];
-          for(const statement of statements)results.push(await client.query(statement.sql,statement.args));
-          await client.query('COMMIT');
-          return results;
-        }catch(error){
-          try{await client.query('ROLLBACK');}catch{discard=new Error('Rollback failed');}
-          throw error;
-        }finally{client.release(discard);}
-      },
+      batch: (statements) => executeAtomicBatch(pool,statements),
     };
     // Hosted schema changes are operator-controlled, not request-time DDL.
     if(process.env.RTICORE_RUNTIME==='hostinger')return exec;

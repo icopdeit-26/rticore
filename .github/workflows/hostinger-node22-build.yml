@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'next.config.mjs'
+      - 'src/lib/runtime-env.ts'
+      - 'src/lib/postgres*.ts'
       - 'tests/**'
       - '.github/workflows/hostinger-node22-build.yml'
   workflow_dispatch:
@@ -15,6 +17,16 @@ jobs:
     timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: '1'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rticore_ci
+          POSTGRES_PASSWORD: rticore_ci_only
+          POSTGRES_DB: rticore_atomic_ci
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,6 +37,9 @@ jobs:
       - run: npm --version
       - run: npm ci --no-audit --no-fund
       - run: npm run test:runtime-compat
+      - run: node --experimental-strip-types --test tests/rticore-hostinger-native-runtime.test.cjs tests/rticore-postgres-atomic-live.test.cjs
+        env:
+          RTICORE_ATOMIC_TEST_URL: postgresql://rticore_ci:rticore_ci_only@127.0.0.1:5432/rticore_atomic_ci
       - run: npm run typecheck
       - run: npm run build
       - run: test -f .next/BUILD_ID
