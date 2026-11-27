@@ -1,0 +1,34 @@
+name: Operational Finance Outbox Acceptance
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: ['fix/operational-finance-outbox-20261127']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  operational-outbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rticore_ci
+          POSTGRES_PASSWORD: rticore_ci_only
+          POSTGRES_DB: rticore_atomic_ci
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run test:pricing && npm run test:flexguard && npm run test:psa-timesheets && npm run test:service-operations
+      - run: node --experimental-strip-types --test tests/rticore-postgres-atomic-live.test.cjs
+        env:
+          RTICORE_ATOMIC_TEST_URL: postgresql://rticore_ci:rticore_ci_only@127.0.0.1:5432/rticore_atomic_ci
+      - run: npm run build
