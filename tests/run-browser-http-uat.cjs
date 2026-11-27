@@ -92,7 +92,7 @@ async function main(){
 
 async function runAllTests(env){
   // These suites require the dedicated, guarded PostgreSQL service in operational-finance-outbox-ci.yml.
-  const postgresServiceFiles=new Set(['rticore-postgres-atomic-live.test.cjs','finance-entity-constraints-live.test.cjs','postgres-canonical-triggers-live.test.cjs']);
+  const postgresServiceFiles=new Set(['rticore-postgres-atomic-live.test.cjs','finance-entity-constraints-live.test.cjs','postgres-canonical-triggers-live.test.cjs','business-iam-postgres.test.cjs']);
   const generalFiles=fs.readdirSync('tests').filter(name=>name.endsWith('.test.cjs')&&!browserFiles.includes(name)&&!postgresServiceFiles.has(name));
   const generalStatus=await runTests(generalFiles,env);
   // Reuse the local build but run browser files serially to avoid resource contention.
