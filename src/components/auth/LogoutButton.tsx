@@ -3,7 +3,7 @@
 import {useEffect,useState} from 'react';
 import {LogOut} from 'lucide-react';
 
-type Mode='checking'|'local'|'cloud'|'unavailable';
+type Mode='checking'|'local'|'cloud'|'oidc'|'unavailable';
 export function LogoutButton({className,label='Logout / Ganti akun'}:{className?:string;label?:string}){
  const [mode,setMode]=useState<Mode>('checking');
  const [busy,setBusy]=useState(false);
@@ -11,7 +11,7 @@ export function LogoutButton({className,label='Logout / Ganti akun'}:{className?
  useEffect(()=>{
   const controller=new AbortController();
   void fetch('/api/local-auth',{credentials:'same-origin',cache:'no-store',signal:controller.signal})
-   .then(async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw Error('Status login belum dapat diperiksa.');setMode(body?.localMode?'local':'cloud');})
+   .then(async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw Error('Status login belum dapat diperiksa.');setMode(body?.localMode?'local':body?.authMode==='oidc'?'oidc':'cloud');})
    .catch(()=>{if(!controller.signal.aborted)setMode('unavailable');});
   return()=>controller.abort();
  },[]);
@@ -26,5 +26,5 @@ export function LogoutButton({className,label='Logout / Ganti akun'}:{className?
   }catch(e){setError(e instanceof Error?e.message:'Logout gagal. Coba lagi.');setBusy(false);}
  }
  const content=<><LogOut className="h-4 w-4" aria-hidden="true"/>{busy?'Memproses…':label}</>;
- return <>{mode==='cloud'?<a href="/cdn-cgi/access/logout" className={className}>{content}</a>:<button type="button" className={className} disabled={mode!=='local'||busy} onClick={()=>void logout()}>{content}</button>}{error&&<p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}</>;
+ return <>{(mode==='cloud'||mode==='oidc')?<a href={mode==='oidc'?'/oauth2/sign_out?rd=%2Flogin':'/cdn-cgi/access/logout'} className={className}>{content}</a>:<button type="button" className={className} disabled={mode!=='local'||busy} onClick={()=>void logout()}>{content}</button>}{error&&<p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}</>;
 }
