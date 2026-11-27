@@ -86,7 +86,6 @@
     "unpdf": "1.8.1"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "1.20.12",
     "@types/node": "^22.13.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -94,8 +93,7 @@
     "playwright": "1.55.1",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3",
-    "wrangler": "4.151.2"
+    "typescript": "^5.7.3"
   },
   "overrides": {
     "miniflare": {

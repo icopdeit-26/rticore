@@ -32,6 +32,12 @@ test('enterprise build retains regression gates and uses native Next.js', () => 
   assert.match(pkg.scripts['build:enterprise'], /test:runtime-compat/);
   assert.match(pkg.scripts['build:enterprise'], /npm run typecheck && npm run build$/);
   assert.doesNotMatch(pkg.scripts['build:enterprise'], /opennextjs-cloudflare|wrangler/);
+  const lock=JSON.parse(fs.readFileSync(path.join(root,'package-lock.json'),'utf8'));
+  for(const name of ['@opennextjs/cloudflare','wrangler']) {
+    assert.equal(pkg.devDependencies[name],undefined);
+    assert.equal(lock.packages['node_modules/'+name],undefined);
+  }
+  assert.ok(!fs.existsSync(path.join(root,'open-next.config.ts')));
 });
 
 
