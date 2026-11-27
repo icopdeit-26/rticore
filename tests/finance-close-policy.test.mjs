@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {nextFinanceClose} from '../src/lib/finance-close-policy.ts';
+const maker='controller@test.invalid', checker='cfo@test.invalid';
+const step=(state,stage,n,actor=maker,role='financial_controller')=>{const r=nextFinanceClose(state,stage,n,actor,role);assert.equal(r.ok,true);return r.state};
+test('valid independent closing sequence',()=>{const soft=step(null,'soft_close',10);const reviewed=step(soft,'under_review',17);const approved=step(reviewed,'approved',17,checker,'cfo');const closed=step(approved,'hard_close',17,checker,'cfo');assert.equal(closed.close_stage,'hard_close');assert.equal(closed.controller_reviewed_by,maker);assert.equal(closed.cfo_approved_by,checker)});
+test('cannot skip review or approval',()=>{assert.equal(nextFinanceClose(null,'hard_close',17,checker,'cfo').ok,false);const soft=step(null,'soft_close',10);assert.equal(nextFinanceClose(soft,'approved',17,checker,'cfo').ok,false)});
+test('maker cannot self-approve even with CFO role',()=>{const reviewed=step(step(null,'soft_close',10),'under_review',17);assert.equal(nextFinanceClose(reviewed,'approved',17,maker.toUpperCase(),'cfo').ok,false)});
+test('incomplete persisted checklist cannot be overwritten by CFO',()=>{const reviewed=step(step(null,'soft_close',10),'under_review',16);assert.equal(nextFinanceClose(reviewed,'approved',17,checker,'cfo').ok,false)});
+test('read-only and invalid counts denied',()=>{assert.equal(nextFinanceClose(null,'soft_close',17,checker,'management_viewer').ok,false);assert.equal(nextFinanceClose(null,'soft_close',18,maker,'financial_controller').ok,false)});
+test('another CFO cannot hard-close and hard-closed state cannot be reset',()=>{const approved=step(step(step(null,'soft_close',10),'under_review',17),'approved',17,checker,'cfo');assert.equal(nextFinanceClose(approved,'hard_close',17,'other@test.invalid','cfo').ok,false);const closed=step(approved,'hard_close',17,checker,'cfo');assert.equal(nextFinanceClose(closed,'soft_close',0,maker,'financial_controller').ok,false)});

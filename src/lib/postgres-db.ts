@@ -1,4 +1,6 @@
 import path from 'node:path';
+import {validateHostingerConfig} from './hostinger-config';
+import {executeAtomicBatch} from './postgres-atomic-batch';
 import fs from 'node:fs';
 import type { D1DB, D1Prepared } from './boq-auth';
 
@@ -50,7 +52,7 @@ export function translateSQLiteToPostgres(sql: string): string {
 type QueryExecutor = {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
   exec(sql: string): Promise<unknown>;
-  batch?(statements: { sql: string; args: unknown[] }[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }[]>;
+  batch(statements: { sql: string; args: unknown[] }[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }[]>;
 };
 
 const globalPg = globalThis as unknown as {
@@ -70,22 +72,30 @@ async function ensureSchema(exec: QueryExecutor, schemaSQL: string): Promise<voi
 }
 
 async function createExecutor(): Promise<QueryExecutor> {
-  const pgUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const hostinger = process.env.RTICORE_RUNTIME === 'hostinger';
+  const pgUrl = hostinger ? validateHostingerConfig(process.env).toString() : process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
   if (pgUrl) {
     const schemaPath = path.join(process.cwd(), 'rticore_postgresql_schema.sql');
     const schemaSQL = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, 'utf8') : '';
     type PgPool = {
       query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+      connect(): Promise<{query: PgPool['query']; release(error?: Error):void}>;
     };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
-      Pool: new (opts: { connectionString: string }) => PgPool;
+      Pool: new (opts: { connectionString: string; ssl?: { rejectUnauthorized: boolean }; connectionTimeoutMillis?: number; max?: number }) => PgPool;
     };
-    const pool = new pgMod.Pool({ connectionString: pgUrl });
+    const pool = new pgMod.Pool({ connectionString: pgUrl, ...(hostinger ? {ssl: {rejectUnauthorized:true}, connectionTimeoutMillis:10000, max:5} : {}) });
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
+      batch: (statements) => executeAtomicBatch(pool,statements),
     };
+    // Hosted schema changes are operator-controlled, not request-time DDL.
+    if(hostinger){
+      await exec.query('SELECT 1 FROM rticore_members LIMIT 1');
+      return exec;
+    }
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.
     const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');
@@ -93,6 +103,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     return exec;
   }
 
+  if(process.env.RTICORE_RUNTIME==='hostinger')throw Error('External PostgreSQL is mandatory');
   type WorkerResponse = {
     id: number;
     ok: boolean;
@@ -217,27 +228,12 @@ export class PostgresD1Adapter implements D1DB {
       const s = stmt as PostgresPrepared;
       return { sql: translateSQLiteToPostgres(s.sql), args: s.args };
     });
-    if (exec.batch) {
-      const results = await exec.batch(mapped);
-      return results.map((res) => ({
-        success: true,
-        results: (res.rows || []).map(normalizeRow),
-        meta: { changes: res.rowCount ?? 0, last_row_id: 0 },
-      }));
-    }
-    await exec.exec('BEGIN');
-    try {
-      const out: unknown[] = [];
-      for (const s of mapped) {
-        const res = await exec.query(s.sql, s.args);
-        out.push({ success: true, results: res.rows.map(normalizeRow), meta: { changes: res.rowCount ?? 0, last_row_id: 0 } });
-      }
-      await exec.exec('COMMIT');
-      return out;
-    } catch (err) {
-      try { await exec.exec('ROLLBACK'); } catch { /* ignore */ }
-      throw err;
-    }
+    const results = await exec.batch(mapped);
+    return results.map((res) => ({
+      success: true,
+      results: (res.rows || []).map(normalizeRow),
+      meta: { changes: res.rowCount ?? 0, last_row_id: 0 },
+    }));
   }
 }
 

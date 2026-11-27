@@ -2,19 +2,44 @@ name: Hostinger Node 22 build hotfix
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'next.config.mjs'
-      - 'tests/**'
-      - '.github/workflows/hostinger-node22-build.yml'
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  runner-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify runner and lockfile without PostgreSQL or project secrets
+        run: |
+          node --version
+          npm --version
+          git rev-parse HEAD
+          node -e "require('node:sqlite'); JSON.parse(require('node:fs').readFileSync('package-lock.json','utf8'))"
+      - name: Historical Finance digest classification (synthetic, no database)
+        run: node --test tests/finance-historical-reconciliation.test.mjs
   node22-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: '1'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rticore_ci
+          POSTGRES_PASSWORD: rticore_ci_only
+          POSTGRES_DB: rticore_atomic_ci
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,6 +50,13 @@ jobs:
       - run: npm --version
       - run: npm ci --no-audit --no-fund
       - run: npm run test:runtime-compat
+      - run: node --experimental-strip-types --test tests/native-oidc.test.mjs tests/native-session.test.mjs tests/hostinger-config.test.mjs
+      - run: node --test tests/finance-p0-action-authorization.test.cjs
+      - run: node --experimental-strip-types --test tests/finance-close-policy.test.mjs
+      - run: npm run test:finance-520
+      - run: node --experimental-strip-types --test tests/rticore-postgres-atomic-live.test.cjs
+        env:
+          RTICORE_ATOMIC_TEST_URL: postgresql://rticore_ci:rticore_ci_only@127.0.0.1:5432/rticore_atomic_ci
       - run: npm run typecheck
       - run: npm run build
       - run: test -f .next/BUILD_ID
