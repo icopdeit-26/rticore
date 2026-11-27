@@ -19,7 +19,8 @@
         "0067_enterprise_service_catalog.sql",
         "0068_catalog_pricing_workflow.sql",
         "0069_catalog_boq_binding.sql",
-        "0070_flexguard_historical_review.sql"
+        "0070_flexguard_historical_review.sql",
+        "0071_native_ai_request_budget.sql"
       ]
     },
     {
