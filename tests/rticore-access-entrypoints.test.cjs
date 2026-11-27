@@ -16,7 +16,7 @@ test('RTICORE account dropdown exposes native SSO logout on mobile and desktop',
   assert.doesNotMatch(navbar, /document\.cookie\s*=/);
 });
 
-test('RTICORE login page uses native SSO instead of a second insecure password mechanism',()=>{
+test('RTICORE login supports native business MFA and optional SSO with a protected shell',()=>{
   const page=read('src/app/login/page.tsx');
   const shell=read('src/components/layout/AppShell.tsx');
   assert.match(page, /Login RTICORE/);
@@ -25,8 +25,14 @@ test('RTICORE login page uses native SSO instead of a second insecure password m
   assert.match(page, /LogoutButton/);
   assert.doesNotMatch(page, /type=["']password["']|localStorage\.setItem|jwtVerify\(/);
   assert.match(shell, /const isLoginPage=pathname==='\/login'/);
-  assert.match(shell, /if\(isLoginPage\)return <>{children}<\/>/);
-  assert.match(shell, /if\(isLoginPage\)return; \/\/ Public-facing login UI/);
+  assert.match(shell, /if\(isLoginPage\|\|\(nativeBusiness&&pathname==='\/'\)\)return <>{children}<\/>/);
+  assert.match(shell, /if\(isLoginPage\|\|\(nativeBusiness&&pathname==='\/'\)\)return;/);
+  assert.match(shell, /if\(nativeBusiness&&session.status!=='ready'\)return <main/);
+  assert.match(shell, /nativeBusiness&&\(res.status===401\|\|res.status===403\)/);
+  assert.match(page, /if\(businessMode\)return/);
+  const layout=read('src/app/layout.tsx');
+  assert.match(layout, /export const dynamic='force-dynamic'/);
+  assert.match(layout, /nativeBusiness=\{process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_AUTH_MODE==='business'\}/);
   assert.match(shell, /Buka halaman login RTICORE/);
 });
 

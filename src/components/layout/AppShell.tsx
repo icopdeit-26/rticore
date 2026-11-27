@@ -15,7 +15,7 @@ type Session={status:'checking'|'ready'|'denied';identity:Identity|null};
 // Mirrors the role check in /api/sales/approval-queue.
 const APPROVAL_QUEUE_ROLES=['admin','sales','presales','finance','approver','legal'];
 
-/** Cloudflare Access + D1 decide the assigned role. Optional Admin-only
+/** Server-verified native IAM or explicit OIDC decides the assigned role. Optional Admin-only
  * simulation is downscoped on the server for every API, never only in the UI.
  */
 export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false})=>{
@@ -53,7 +53,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
     const controller=new AbortController();
     fetch('/api/sales/identity',{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal})
       .then(async res=>{
-        if(nativeBusiness&&(res.status===401||res.status===403)){if(!controller.signal.aborted)window.location.replace('/login');return;}
+        if(nativeBusiness&&(res.status===401||res.status===403)){if(!controller.signal.aborted){setSession({status:'denied',identity:null});window.location.replace('/login');}return;}
         if(!res.ok)throw Error('Sesi autentikasi / database belum dapat diverifikasi.');
         const data=await res.json();
         if(data.success!==true||typeof data.identity?.role!=='string'||typeof data.identity?.email!=='string')
