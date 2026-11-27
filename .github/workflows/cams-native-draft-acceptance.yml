@@ -1,14 +1,13 @@
 name: CAMS Native GL Acceptance
 on:
   pull_request:
-    branches: [main]
   push:
-    branches: ['feature/cams-finance-docking-01']
+    branches: ['feature/cams-finance-docking-01','fix/cams-cost-center-scope-20261127','fix/cams-native-hostinger-20261127']
 permissions:
   contents: read
 jobs:
   native-gl:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -28,7 +27,7 @@ jobs:
       PGPASSWORD: isolated-ci-only
       PGDATABASE: cams_docking_ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Apply real native PostgreSQL schema
         run: psql -v ON_ERROR_STOP=1 -f rticore_postgresql_schema.sql
       - name: Install real native business triggers
