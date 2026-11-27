@@ -1,5 +1,5 @@
 // Read-only release inventory. Separate migration directories are separate streams.
-export function duplicateMigrationVersions(files) {
+export function duplicateMigrationVersions(files, stream = '') {
   const versions = new Map();
   for (const file of files) {
     const m = /^(\d{4})_.+\.sql$/.exec(file);
@@ -8,7 +8,13 @@ export function duplicateMigrationVersions(files) {
     group.push(file);
     versions.set(m[1], group);
   }
-  return [...versions.entries()].filter(([, names]) => names.length > 1);
+  return [...versions.entries()].filter(([version, names]) => {
+    if(names.length < 2) return false;
+    // Existing baseline has two 0002 files: AI setup does not record a schema
+    // version; BoQ alone records version 2. Never rename applied history.
+    const legacyPair=['0002_ai_connections.sql','0002_rticore_boq_edit_seq.sql'];
+    return !(stream==='migrations' && version==='0002' && names.length===2 && [...names].sort().every((name,i)=>name===legacyPair[i]));
+  });
 }
 export function schemaInventory(schema, triggers, migrationSQL = '') {
   const tables = [...new Set([...(schema+'\n'+triggers+'\n'+migrationSQL).matchAll(/CREATE TABLE IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/gi)].map(m=>m[1]))];
@@ -36,4 +42,12 @@ export function checkSchemaInventory(expected, actual) {
     missingVendorScopeFKs:vendorScopeFKs.filter(r=>!fks.has(fkKey(r))),
     unvalidatedForeignKeys:actual.foreignKeys.filter(r=>r.validated!==true).map(r=>({table:r.table,name:r.name})),
   };
+}
+
+// The native ledger is authoritative. Do not install the incompatible legacy
+// FlexGuard 0054 tables under the same names in the PostgreSQL schema.
+export function nativeLedgerCollisions(canonicalSql, nativeSql) {
+  const names=s=>new Set([...s.matchAll(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(?:public\.)?([a-z_][a-z0-9_]*)\s*\(/gi)].map(m=>m[1].toLowerCase()));
+  const legacy=names(canonicalSql), native=names(nativeSql);
+  return ['rticore_flexguard_credit_lots','rticore_flexguard_enterprise_ledger'].filter(name=>legacy.has(name)&&native.has(name));
 }

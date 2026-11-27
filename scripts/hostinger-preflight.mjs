@@ -2,7 +2,7 @@ import { validateHostingerConfig } from '../src/lib/hostinger-config.ts';
 import pg from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
-import { duplicateMigrationVersions, schemaInventory, checkSchemaInventory } from './hostinger-schema-inventory.mjs';
+import { duplicateMigrationVersions, schemaInventory, checkSchemaInventory, nativeLedgerCollisions } from './hostinger-schema-inventory.mjs';
 
 const url = validateHostingerConfig(process.env);
 const { Client } = pg;
@@ -15,11 +15,13 @@ try {
   const streams=['migrations','deployment/hostinger/migrations','sql/native-postgres'];
   for(const stream of streams) {
     if(!fs.existsSync(stream)) continue;
-    const duplicates=duplicateMigrationVersions(fs.readdirSync(stream));
+    const duplicates=duplicateMigrationVersions(fs.readdirSync(stream),stream);
     if(duplicates.length) throw new Error('Duplicate migration versions in '+stream);
   }
   const nativeMigrations=streams.slice(1).filter(stream=>fs.existsSync(stream))
     .flatMap(stream=>fs.readdirSync(stream).filter(f=>/^\d{4}_.+\.sql$/.test(f)).map(f=>fs.readFileSync(path.join(stream,f),'utf8'))).join('\n');
+  const canonical=fs.readdirSync('migrations').filter(f=>/^\d{4}_.+\.sql$/.test(f)).map(f=>fs.readFileSync(path.join('migrations',f),'utf8')).join('\n');
+  if(nativeLedgerCollisions(schema+'\n'+canonical,nativeMigrations).length) throw new Error('Conflicting native and legacy FlexGuard ledger definitions');
   const expected=schemaInventory(schema,triggers,nativeMigrations);
   const tables=(await client.query("SELECT tablename FROM pg_tables WHERE schemaname='public'")).rows.map(r=>r.tablename);
   const activeTriggers=(await client.query(`
