@@ -19,6 +19,14 @@ try {
   const missingTables = expectedTables.filter(t=>!tables.has(t));
   const missingTriggers = expectedTriggers.filter(t=>!activeTriggers.has(t));
   if (missingTables.length || missingTriggers.length) throw new Error('Schema or trigger migration incomplete');
+  const entityManifest=JSON.parse(fs.readFileSync(path.resolve('deployment/hostinger/migrations/0054_entity_constraints.json'),'utf8'));
+  const entityFks=await client.query(`SELECT c.conname,child.relname AS child,parent.relname AS parent,
+    ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord) AS child_columns,
+    ARRAY(SELECT a.attname::text FROM unnest(c.confkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.attnum ORDER BY k.ord) AS parent_columns
+    FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid
+    JOIN pg_namespace n ON n.oid=child.relnamespace JOIN pg_namespace pn ON pn.oid=parent.relnamespace
+    WHERE c.contype='f' AND c.convalidated AND n.nspname='public' AND pn.nspname='public'`);
+  if(!entityManifest.every(e=>entityFks.rows.some(r=>r.conname===e.name&&r.child===e.table&&r.parent===e.parent&&JSON.stringify(r.child_columns)===JSON.stringify(['tenant_id','legal_entity_id',e.column])&&JSON.stringify(r.parent_columns)===JSON.stringify(['tenant_id','legal_entity_id','id']))))throw new Error('Validated entity FK inventory incomplete');
   const account = await client.query("SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname=current_user");
   if (Object.values(account.rows[0] || {}).some(Boolean)) throw new Error('Runtime role has excessive database privileges');
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
