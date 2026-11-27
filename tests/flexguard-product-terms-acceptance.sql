@@ -119,4 +119,30 @@ BEGIN
  r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
  IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
 END $fg$;
+DO $cat$
+DECLARE r jsonb; sid text; rate text; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid'; payload jsonb:='{"service_code":"FG-CI-SVC","service_name":"CI service","service_category":"web_app_pentest","description":"Synthetic service description","scope_summary":"Synthetic service scope","complexity_level":"standard","min_mandays_tenths":10,"standard_mandays_tenths":20,"max_mandays_tenths":50,"effective_date":"2026-11-27","service_version":1}';
+BEGIN
+ r:=rticore_catalog_command('defendit360','fg-terms-a',maker,'create_service',NULL,payload);sid:=r->>'id';
+ IF r->>'status'<>'draft' THEN RAISE EXCEPTION 'SERVICE_DRAFT_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_catalog_command('defendit360','fg-terms-b',maker,'create_service',NULL,payload);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_ACCESS_DENIED' THEN RAISE; END IF; END;
+ BEGIN
+  PERFORM rticore_catalog_command('defendit360','fg-terms-a',maker,'approve_service',sid,'{"notes":"Synthetic self approval"}');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_APPROVAL_DENIED' THEN RAISE; END IF; END;
+ r:=rticore_catalog_command('defendit360','fg-terms-a',checker,'approve_service',sid,'{"notes":"Independent synthetic approval"}');
+ IF r->>'status'<>'approved' THEN RAISE EXCEPTION 'SERVICE_APPROVAL_FAILED'; END IF;
+ BEGIN
+  UPDATE rticore_service_catalog_v2 SET service_name='Changed' WHERE id=sid;
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_IMMUTABLE' THEN RAISE; END IF; END;
+ r:=rticore_catalog_command('defendit360','fg-terms-a',maker,'create_rate_card',NULL,'{"role_code":"analyst","monthly_compensation_cents":1500000,"benefit_allocation_cents":0,"employer_contrib_cents":0,"allocated_expense_cents":0,"available_working_days":240,"target_utilization_bps":7500,"target_margin_bps":4000,"min_margin_bps":2000,"effective_date":"2026-11-27","version":1}');
+ rate:=r->>'id';
+ IF NOT EXISTS(SELECT 1 FROM rticore_enterprise_rate_cards WHERE id=rate AND internal_cost_rate_cents=100000 AND standard_selling_rate_cents=166667 AND min_selling_rate_cents=125000 AND annual_loaded_cost_cents=18000000) THEN RAISE EXCEPTION 'RATE_CALCULATION_FAILED'; END IF;
+ r:=rticore_catalog_command('defendit360','fg-terms-a',checker,'approve_rate_card',rate,'{"notes":"Independent rate approval"}');
+ IF r->>'status'<>'approved' THEN RAISE EXCEPTION 'RATE_APPROVAL_FAILED'; END IF;
+ IF (SELECT count(*) FROM rticore_operations_events WHERE entity_id IN (sid,rate))<>4 THEN RAISE EXCEPTION 'CATALOG_AUDIT_FAILED'; END IF;
+END $cat$;
 ROLLBACK;
