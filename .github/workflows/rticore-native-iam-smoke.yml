@@ -22,6 +22,7 @@ jobs:
         env:
           CONFIRM: ${{ inputs.confirmation }}
           RTICORE_PUBLIC_ORIGIN: ${{ vars.RTICORE_NATIVE_UAT_ORIGIN }}
+          RTICORE_AUTH_MODE: ${{ vars.RTICORE_NATIVE_UAT_AUTH_MODE || 'business' }}
           RTICORE_OIDC_ISSUER: ${{ vars.RTICORE_NATIVE_UAT_ISSUER }}
         run: |
           test "$CONFIRM" = NATIVE_STAGING_ONLY
