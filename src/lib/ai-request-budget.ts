@@ -12,5 +12,6 @@ export const RESERVE_AI_REQUEST_SQL=`INSERT INTO rticore_sales_ai_audit
  RETURNING id`;
 export async function reserveAIRequest(db:D1DB,email:string,purpose:string){
  const id=crypto.randomUUID();
+ if(typeof process!=='undefined'&&process.env.RTICORE_RUNTIME==='hostinger')return !!(await db.prepare('SELECT rticore_reserve_ai_request(?,?,?,?) AS allowed').bind(id,TENANT,email,purpose).first<{allowed:boolean|number}>())?.allowed;
  return !!await db.prepare(RESERVE_AI_REQUEST_SQL).bind(id,TENANT,purpose,email,TENANT,email).first<{id:string}>();
 }

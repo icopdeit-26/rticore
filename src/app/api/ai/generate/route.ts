@@ -6,7 +6,7 @@ import { runPriorityChain } from '@/lib/ai-credential-vault';
 import { parseConversationHistory, isIndonesianLanguagePreference, languagePreferenceAcknowledgment,
  contextualConversationAnchor, isClearlyOffTopicChatAnswer, topicalClarification,
  type AIConversationRequest } from '@/lib/ai-conversation';
-import { containsPersonalIdentifier } from '@/lib/ai-data-policy';
+import { containsPersonalIdentifier,containsRestrictedAIData,aiOriginAllowed,AI_DRAFT_BOUNDARY } from '@/lib/ai-data-policy';
 import { AI_WORKSPACE_IDENTITY } from '@/lib/ai-workspace-identity';
 
 export const dynamic='force-dynamic';
@@ -14,6 +14,7 @@ const json=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:pri
 
 const RTICORE_CHAT_INSTRUCTION = [
  AI_WORKSPACE_IDENTITY,
+ AI_DRAFT_BOUNDARY,
  'Anda adalah RTICORE AI Business Assistant untuk RTI, berpengalaman dalam VAPT, SOC/MDR, SIEM, GRC, tender, BoQ, dan approval.',
  'WAJIB jawab SELURUH bagian jawaban dalam Bahasa Indonesia (kecuali nama merek, istilah teknis, dan kode), dengan profesional dan relevan terhadap pertanyaan terakhir.',
  'Instruksi gaya, bahasa, dan format adalah PREFERENSI sepanjang sesi, bukan penggantian topik. Konfirmasi secara singkat sambil mempertahankan konteks sebelumnya; jangan menjawab sebagai percakapan baru.',
@@ -31,9 +32,9 @@ export async function POST(req:Request){
  const auth=await authorizeBoQ(req);
  if(!auth.ok)return auth.response;
  // Existing admin-only gate remains mandatory for outbound general chat.
- if(auth.identity.role!=='admin')return json({success:false,message:'Konsol AI saat ini khusus Admin.'},403);
+ if(auth.identity.role!=='admin'||auth.identity.rolePreview)return json({success:false,message:'Konsol AI saat ini khusus Admin.'},403);
  const origin=req.headers.get('origin');
- if(origin&&origin!==new URL(req.url).origin)return json({success:false,message:'Origin tidak diizinkan.'},403);
+ if(!aiOriginAllowed(origin,new URL(req.url).origin,req.headers.get('sec-fetch-site'),process.env.RTICORE_RUNTIME==='hostinger'))return json({success:false,message:'Origin tidak diizinkan.'},403);
  if(req.headers.get('x-rticore-ai-admin')!=='1')return json({success:false,message:'Permintaan AI tidak valid.'},403);
 
  let payload:{prompt?:unknown;history?:unknown;task_type?:unknown;topic_hint?:unknown}|null;
@@ -47,8 +48,8 @@ export async function POST(req:Request){
   return json({success:false,message:`Prompt harus 2 sampai ${maxChars} karakter.`},400);
  const history=parseConversationHistory(payload?.history);
  if(history===null)return json({success:false,message:'Format atau panjang riwayat percakapan tidak valid.'},400);
- if(containsPersonalIdentifier(prompt)||history.some(turn=>containsPersonalIdentifier(turn.content)))
-  return json({success:false,message:'Hapus email, telepon, NIK/NPWP dan data pribadi sebelum mengirim ke provider AI.'},422);
+ if(containsPersonalIdentifier(prompt)||history.some(turn=>containsPersonalIdentifier(turn.content))||containsRestrictedAIData(prompt)||history.some(turn=>containsRestrictedAIData(turn.content)))
+  return json({success:false,message:'Hapus email, telepon, NIK/NPWP, kredensial dan rahasia sebelum mengirim ke provider AI.'},422);
 
  // Answer a pure language-preference update deterministically. No external call,
  // no loss of prior topic, and no extra exposure of prior discussion to a model.
@@ -70,6 +71,7 @@ export async function POST(req:Request){
   // a VAPT costing follow-up. Retry only once; never echo irrelevant content.
   if(isClearlyOffTopicChatAnswer(anchor,result.content)){
    try{
+    if(!await reserveAIRequest(auth.identity.db,auth.identity.email,'chat_retry'))throw Error('AI_QUOTA');
     const retry=await runPriorityChain(auth.identity.db,{
      ...conversation,
      system:conversation.system+'\nRespons awal salah mengalihkan pembahasan ke barang konsumsi. Jawab tentang domain keamanan siber yang aktif saja; apabila belum cukup konteks, tanyakan klarifikasi khusus domain itu.',
@@ -84,7 +86,7 @@ export async function POST(req:Request){
      latencyMs:0,tokensEstimate:0,isFallback:false});
    }
   }
-  return json({success:true,...result});
+  return json({success:true,...result,requiresReview:true});
  }catch{
   return json({success:false,message:'Belum ada provider AI yang bisa digunakan atau semua koneksi gagal.'},503);
  }
