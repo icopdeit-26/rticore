@@ -1,6 +1,7 @@
 import type {Metadata} from 'next';
 import {ArrowRight, ArrowUpRight, BadgeCheck, Building2, ChartNoAxesCombined, Check, KeyRound, Layers3, LockKeyhole, ShieldCheck} from 'lucide-react';
 import {LoginSessionStatus} from '@/components/auth/LoginSessionStatus';
+import {BusinessLoginPanel} from '@/components/auth/BusinessLoginPanel';
 import {LocalLoginPanel} from '@/components/auth/LocalLoginPanel';
 import {LogoutButton} from '@/components/auth/LogoutButton';
 import {isLocalMode} from '@/lib/runtime-env';
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
 export default function RTICoreLoginPage() {
   const localMode=isLocalMode();
   const nativeMode=process.env.RTICORE_RUNTIME==='hostinger';
+  const businessMode=nativeMode&&process.env.RTICORE_AUTH_MODE==='business';
   return (
     <main className="relative isolate min-h-[100dvh] overflow-x-hidden bg-[#f5f7fa] text-slate-900">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_100%_0%,rgba(45,212,191,0.12),transparent_45%)]" />
@@ -84,18 +86,19 @@ export default function RTICoreLoginPage() {
                 <p className="text-sm font-semibold text-slate-800">Akses perusahaan</p>
                 <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-1 text-[10px] font-semibold text-teal-700"><ShieldCheck className="h-3 w-3" aria-hidden="true" /> Secure access</span>
               </div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">{localMode?'Pilih akun terdaftar untuk masuk ke workspace lokal. Hak akses mengikuti role akun Anda.':nativeMode?'Gunakan akun perusahaan melalui SSO independen dengan password dan kode autentikator (MFA).':'Layanan identitas belum dikonfigurasi. Hubungi administrator.'}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{localMode?'Pilih akun terdaftar untuk masuk ke workspace lokal. Hak akses mengikuti role akun Anda.':businessMode?'Masuk menggunakan password dan kode autentikator. Aktivasi pertama menggunakan undangan administrator.':nativeMode?'Gunakan akun perusahaan melalui SSO independen dengan password dan kode autentikator (MFA).':'Layanan identitas belum dikonfigurasi. Hubungi administrator.'}</p>
 
               <LoginSessionStatus />
               <LocalLoginPanel />
+              {businessMode&&<BusinessLoginPanel />}
 
-              {nativeMode&&!localMode&&<a href="/oauth2/start?rd=%2Flogin" className="group mt-6 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#115e59] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
+              {nativeMode&&!businessMode&&!localMode&&<a href="/oauth2/start?rd=%2Flogin" className="group mt-6 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#115e59] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
                 <LockKeyhole className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span className="flex-1 text-center">Masuk dengan SSO + MFA</span>
                 <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden="true" />
               </a>}
               <LogoutButton className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600"/>
-              <p className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-4 text-[11px] leading-5 text-slate-500"><Check className="mt-1 h-3.5 w-3.5 shrink-0 text-teal-600" aria-hidden="true" />{localMode?'Sesi login diproses di komputer ini tanpa layanan cloud.':'RTICORE tidak menyimpan password atau kode OTP pengguna.'}</p>
+              <p className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-4 text-[11px] leading-5 text-slate-500"><Check className="mt-1 h-3.5 w-3.5 shrink-0 text-teal-600" aria-hidden="true" />{localMode?'Sesi login diproses di komputer ini tanpa layanan cloud.':businessMode?'Password disimpan sebagai hash; kunci autentikator dienkripsi dan kode OTP tidak disimpan.':'RTICORE tidak menyimpan password atau kode OTP pengguna.'}</p>
             </div>
             <p className="mx-auto mt-5 max-w-sm text-center text-xs leading-5 text-slate-500">Belum terdaftar atau role tidak sesuai? Hubungi Administrator RTICORE untuk aktivasi akun dan izin akses.</p>
           </section>
