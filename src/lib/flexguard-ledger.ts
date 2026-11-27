@@ -12,7 +12,9 @@ export function walletTotals(events:readonly FlexEvent[]):FlexTotals{
    case 'DEBIT':s.reserved-=e.units;s.consumed+=e.units;break;
    case 'REFUND':s.consumed-=e.units;s.available+=e.units;break;
    case 'EXPIRY':s.available-=e.units;s.expired+=e.units;break;
+   default:throw Error('FLEXGUARD_INVALID_EVENT_KIND');
   }
+  if(Object.values(s).some(v=>!Number.isSafeInteger(v)))throw Error('FLEXGUARD_LEDGER_OVERFLOW');
   if(s.available<0||s.reserved<0||s.consumed<0)throw Error('FLEXGUARD_INSUFFICIENT_BALANCE');
  }
  if(s.issued!==s.available+s.reserved+s.consumed+s.expired)throw Error('FLEXGUARD_LEDGER_RECONCILIATION');
