@@ -1,0 +1,29 @@
+name: PR1 residual inventory and native regression
+on:
+  push:
+    branches: ['integration/v6-erp-finance-20261127']
+  pull_request:
+    branches: [main, 'integration/v6-erp-finance-20261127']
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node scripts/verify-pr1-residual-inventory.mjs
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:native-iam && npm run test:native-entry-regression && npm run test:security-native
+      - run: npm run test:pricing && npm run test:finance-520 && npm run gate:erp
+      - run: npm run test:foundation-inventory && npm run test:pg-triggers && npm run test:branding
