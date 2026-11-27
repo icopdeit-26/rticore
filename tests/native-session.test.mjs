@@ -20,3 +20,9 @@ test('introspection accepts active matching session and never caches',async()=>{
 test('introspection fails closed on inactive session, wrong subject and outage',async()=>{
  for(const fake of [async()=>Response.json({active:false,sub:'one'}),async()=>Response.json({active:true,sub:'other'}),async()=>new Response('',{status:503}),async()=>{throw Error('network');}])await assert.rejects(requireActiveNativeSession('synthetic',cfg,'one',fake));
 });
+
+test('native mutation denies insecure or noncanonical trusted origins',()=>{
+ for(const origin of ['', 'null','http://rticore.example.invalid','https://rticore.example.invalid/path','https://user@rticore.example.invalid','https://rticore.example.invalid/']){
+  assert.equal(nativeRequestOriginAllowed(new Request('https://rticore.example.invalid',{method:'POST',headers:{origin}}),origin),false);
+ }
+});
