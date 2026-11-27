@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {executeAtomicBatch} from './postgres-atomic-batch';
 import fs from 'node:fs';
 import type { D1DB, D1Prepared } from './boq-auth';
 
@@ -77,6 +78,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     const schemaSQL = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, 'utf8') : '';
     type PgPool = {
       query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+      connect(): Promise<{query: PgPool['query']; release(error?: Error):void}>;
     };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
       Pool: new (opts: { connectionString: string }) => PgPool;
@@ -85,7 +87,10 @@ async function createExecutor(): Promise<QueryExecutor> {
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
+      batch: (statements) => executeAtomicBatch(pool,statements),
     };
+    // Hosted schema changes are operator-controlled, not request-time DDL.
+    if(process.env.RTICORE_RUNTIME==='hostinger')return exec;
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.
     const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');
@@ -93,6 +98,7 @@ async function createExecutor(): Promise<QueryExecutor> {
     return exec;
   }
 
+  if(process.env.RTICORE_RUNTIME==='hostinger')throw Error('External PostgreSQL is mandatory');
   type WorkerResponse = {
     id: number;
     ok: boolean;
