@@ -67,3 +67,17 @@ test('retired pricing UI cannot persist demo price or bypass D1 BoQ approval', (
   const boqPage = readFileSync(join(root, 'src/app/boq/page.tsx'), 'utf8');
   assert.ok(boqPage.includes('/api/boq'));
 });
+
+
+test('pricing rejects negative, nonfinite and overflowing inputs and preserves floor', () => {
+  const {calculateDAI,calculate3Ranges}=engineModule.exports;
+  for(const mandays of [-1, NaN, Infinity]) assert.throws(()=>calculateHRCost([{role_level:'lead',mandays}]),/Invalid pricing/);
+  assert.throws(()=>calculateHRCost([{role_level:'lead',mandays:1,cost_rate_override:-1}]),/Invalid pricing/);
+  assert.throws(()=>calculateHRCost([{role_level:'lead',mandays:1e12}]),/precision/);
+  assert.throws(()=>calculateDAI({cpi_index:0,fx_index:1,market_index:1,urgency_index:1}),/Invalid pricing/);
+  assert.throws(()=>calculateBoQ({component_a_total:-1,component_b_total:0,quoted_price:10}),/Invalid pricing/);
+  assert.throws(()=>calculate3Ranges({totalInternalCost:100,totalSellingBaseline:100,dai:NaN,tierMultiplier:1}),/Invalid pricing/);
+  const range=calculate3Ranges({totalInternalCost:101,totalSellingBaseline:100,dai:1,tierMultiplier:1});
+  assert.ok(range.floor_price>=101/0.8);
+  assert.ok(range.standard_price>=range.floor_price);
+});
