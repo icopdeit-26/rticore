@@ -60,11 +60,12 @@ test('SQLite D1 adapter: bind/first/all/run meta and atomic batch rollback',asyn
   }finally{delete globalThis.__rticoreLocalD1;delete process.env.RTICORE_LOCAL_DB_PATH;}
 });
 
-test('authorizeBoQ keeps Cloudflare Access in cloud mode and uses the signed local session only in local mode',()=>{
+test('authorizeBoQ uses native OIDC and the signed local session only in local mode',()=>{
   const src=read('src/lib/boq-auth.ts');
   assert.match(src,/if\(env\.RTICORE_LOCAL_MODE==='1'\)/);
   assert.match(src,/emailFromLocalSession\(request\.headers\.get\('cookie'\),env\.RTICORE_LOCAL_SESSION_SECRET\)/);
-  assert.match(src,/jwtVerify\(token,keys/);
+  assert.match(src,/verifyNativeOIDCToken\(token,/);
+  assert.doesNotMatch(src,/cf-access-jwt-assertion/);
   const env=read('src/lib/runtime-env.ts');
   assert.match(env,/userAgent==='Cloudflare-Workers'\)return false/);
   assert.match(env,/RTICORE_LOCAL_MODE==='1'/);

@@ -7,8 +7,8 @@ test('RTICORE login is a complete branded entry with Access and logout',()=>{
  const page=read('src/app/login/page.tsx');
  assert.match(page,/Login RTICORE/);
  assert.match(page,/RTI/);
- assert.match(page,/Masuk dengan Cloudflare Access/);
- assert.match(page,/<a href="\/" /);
+ assert.match(page,/Masuk dengan SSO \+ MFA/);
+ assert.match(page,/href="\/oauth2\/start\?rd=%2Flogin"/);
  assert.match(page,/LogoutButton/);
  assert.match(page,/LoginSessionStatus/);
  assert.match(page,/min-h-\[100dvh\]/);
@@ -26,7 +26,7 @@ test('session panel reads server-verified identity and cannot accept a chosen us
  assert.match(panel,/Buka workspace sesuai role/);
  assert.doesNotMatch(panel,/localStorage|document\.cookie|jwtVerify|setRole\(/);
  assert.match(identity,/authorizeBoQ\(req\)/);
- assert.match(auth,/jwtVerify\(token,keys/);
+ assert.match(auth,/verifyNativeOIDCToken\(token,/);
  assert.match(auth,/SELECT role,active FROM rticore_members WHERE email=\?/);
 });
 test('no malicious return URL or client role elevation is accepted',()=>{

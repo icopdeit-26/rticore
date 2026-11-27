@@ -15,8 +15,8 @@ type Session =
 
 /**
  * Read-only session display. The identity endpoint independently verifies
- * Cloudflare JWT + D1 membership. The browser never chooses its own role.
- * The login CTA remains a normal same-origin navigation to the Access-protected app.
+ * OIDC assurance and database membership. The browser never chooses its own role.
+ * The login CTA remains a normal same-origin navigation to the native identity gateway.
  */
 export function LoginSessionStatus() {
   const [session,setSession]=useState<Session>({status:'checking'});
