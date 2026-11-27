@@ -28,6 +28,10 @@ server {
   proxy_set_header X-Original-URI $request_uri;
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
  }
  location /oauth2/ {
   limit_req zone=rticore_auth burst=10 nodelay;
@@ -38,6 +42,10 @@ server {
   proxy_set_header X-Forwarded-Host $host;
   proxy_set_header X-Auth-Request-Redirect https://rticore.example.invalid/login;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
  }
  # Public login shell and immutable build assets only; no business APIs are public.
  location = /login {
@@ -48,6 +56,10 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token "";
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
  }
  location ^~ /_next/static/ {
@@ -58,6 +70,10 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token "";
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
  }
  location = /logo-rti-light.png {
@@ -68,6 +84,10 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token "";
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
  }
  location = /favicon.ico {
@@ -78,6 +98,10 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token "";
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
  }
  # API auth failures stay HTTP errors, never a HTML login redirect.
@@ -100,6 +124,10 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token $oidc_token;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
   proxy_set_header X-Finance-Role "";
  }
@@ -123,6 +151,10 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token $oidc_token;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
   proxy_set_header X-Finance-Role "";
  }

@@ -12,3 +12,5 @@ The application no longer has a Cloudflare Worker/Access fallback. Production np
 
 ## Native Sales scheduler
 Eight legacy alert rules now have a native PostgreSQL implementation with single-transaction commit, advisory lock, idempotency and explicit opt-in. The systemd timer preserves the original 15-minute cadence. Before enabling, test against a migrated staging database with synthetic data for every alert type and duplicate run, verify tenant membership policy, and provision a dedicated role with SELECT only on the source tables and SELECT/INSERT on alerts plus the alert sequence and necessary function permissions; no broad write/DDL rights. Do not use an administrator database connection. Keep disabled until staging evidence exists; stop old Worker only at controlled cutover. No email or public HTTP execution.
+
+Follow PRODUCTION-CERTIFICATION.md for the staged cutover, CI evidence, account enrollment and release acceptance. The proxy now requires a private authenticated Redis session store to avoid split-token cookie forwarding; this is an additional service to provision and test. See oauth2-proxy.env.example.
