@@ -1,0 +1,33 @@
+{
+  "purpose": "Reviewed native PostgreSQL rehearsal order; never a production migration authorization",
+  "streams": [
+    {
+      "directory": "deployment/hostinger/migrations",
+      "files": [
+        "0053_finance_vendor_bank_entity_scope.sql",
+        "0054_finance_entity_constraints.sql",
+        "0057_flexguard_native_enterprise.sql",
+        "0058_flexguard_finance_receiver.sql",
+        "0059_flexguard_wallet_onboarding.sql",
+        "0060_flexguard_allocation_and_journal_controls.sql",
+        "0061_flexguard_maintenance_queue.sql",
+        "0062_business_iam.sql",
+        "0063_flexguard_product_terms.sql",
+        "0064_flexguard_product_commands.sql",
+        "0065_flexguard_contract_binding.sql",
+        "0066_flexguard_psa_bridge.sql",
+        "0067_enterprise_service_catalog.sql",
+        "0068_catalog_pricing_workflow.sql",
+        "0069_catalog_boq_binding.sql",
+        "0070_flexguard_historical_review.sql"
+      ]
+    },
+    {
+      "directory": "sql/native-postgres",
+      "files": [
+        "0053_cams_finance_inbox.sql",
+        "0054_cams_draft.sql"
+      ]
+    }
+  ]
+}
