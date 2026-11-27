@@ -29,6 +29,7 @@ vm.runInNewContext(js, {
 const { middleware, isEnabledD1ApiRoute } = sandboxModule.exports;
 
 const permitted = [
+  '/api/health/live', '/api/health/ready',
   '/api/boq', '/api/boq/catalog', '/api/ai/config', '/api/ai/generate',
   '/api/ai/assist', '/api/scoping/upload', '/api/reference/postal',
   '/api/marketing/leads', '/api/marketing/campaigns',
@@ -37,6 +38,7 @@ const permitted = [
   '/api/partners', '/api/reports', '/api/admin/system', '/api/psa/timesheets', '/api/platform/diagnostics',
 ];
 const blocked = [
+  '/api/health', '/api/health/ready/debug', '/api/health/live-extra',
   '/api/opportunities', '/api/proposals', '/api/tenders', '/api/approvals',
   '/api/partners/export', '/api/reports/arbitrary', '/api/admin/system/debug',
   '/api/partners-malicious', '/api/report', '/api/admin',
