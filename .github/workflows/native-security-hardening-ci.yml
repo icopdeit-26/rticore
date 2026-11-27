@@ -28,7 +28,7 @@ jobs:
         run: node --test tests/security-secret-scan.test.mjs && node scripts/security-secret-scan.mjs
       - name: Native security and negative API regression
         if: always()
-        run: npm run test:security-native && npm run test:rticore-negative && npm run test:ai
+        run: npm run test:security-native && npm run test:rticore-negative && npm run test:ai && node --experimental-strip-types --test tests/cams-journal-contract.test.cjs tests/cams-runtime-boundary.test.cjs tests/cams-review-actions.test.cjs
       - name: Typecheck and build
         if: always()
         run: npm run typecheck && npm run build
