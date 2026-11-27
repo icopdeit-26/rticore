@@ -9,7 +9,7 @@ type MappedLine={accountId:string;debit:string;credit:string;costCenterId?:strin
 type Receipt={id:string;source_tenant_id:string;source_journal_id:string;idempotency_key:string;payload_hash:string;legal_entity_id:string;period_code:string;mapped_lines_json:MappedLine[]|string};
 const reply=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 function context(req:Request){
- if(process.env.CAMS_FINANCE_DOCKING_ENABLED!=='true'||process.env.RTICORE_LOCAL_MODE!=='1'||!process.env.DATABASE_URL||process.env.RTICORE_DB_ENGINE==='sqlite')throw new DockingError('DOCKING_DISABLED',503);
+ if(process.env.CAMS_FINANCE_DOCKING_ENABLED!=='true'||!((process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_LOCAL_MODE==='0'&&process.env.RTICORE_DB_ENGINE!=='sqlite')||(process.env.NODE_ENV!=='production'&&process.env.RTICORE_LOCAL_MODE==='1'))||!process.env.DATABASE_URL||process.env.RTICORE_DB_ENGINE==='sqlite')throw new DockingError('DOCKING_DISABLED',503);
  if(!validToken(req.headers.get('authorization'),process.env.CAMS_FINANCE_SERVICE_TOKEN))throw new DockingError('UNAUTHORIZED',401);
  const source=process.env.CAMS_FINANCE_SOURCE_TENANT_ID,entity=process.env.CAMS_FINANCE_LEGAL_ENTITY_ID;
  if(!source||!entity||!process.env.CAMS_FINANCE_COA_MAP_JSON)throw new DockingError('MAPPING_NOT_CONFIGURED',503);
@@ -41,7 +41,7 @@ export async function POST(req:Request){
    if(line.costCenterId!==null){
     const target=Object.prototype.hasOwnProperty.call(costMap,line.costCenterId)?costMap[line.costCenterId]:undefined;
     if(typeof target!=='string'||!target)throw new DockingError('COST_CENTER_MAPPING_REQUIRED',409);
-    const cc=await db.prepare("WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id=? AND id=? UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON s.parent_id=u.id WHERE u.tenant_id=? AND u.active=1) SELECT id FROM scope WHERE id=? AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id=? AND kind='cost_center' AND active=1)").bind(TENANT,entity,TENANT,entity,target).first();
+    const cc=await db.prepare("WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id=? AND id=? UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON u.parent_id=s.id WHERE u.tenant_id=? AND u.active=1) SELECT id FROM scope WHERE id=? AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id=? AND kind='cost_center' AND active=1)").bind(TENANT,entity,TENANT,entity,target).first();
     if(!cc)throw new DockingError('COST_CENTER_SCOPE_INVALID',409);
     costCenterId=target;
    }
