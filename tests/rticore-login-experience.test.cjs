@@ -3,12 +3,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const read=p=>fs.readFileSync(p,'utf8');
 
-test('RTICORE login is a complete branded entry with Access and logout',()=>{
+test('RTICORE login is a complete branded entry with native SSO, legacy compatibility and logout',()=>{
  const page=read('src/app/login/page.tsx');
  assert.match(page,/Login RTICORE/);
  assert.match(page,/RTI/);
  assert.match(page,/Masuk dengan Cloudflare Access/);
- assert.match(page,/<a href="\/" /);
+ assert.match(page,/const nativeMode=process\.env\.RTICORE_RUNTIME==='hostinger'/);
+ assert.match(page,/\{!localMode&&<a href=\{nativeMode\?"\/oauth2\/start\?rd=%2Flogin":"\/"\}/);
+ assert.match(page,/nativeMode\?"Masuk dengan SSO perusahaan":"Masuk dengan Cloudflare Access"/);
  assert.match(page,/LogoutButton/);
  assert.match(page,/LoginSessionStatus/);
  assert.match(page,/min-h-\[100dvh\]/);

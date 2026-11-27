@@ -16,12 +16,14 @@ test('RTICORE account dropdown exposes Cloudflare Access logout on mobile and de
   assert.doesNotMatch(navbar, /document\.cookie\s*=/);
 });
 
-test('RTICORE login page uses Cloudflare Access instead of a second insecure password mechanism',()=>{
+test('RTICORE login selects native Hostinger SSO instead of a second insecure password mechanism',()=>{
   const page=read('src/app/login/page.tsx');
   const shell=read('src/components/layout/AppShell.tsx');
   assert.match(page, /Login RTICORE/);
   assert.match(page, /Masuk dengan Cloudflare Access/);
-  assert.match(page, /<a href="\/" /);
+  assert.match(page,/const nativeMode=process\.env\.RTICORE_RUNTIME==='hostinger'/);
+ assert.match(page,/\{!localMode&&<a href=\{nativeMode\?"\/oauth2\/start\?rd=%2Flogin":"\/"\}/);
+ assert.match(page,/nativeMode\?"Masuk dengan SSO perusahaan":"Masuk dengan Cloudflare Access"/);
   assert.match(page, /LogoutButton/);
   assert.doesNotMatch(page, /type=["']password["']|localStorage\.setItem|jwtVerify\(/);
   assert.match(shell, /const isLoginPage=pathname==='\/login'/);
@@ -30,7 +32,7 @@ test('RTICORE login page uses Cloudflare Access instead of a second insecure pas
   assert.match(shell, /Buka halaman login RTICORE/);
 });
 
-test('real transactional identity remains JWT and D1 backed',()=>{
+test('real transactional identity remains server-verified and membership backed',()=>{
   const identity=read('src/app/api/sales/identity/route.ts');
   const auth=read('src/lib/boq-auth.ts');
   assert.match(identity, /authorizeBoQ\(req\)/);
