@@ -64,6 +64,16 @@ try {
   if(!fgControl.rows.length||!Object.values(fgControl.rows[0]).every(Boolean))throw new Error('FlexGuard 0060 control migration incomplete');
   const maintenance=await client.query("SELECT to_regclass('public.rticore_fg_retry_attempts') IS NOT NULL AS attempts,to_regprocedure('public.rticore_fg_retry_due(text,text,text,text,integer)') IS NOT NULL AS retry,to_regprocedure('public.rticore_fg_expiry_due(text,text,text,integer)') IS NOT NULL AS expiry");
   if(!maintenance.rows.length||!Object.values(maintenance.rows[0]).every(Boolean))throw new Error('FlexGuard 0061 maintenance migration incomplete');
+  const product=await client.query(`SELECT
+    to_regprocedure('public.rticore_fg_product_command(text,text,text,text,text,jsonb)') IS NOT NULL AS product_command,
+    to_regprocedure('public.rticore_fg_bind_contract(text,text,text,text,text,text,text)') IS NOT NULL AS binding_command,
+    to_regprocedure('public.rticore_fg_contract_binding_valid(text,text,text,text)') IS NOT NULL AS binding_validation,
+    to_regprocedure('public.rticore_fg_bound_wallet_command(text,text,text,text,text,text)') IS NOT NULL AS bound_wallet,
+    to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AS psa_submit,
+    to_regprocedure('public.rticore_fg_psa_source_valid(text,text,text,text)') IS NOT NULL AS psa_source,
+    EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid=to_regclass('public.rticore_fg_psa_consumption_evidence') AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id']) AS unique_timesheet
+  `);
+  if(!product.rows.length||!Object.values(product.rows[0]).every(Boolean))throw new Error('FlexGuard 0063–0066 contract and PSA migration incomplete');
   const account = await client.query("SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname=current_user");
   if (Object.values(account.rows[0] || {}).some(Boolean)) throw new Error('Runtime role has excessive database privileges');
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");

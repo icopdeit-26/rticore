@@ -38,6 +38,7 @@ for pass in 1 2; do
   q -f sql/native-postgres/0054_cams_draft.sql
 done
 q -f tests/cams-native-draft-acceptance.sql
+[[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
 q -f tests/flexguard-product-terms-acceptance.sql
 # Use a separate local database for a real logical backup/restore rehearsal.
 pg_dump --format=custom --file="$tmp/rticore.dump"
@@ -49,4 +50,5 @@ export PGDATABASE=cams_docking_restore_ci
 [[ "$(q -Atc "SELECT to_regclass('public.rticore_iam_credentials') IS NOT NULL AND to_regclass('public.rticore_iam_sessions') IS NOT NULL")" == t ]]
 q -f tests/cams-native-draft-acceptance.sql
 q -f tests/flexguard-product-terms-acceptance.sql
+[[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
 echo 'PASS: disposable migration rejection, replay, CAMS acceptance and logical restore (not production certification)'
