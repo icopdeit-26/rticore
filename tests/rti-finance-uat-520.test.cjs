@@ -75,6 +75,11 @@ async function setupFinanceEnvironment(h) {
 
   await expect(h.call('erp/organization', 'POST', 'admin', { action: 'request_opportunity_scope', opportunity_id: 'opp-qa', legal_entity_id: legal }), 200);
   await expect(h.call('erp/organization', 'POST', 'approver', { action: 'review_opportunity_scope', opportunity_id: 'opp-qa', version: 1, approve: true }), 200);
+  // Won fixtures have real project/contract records; approve their entity scope via production routes.
+  for (const p of h.sql.prepare("SELECT id FROM rticore_delivery_projects WHERE tenant_id=? AND opportunity_id='opp-qa'").all(tenant)) {
+    await expect(h.call('erp/organization','POST','admin',{action:'request_project_scope',project_id:p.id,legal_entity_id:legal}),200);
+    await expect(h.call('erp/organization','POST','approver',{action:'review_project_scope',project_id:p.id,version:1,approve:true}),200);
+  }
 }
 
 // Dedicated negative tests supplement, rather than replace, the 520-case suite.
@@ -1461,12 +1466,19 @@ test('Domain 09 (35 UAT Scenarios): Enterprise Multi-Dimensional Budget, Soft/Ha
       executed++;
     }
 
-    // Positive expense flow needs an independently approved legal-entity affiliation.
+    // Sales has approved entity affiliation but business-unit-head is not an expense maker.
     h.sql.prepare("INSERT INTO rticore_erp_staff_org(tenant_id,email,unit_id,position_title,created_by,status,reviewed_by,review_notes) VALUES(?,?,?,?,?,'approved',?,?)")
       .run(tenant,users.sales,legal,'Sales Staff',users.admin,users.approver,'Independent expense entity approval');
     const expDoc = (await expect(upload(h, 'supporting', 'sales'), 201)).body.id;
+    // Denied maker test remains separate; the authorized Finance maker submits the actual claim.
+    await expect(h.call('finance','POST','sales',{
+      action:'submit_expense_claim',legal_entity_id:legal,claim_number:'EXP-UNAUTHORIZED',
+      claim_kind:'reimbursement',category:'travel',period_code:'2026-11',amount_cents:100,
+      evidence_document_id:expDoc,description:'Unauthorized expense claim must be rejected'
+    }),403);
+    assert.equal(h.sql.prepare("SELECT count(*) AS n FROM rticore_finance_expense_claims WHERE claim_number='EXP-UNAUTHORIZED'").get().n,0);
     const claim = await expect(
-      h.call('finance', 'POST', 'sales', {
+      h.call('finance', 'POST', 'finance', {
         action: 'submit_expense_claim',
         legal_entity_id: legal,
         claim_number: 'EXP-2026-001',
@@ -1483,7 +1495,7 @@ test('Domain 09 (35 UAT Scenarios): Enterprise Multi-Dimensional Budget, Soft/Ha
 
     // Claimant cannot self-approve expense claim
     await expect(
-      h.call('finance', 'POST', 'sales', {
+      h.call('finance', 'POST', 'finance', {
         action: 'review_expense_claim',
         legal_entity_id: legal,
         id: claim.body.id,
