@@ -37,6 +37,17 @@ export async function POST(req:Request){
    const r=await db.prepare('SELECT rticore_fg_bind_contract(?,?,?,?,?,?,?) AS result').bind(TENANT,v.legal_entity_id,email,approve?'approve':'create',v.contract_id,v.terms_id,approve?String(v.notes):null).first<{result:unknown}>();
    erpAssert(r,'Binding tidak tersedia',503);return erpReply({success:true,result:r.result},approve?200:201);
   }
+  if(v.action==='create_bound_wallet'||v.action==='approve_bound_wallet'){
+   const approve=v.action==='approve_bound_wallet';const id=approve?v.wallet_id:v.contract_id;
+   erpAssert(erpId(id)&&(!approve||erpText(v.notes,12,1000)),'Wallet atau kontrak tidak valid');
+   const r=await db.prepare('SELECT rticore_fg_bound_wallet_command(?,?,?,?,?,?) AS result').bind(TENANT,v.legal_entity_id,email,approve?'approve':'create',id,approve?String(v.notes):null).first<{result:unknown}>();
+   erpAssert(r,'Wallet command tidak tersedia',503);return erpReply({success:true,result:r.result},approve?200:201);
+  }
+  if(v.action==='submit_psa_consumption'){
+   erpAssert(erpId(v.wallet_id)&&erpId(v.lot_id)&&erpId(v.reservation_id)&&erpId(v.milestone_id)&&tiers.includes(String(v.service_tier))&&Array.isArray(v.timesheet_ids)&&v.timesheet_ids.length>=1&&v.timesheet_ids.length<=100&&v.timesheet_ids.every(erpId)&&new Set(v.timesheet_ids).size===v.timesheet_ids.length&&erpText(v.idempotency_key,16,128)&&erpText(v.notes,12,1000),'PSA consumption tidak valid');
+   const r=await db.prepare('SELECT rticore_fg_psa_submit(?,?,?,?,?,?,?,?,CAST(? AS jsonb),?,?) AS result').bind(TENANT,v.legal_entity_id,email,v.wallet_id,v.lot_id,v.reservation_id,v.milestone_id,String(v.service_tier),JSON.stringify(v.timesheet_ids),v.idempotency_key,v.notes).first<{result:unknown}>();
+   erpAssert(r,'PSA command tidak tersedia',503);return erpReply({success:true,result:r.result},201);
+  }
   if(v.action==='preview_contract_credits'){
    erpAssert(erpId(v.contract_id)&&erpId(v.terms_id)&&tiers.includes(String(v.service_tier))&&integer(v.estimated_mandays_tenths,1,1000000),'Data estimasi tidak valid');
    const p=await db.prepare("SELECT t.unit_credit_price_cents,t.credits_included,c.multiplier_bps FROM rticore_fg_product_terms t JOIN rticore_fg_product_conversions c ON c.tenant_id=t.tenant_id AND c.legal_entity_id=t.legal_entity_id AND c.terms_id=t.id JOIN rticore_service_contracts x ON x.tenant_id=t.tenant_id JOIN rticore_erp_project_scopes s ON s.tenant_id=x.tenant_id AND s.project_id=x.project_id AND s.legal_entity_id=t.legal_entity_id AND s.status='approved' WHERE t.tenant_id=? AND t.legal_entity_id=? AND t.id=? AND c.service_tier=? AND x.id=? AND x.model='FlexGuard' AND x.status='active' AND t.status='approved' AND rticore_fg_contract_binding_valid(t.tenant_id,t.legal_entity_id,x.id,t.id) AND t.effective_from<=CURRENT_DATE AND x.start_date<=CURRENT_DATE::text AND x.end_date>=CURRENT_DATE::text").bind(TENANT,v.legal_entity_id,v.terms_id,String(v.service_tier),v.contract_id).first<{unit_credit_price_cents:number;credits_included:number;multiplier_bps:number}>();
