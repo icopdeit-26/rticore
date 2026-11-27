@@ -44,6 +44,12 @@ export async function POST(req:Request){
    const row=await db.prepare("SELECT rticore_fg_review(?,?,?,?,CAST(? AS boolean),?) AS result").bind(TENANT,v.legal_entity_id,email,v.request_id,v.approve?'true':'false',v.notes).first<{result:unknown}>();
    erpAssert(row,'Review tidak tersedia',503);return erpReply({success:true,result:row.result});
   }
+  if(v.action==='dock'){
+   erpAssert(erpId(v.event_id)&&['draft','link_purchase','ack'].includes(String(v.docking_action)),'Docking action tidak valid');
+   const refs=[v.rule_id,v.period_id,v.journal_id].map(nullableId);erpAssert(refs.every(x=>x!==undefined),'Referensi tidak valid');
+   const row=await db.prepare("SELECT rticore_fg_dock(?,?,?,?,?,?,?,?) AS result").bind(TENANT,v.legal_entity_id,email,v.event_id,String(v.docking_action),refs[0]??null,refs[1]??null,refs[2]??null).first<{result:unknown}>();
+   erpAssert(row,'Finance docking tidak tersedia',503);return erpReply({success:true,result:row.result});
+  }
   return erpReply({success:false,message:'Action tidak dikenal'},422);
  }catch(e){
   const m=String(e);if(/FLEXGUARD_(ACCESS_DENIED|APPROVAL_DENIED|SCOPE_INVALID|SELF_APPROVAL|APPROVAL_LIMIT)/.test(m))return erpReply({success:false,message:'Kewenangan FlexGuard ditolak'},403);
