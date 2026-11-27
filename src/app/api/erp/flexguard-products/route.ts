@@ -34,7 +34,7 @@ export async function POST(req:Request){
   if(v.action==='bind_contract'||v.action==='approve_contract_binding'){
    erpAssert(erpId(v.contract_id)&&erpId(v.terms_id),'Kontrak dan product terms wajib');
    const approve=v.action==='approve_contract_binding';erpAssert(!approve||erpText(v.notes,12,1000),'Approval notes wajib');
-   const r=await db.prepare('SELECT rticore_fg_bind_contract(?,?,?,?,?,?,?) AS result').bind(TENANT,v.legal_entity_id,email,approve?'approve':'create',v.contract_id,v.terms_id,approve?String(v.notes):null).first<{result:unknown}>();
+   const r=await db.prepare(process.env.RTICORE_SERVICE_CATALOG_ENABLED==='1'?'SELECT rticore_catalog_bind_priced_contract(?,?,?,?,?,?,?) AS result':'SELECT rticore_fg_bind_contract(?,?,?,?,?,?,?) AS result').bind(TENANT,v.legal_entity_id,email,approve?'approve':'create',v.contract_id,v.terms_id,approve?String(v.notes):null).first<{result:unknown}>();
    erpAssert(r,'Binding tidak tersedia',503);return erpReply({success:true,result:r.result},approve?200:201);
   }
   if(v.action==='create_bound_wallet'||v.action==='approve_bound_wallet'){

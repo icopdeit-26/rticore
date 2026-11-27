@@ -29,7 +29,8 @@ export async function GET(req:Request){
   const matrices=await db.prepare("SELECT id,matrix_code,label,version,factor_bps,status FROM rticore_catalog_complexity WHERE tenant_id=? AND legal_entity_id=?"+(privileged?'':" AND status='approved'")+" ORDER BY matrix_code,version DESC LIMIT 201").bind(TENANT,entity).all();
   // Pricing evidence is available only to explicitly assigned Finance makers/checkers.
   const snapshots=privileged?await db.prepare("SELECT id,service_id,profile_id,complexity_id,opportunity_id,quantity,pricing_method,billable_mandays_tenths,nonbillable_mandays_tenths,direct_cost_cents,loaded_cost_cents,net_price_cents,calculation_sha256,status FROM rticore_catalog_pricing_snapshots WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 201").bind(TENANT,entity).all():{results:[]};
-  return erpReply({success:true,activity_profiles:profiles.results.slice(0,200),complexity_matrices:matrices.results.slice(0,200),pricing_snapshots:snapshots.results.slice(0,200),workflow_truncated:[profiles,matrices,snapshots].some(x=>x.results.length>200),services:services.results.slice(0,200),rate_cards:rates.results.slice(0,200),truncated:services.results.length>200||rates.results.length>200,cost_basis_visible:privileged,can_make:finance?.can_make===true,can_approve:finance?.can_approve===true,reference:{categories:ENTERPRISE_SERVICE_CATEGORIES,activity_phases:STANDARD_ACTIVITY_PHASES,resource_roles:ENTERPRISE_RESOURCE_ROLES,complexity_tiers:COMPLEXITY_TIER_BPS}});
+  const bindings=privileged?await db.prepare("SELECT id,snapshot_id,boq_id,boq_version,boq_edit_seq,price_cents,status FROM rticore_catalog_boq_bindings WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 201").bind(TENANT,entity).all():{results:[]};
+  return erpReply({success:true,boq_bindings:bindings.results.slice(0,200),activity_profiles:profiles.results.slice(0,200),complexity_matrices:matrices.results.slice(0,200),pricing_snapshots:snapshots.results.slice(0,200),workflow_truncated:[profiles,matrices,snapshots,bindings].some(x=>x.results.length>200),services:services.results.slice(0,200),rate_cards:rates.results.slice(0,200),truncated:services.results.length>200||rates.results.length>200,cost_basis_visible:privileged,can_make:finance?.can_make===true,can_approve:finance?.can_approve===true,reference:{categories:ENTERPRISE_SERVICE_CATEGORIES,activity_phases:STANDARD_ACTIVITY_PHASES,resource_roles:ENTERPRISE_RESOURCE_ROLES,complexity_tiers:COMPLEXITY_TIER_BPS}});
  }catch(e){return erpError(e);}
 }
 export async function POST(req:Request){
@@ -40,6 +41,12 @@ export async function POST(req:Request){
   const v=await readBoundedJSON(req,12000) as Record<string,unknown>;
   erpAssert(erpId(v.legal_entity_id),'Legal entity wajib');
   let data:Record<string,unknown>;let id:string|null=null;
+  if(v.action==='create_boq_binding'||v.action==='approve_boq_binding'){
+   if(v.action==='create_boq_binding'){erpAssert(erpId(v.snapshot_id)&&erpId(v.boq_id),'Snapshot dan BoQ wajib');data={snapshot_id:v.snapshot_id,boq_id:v.boq_id};}
+   else{erpAssert(erpId(v.id)&&erpText(v.notes,12,1000),'Approval tidak valid');id=v.id;data={notes:v.notes};}
+   const r=await a.identity.db.prepare('SELECT rticore_catalog_boq_binding_command(?,?,?,?,?,CAST(? AS jsonb)) AS result').bind(TENANT,v.legal_entity_id,a.identity.email,String(v.action),id,JSON.stringify(data)).first<{result:unknown}>();
+   erpAssert(r,'Binding tidak tersedia',503);return erpReply({success:true,result:r.result},v.action==='create_boq_binding'?201:200);
+  }
   const workflowActions=['create_activity_profile','approve_activity_profile','create_complexity','approve_complexity','create_pricing_snapshot','approve_pricing_snapshot'];
   if(workflowActions.includes(String(v.action))){
    if(v.action==='create_activity_profile'){
