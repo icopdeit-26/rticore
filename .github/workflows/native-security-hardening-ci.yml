@@ -1,0 +1,50 @@
+name: Native security hardening CI
+on:
+  pull_request:
+  push:
+    branches: [main, 'integration/v6-erp-finance-20261127']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked graph
+        run: npm ci --no-audit --no-fund
+      - name: Runtime dependency vulnerability audit (high and critical gate)
+        run: npm audit --omit=dev --audit-level=high
+      - name: High-confidence tracked-text secret scan
+        if: always()
+        run: node --test tests/security-secret-scan.test.mjs && node scripts/security-secret-scan.mjs
+      - name: Native security and negative API regression
+        if: always()
+        run: npm run test:security-native && npm run test:rticore-negative && npm run test:ai
+      - name: Typecheck and build
+        if: always()
+        run: npm run typecheck && npm run build
+      - name: Isolated HTTP security smoke (no credentials)
+        if: always()
+        run: |
+          set -eu
+          export RTICORE_RUNTIME=hostinger RTICORE_AUTH_MODE=business RTICORE_LOCAL_MODE=0 RTICORE_DB_ENGINE=postgres RTICORE_PUBLIC_ORIGIN=https://example.invalid
+          node node_modules/next/dist/bin/next start --hostname 127.0.0.1 -p 3199 >/tmp/rticore-security.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3199/api/health/live >/dev/null 2>&1; then ready=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          node scripts/security-http-smoke.mjs
