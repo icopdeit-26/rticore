@@ -15,5 +15,5 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: node --experimental-strip-types --test tests/cams-journal-contract.test.cjs tests/cams-runtime-boundary.test.cjs
+      - run: node --experimental-strip-types --test tests/cams-journal-contract.test.cjs tests/cams-runtime-boundary.test.cjs tests/cams-review-actions.test.cjs
       - run: npm run typecheck
