@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 export type JournalLine = {accountCode:string;costCenterId:string|null;debitAmount:string;creditAmount:string};
 export type JournalEnvelope = {schemaVersion:'cams-journal/1';sourceSystem:'CAMSRTI';tenantId:string;journalId:string;idempotencyKey:string;period:string;currency:'IDR';sourceType:string;journalNumber:string;lines:JournalLine[];totalDebit:string;totalCredit:string};
-export class DockingError extends Error {constructor(public code:string,public status=422){super(code);}}
+export class DockingError extends Error {code:string;status:number;constructor(code:string,status=422){super(code);this.code=code;this.status=status;}}
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const obj=(x:unknown):Record<string,unknown>=>{if(!x||typeof x!=='object'||Array.isArray(x))throw new DockingError('INVALID_OBJECT');return x as Record<string,unknown>;};
 const str=(x:unknown,re:RegExp):string=>{if(typeof x!=='string'||!re.test(x))throw new DockingError('INVALID_FIELD');return x;};

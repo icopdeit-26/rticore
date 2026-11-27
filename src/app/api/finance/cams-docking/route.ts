@@ -25,9 +25,9 @@ export async function POST(req:Request){
   const {db,source,entity,map}=context(req);const e=journalEnvelope(await readBoundedJSON(req,128000));
   if(e.tenantId!==source)throw new DockingError('TENANT_MISMATCH',403);
   const hash=envelopeHash(e),prior=await load(db,e.idempotencyKey);
-  if(prior){if(prior.source_tenant_id!==source||prior.payload_hash!==hash)throw new DockingError('IDEMPOTENCY_CONFLICT',409);return reply(receipt(prior));}
+  if(prior){if(prior.source_tenant_id!==source||prior.legal_entity_id!==entity||prior.payload_hash!==hash)throw new DockingError('IDEMPOTENCY_CONFLICT',409);return reply(receipt(prior));}
   const legal=await db.prepare("SELECT id FROM rticore_erp_org_units WHERE tenant_id=? AND id=? AND kind='legal_entity' AND active=1").bind(TENANT,entity).first();if(!legal)throw new DockingError('LEGAL_ENTITY_INVALID',409);
-  const period=await db.prepare("SELECT id FROM rticore_gl_periods WHERE tenant_id=? AND legal_entity_id=? AND period=? AND status='open'").bind(TENANT,entity,e.period).first();if(!period)throw new DockingError('PERIOD_NOT_OPEN',409);
+  const period=await db.prepare("SELECT p.id FROM rticore_gl_periods p WHERE p.tenant_id=? AND p.legal_entity_id=? AND p.period=? AND p.status='open' AND NOT EXISTS(SELECT 1 FROM rticore_finance_period_controls c WHERE c.tenant_id=p.tenant_id AND c.period_id=p.id AND c.close_stage<>'open')").bind(TENANT,entity,e.period).first();if(!period)throw new DockingError('PERIOD_NOT_OPEN',409);
   const mapped:MappedLine[]=[];
   for(const line of e.lines){
    if(line.costCenterId!==null)throw new DockingError('COST_CENTER_MAPPING_REQUIRED',409);
@@ -38,13 +38,13 @@ export async function POST(req:Request){
    mapped.push({accountId:a.id,debit:minorUnits(line.debitAmount).toString(),credit:minorUnits(line.creditAmount).toString()});
   }
   await db.prepare('INSERT INTO rticore_cams_finance_inbox(id,source_tenant_id,source_journal_id,idempotency_key,payload_hash,legal_entity_id,period_code,payload_json,mapped_lines_json) VALUES(?,?,?,?,?,?,?,CAST(? AS jsonb),CAST(? AS jsonb)) ON CONFLICT DO NOTHING').bind(randomUUID(),source,e.journalId,e.idempotencyKey,hash,entity,e.period,JSON.stringify(e),JSON.stringify(mapped)).run();
-  const saved=await load(db,e.idempotencyKey);if(!saved||saved.source_tenant_id!==source||saved.payload_hash!==hash)throw new DockingError('IDEMPOTENCY_CONFLICT',409);
+  const saved=await load(db,e.idempotencyKey);if(!saved||saved.source_tenant_id!==source||saved.legal_entity_id!==entity||saved.payload_hash!==hash)throw new DockingError('IDEMPOTENCY_CONFLICT',409);
   return reply(receipt(saved),201);
  }catch(e){return err(e);}
 }
 export async function GET(req:Request){
- try{const {db,source}=context(req);const key=new URL(req.url).searchParams.get('idempotencyKey');if(!key||!/^OUTBOX-JRN-[0-9a-f-]{36}$/i.test(key))throw new DockingError('INVALID_IDEMPOTENCY');
- const r=await load(db,key);if(!r||r.source_tenant_id!==source)throw new DockingError('RECEIPT_NOT_FOUND',404);
+ try{const {db,source,entity}=context(req);const key=new URL(req.url).searchParams.get('idempotencyKey');if(!key||!/^OUTBOX-JRN-[0-9a-f-]{36}$/i.test(key))throw new DockingError('INVALID_IDEMPOTENCY');
+ const r=await load(db,key);if(!r||r.source_tenant_id!==source||r.legal_entity_id!==entity)throw new DockingError('RECEIPT_NOT_FOUND',404);
  const j=await db.prepare("SELECT j.id,j.status,p.period FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id WHERE j.tenant_id=? AND j.legal_entity_id=? AND j.source_type='manual' AND j.source_key=?").bind(TENANT,r.legal_entity_id,key).first<{id:string;status:string;period:string}>();
  if(!j)return reply(receipt(r));if(j.status!=='posted')return reply(receipt(r,j.status==='rejected'?'rejected':'pending_review',j.id));
  const lines=await db.prepare('SELECT account_id,debit_cents,credit_cents FROM rticore_gl_lines WHERE tenant_id=? AND journal_id=?').bind(TENANT,j.id).all<{account_id:string;debit_cents:string|number;credit_cents:string|number}>();
