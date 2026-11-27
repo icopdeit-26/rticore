@@ -36,7 +36,9 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://rticore.example.invalid/login"
+        "post.logout.redirect.uris": "https://rticore.example.invalid/login",
+        "default.acr.values": "2",
+        "minimum.acr.value": "2"
       },
       "protocolMappers": [
         {
@@ -49,29 +51,60 @@
             "id.token.claim": "false"
           }
         }
-      ]
+      ],
+      "implicitFlowEnabled": false,
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "browserFlow": "rticore-required-mfa",
   "authenticationFlows": [
     {
       "alias": "rticore-required-mfa",
-      "description": "Mandatory password and OTP for all browser logins; no cookie-only alternative",
+      "description": "Mandatory password and OTP at LoA 2; no cookie or broker bypass",
       "providerId": "basic-flow",
       "topLevel": true,
       "builtIn": false,
       "authenticationExecutions": [
         {
-          "authenticator": "auth-username-password-form",
+          "flowAlias": "rticore-password-otp-loa2",
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10
+        }
+      ]
+    },
+    {
+      "alias": "rticore-password-otp-loa2",
+      "description": "Record LoA 2 only after password and OTP",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "rticore-loa2",
+          "authenticatorFlow": false,
           "requirement": "REQUIRED",
-          "priority": 10,
-          "authenticatorFlow": false
+          "priority": 10
+        },
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20
         },
         {
           "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
           "requirement": "REQUIRED",
-          "priority": 20,
-          "authenticatorFlow": false
+          "priority": 30
         }
       ]
     }
@@ -79,5 +112,20 @@
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA256",
   "otpPolicyDigits": 6,
-  "otpPolicyPeriod": 30
+  "otpPolicyPeriod": 30,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "rememberMe": false,
+  "eventsEnabled": true,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "authenticatorConfig": [
+    {
+      "alias": "rticore-loa2",
+      "config": {
+        "loa-condition-level": "2",
+        "loa-max-age": "0"
+      }
+    }
+  ]
 }
