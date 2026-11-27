@@ -25,7 +25,7 @@ test('canonical PostgreSQL schema, all generated business rule triggers and migr
  const fks=JSON.parse(fs.readFileSync('deployment/hostinger/migrations/0054_entity_constraints.json','utf8'));
  const actualFks=(await db.query("SELECT conname FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='public' AND c.contype='f' AND c.convalidated")).rows.map(r=>r.conname);
  assert.ok(fks.every(f=>actualFks.includes(f.name)));
- for(const file of ['0057_flexguard_native_enterprise.sql','0058_flexguard_finance_receiver.sql','0059_flexguard_wallet_onboarding.sql','0060_flexguard_allocation_and_journal_controls.sql']){
+ for(const file of ['0057_flexguard_native_enterprise.sql','0058_flexguard_finance_receiver.sql','0059_flexguard_wallet_onboarding.sql','0060_flexguard_allocation_and_journal_controls.sql','0061_flexguard_maintenance_queue.sql']){
   const migration=fs.readFileSync('deployment/hostinger/migrations/'+file,'utf8');
   await db.query(migration);await db.query(migration);
  }
@@ -40,5 +40,7 @@ test('canonical PostgreSQL schema, all generated business rule triggers and migr
  await assert.rejects(db.query("SELECT rticore_fg_submit('synthetic','unassigned','unknown@example.invalid','none','purchase',1,'invoice',NULL,NULL,NULL,'synthetic-request-key','Synthetic denied request')"),/FLEXGUARD_ACCESS_DENIED/);
  await assert.rejects(db.query("SELECT rticore_fg_dock('synthetic','unassigned','unknown@example.invalid','none','ack',NULL,NULL,NULL)"),/FLEXGUARD_ACCESS_DENIED/);
 
+ await assert.rejects(db.query("SELECT * FROM rticore_fg_retry_due('synthetic','unassigned','unknown@example.invalid',NULL,1)"),/FLEXGUARD_ACCESS_DENIED/);
+ await assert.rejects(db.query("SELECT * FROM rticore_fg_expiry_due('synthetic','unassigned','unknown@example.invalid',1)"),/FLEXGUARD_ACCESS_DENIED/);
  }finally{await db.end()}
 });

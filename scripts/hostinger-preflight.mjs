@@ -35,6 +35,8 @@ try {
   if(fgWallet.rows[0]?.ready!==true)throw new Error('FlexGuard 0059 wallet migration incomplete');
   const fgControl=await client.query("SELECT to_regclass('public.rticore_fg_invoice_allocations') IS NOT NULL AS allocations,to_regprocedure('public.rticore_fg_allocate_invoice(text,text,text,text,text,text,bigint,text)') IS NOT NULL AS allocation,to_regprocedure('public.rticore_fg_journal_command(text,text,text,text,text,text)') IS NOT NULL AS journal");
   if(!fgControl.rows.length||!Object.values(fgControl.rows[0]).every(Boolean))throw new Error('FlexGuard 0060 control migration incomplete');
+  const maintenance=await client.query("SELECT to_regclass('public.rticore_fg_retry_attempts') IS NOT NULL AS attempts,to_regprocedure('public.rticore_fg_retry_due(text,text,text,text,integer)') IS NOT NULL AS retry,to_regprocedure('public.rticore_fg_expiry_due(text,text,text,integer)') IS NOT NULL AS expiry");
+  if(!maintenance.rows.length||!Object.values(maintenance.rows[0]).every(Boolean))throw new Error('FlexGuard 0061 maintenance migration incomplete');
   const account = await client.query("SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname=current_user");
   if (Object.values(account.rows[0] || {}).some(Boolean)) throw new Error('Runtime role has excessive database privileges');
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
