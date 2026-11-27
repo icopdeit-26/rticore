@@ -75,6 +75,8 @@ try {
     EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid=to_regclass('public.rticore_fg_psa_consumption_evidence') AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id']) AS unique_timesheet
   `);
   if(!product.rows.length||!Object.values(product.rows[0]).every(Boolean))throw new Error('FlexGuard 0063–0066 contract and PSA migration incomplete');
+  const catalog=await client.query("SELECT to_regprocedure('public.rticore_catalog_command(text,text,text,text,text,jsonb)') IS NOT NULL AS master,to_regprocedure('public.rticore_catalog_workflow_command(text,text,text,text,text,jsonb)') IS NOT NULL AS workflow,to_regclass('public.rticore_catalog_pricing_snapshots') IS NOT NULL AS snapshots");
+  if(!catalog.rows.length||!Object.values(catalog.rows[0]).every(Boolean))throw Error('Service Catalog migrations 0067–0068 incomplete');
   await assertRuntimeLeastPrivilege(client);
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
   if (!active.rowCount) throw new Error('No active membership provisioned');

@@ -13,7 +13,12 @@ export async function GET(req:Request){
  try{
   erpAssert(enabled(),'Service Catalog release gate belum aktif',503);
   const {db,email,role,rolePreview}=a.identity;erpAssert(!rolePreview&&roles.includes(role),'Akses ditolak',403);
-  const entity=new URL(req.url).searchParams.get('legal_entity_id');erpAssert(erpId(entity),'Legal entity wajib');
+  const entity=new URL(req.url).searchParams.get('legal_entity_id');
+  if(!entity){
+   const units=await db.prepare("SELECT id,code,label FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND rticore_fg_actor_role(u.tenant_id,u.id,?)=? ORDER BY code LIMIT 201").bind(TENANT,email,role).all();
+   return erpReply({success:true,entities:units.results.slice(0,200),truncated:units.results.length>200});
+  }
+  erpAssert(erpId(entity),'Legal entity wajib');
   const scope=await db.prepare('SELECT rticore_fg_actor_role(?,?,?) AS role').bind(TENANT,entity,email).first<{role:string|null}>();
   erpAssert(scope?.role===role,'Akses legal entity ditolak',403);
   const finance=await db.prepare("SELECT rticore_catalog_finance_access(?,?,?,'make') OR rticore_catalog_finance_access(?,?,?,'approve') AS allowed").bind(TENANT,entity,email,TENANT,entity,email).first<{allowed:boolean}>();

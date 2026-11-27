@@ -143,6 +143,13 @@ export const FINANCE_ROLE_CATALOG: FinanceMenuSection[] = [
         ],
       },
       {
+        label: 'Service Catalog & Pricing',
+        href: '/erp/service-catalog',
+        badge: 'Approved rates & pricing',
+        functions: 'Pengelolaan master layanan, rate card, aktivitas, complexity dan snapshot harga dengan persetujuan independen.',
+        features: ['Scope legal entity, versi immutable dan approval limit', 'Harga dihitung dari rate card approved, sebelum pajak'],
+      },
+      {
         label: 'Approval Center · Lintas Modul',
         href: '/approvals',
         badge: '6 Kategori Antrean Finance',
