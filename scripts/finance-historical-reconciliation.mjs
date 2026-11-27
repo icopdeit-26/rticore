@@ -269,6 +269,32 @@ export async function scanFlexGuardExceptionRegister(client){
  return rows;
 }
 
+// Historical source-evidence coverage is not approval. Never generate retrospective actors.
+export async function scanFlexGuardHistoricalEvidence(client){
+ const {rows}=await client.query(`WITH exceptions AS (
+ SELECT l.*,i.id AS invoice_ref,i.status AS invoice_status,i.amount_cents AS invoice_cents,i.created_by AS invoice_maker,i.reviewed_by AS invoice_checker,i.vat_cents
+ FROM public.rticore_flexguard_credit_lots l
+ LEFT JOIN public.rticore_billing_invoices i ON i.tenant_id=l.tenant_id AND i.id=l.invoice_id
+ WHERE NOT EXISTS(SELECT 1 FROM public.rticore_fg_invoice_allocations a WHERE a.tenant_id=l.tenant_id AND a.legal_entity_id=l.legal_entity_id AND a.wallet_id=l.wallet_id AND a.invoice_id=l.invoice_id AND a.credits=l.credits_total AND a.net_cents=l.financial_value_cents AND a.status='approved')
+ ), monetary AS (
+ SELECT l.*,e.id AS event_ref,e.status AS event_status
+ FROM public.rticore_flexguard_enterprise_ledger l LEFT JOIN public.rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.legal_entity_id=l.legal_entity_id AND e.id=l.finance_outbox_event_id
+ WHERE l.transaction_type IN ('purchase','top_up','consumption','expiry','adjustment') AND (e.id IS NULL OR e.status<>'processed')
+ ), journal_gaps AS (
+ SELECT j.* FROM public.rticore_fg_finance_links f JOIN public.rticore_finance_integration_events e ON e.tenant_id=f.tenant_id AND e.legal_entity_id=f.legal_entity_id AND e.id=f.event_id JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.legal_entity_id=f.legal_entity_id AND j.id=f.journal_id
+ WHERE e.status='processed' AND j.source_type='flexguard' AND NOT EXISTS(SELECT 1 FROM public.rticore_finance_journal_workflows w WHERE w.tenant_id=j.tenant_id AND w.legal_entity_id=j.legal_entity_id AND w.journal_id=j.id AND w.lifecycle_stage='posted' AND w.approved_by=j.reviewed_by AND w.posted_by=j.posted_by AND lower(j.created_by)<>lower(j.posted_by) AND lower(j.reviewed_by)<>lower(j.posted_by))
+ )
+ SELECT
+ (SELECT count(*) FROM exceptions)::text AS allocation_exceptions,
+ (SELECT count(*) FROM exceptions x WHERE x.invoice_status='approved' AND x.invoice_checker IS NOT NULL AND lower(x.invoice_maker)<>lower(x.invoice_checker) AND x.invoice_cents=x.financial_value_cents AND (SELECT coalesce(sum(p.amount_cents),0) FROM public.rticore_billing_payments p WHERE p.tenant_id=x.tenant_id AND p.invoice_id=x.invoice_id AND p.status='approved')>=x.invoice_cents+x.vat_cents)::text AS allocation_source_candidates,
+ (SELECT count(*) FROM exceptions x WHERE NOT EXISTS(SELECT 1 FROM public.rticore_fg_invoice_allocations a WHERE a.tenant_id=x.tenant_id AND a.invoice_id=x.invoice_id))::text AS missing_allocation_records,
+ (SELECT count(*) FROM monetary)::text AS monetary_exceptions,
+ (SELECT count(*) FROM monetary l WHERE l.approved_by IS NOT NULL AND lower(l.actor_email)<>lower(l.approved_by) AND EXISTS(SELECT 1 FROM public.rticore_flexguard_requests r WHERE r.tenant_id=l.tenant_id AND r.legal_entity_id=l.legal_entity_id AND r.id=l.id AND r.status='posted' AND r.credit_amount=l.credit_amount AND r.transaction_type=l.transaction_type AND r.wallet_id=l.wallet_id AND lower(r.actor_email)=lower(l.actor_email) AND lower(r.approved_by)=lower(l.approved_by)))::text AS matching_independent_request_candidates,
+ (SELECT count(*) FROM journal_gaps)::text AS journal_lifecycle_exceptions,
+ (SELECT count(*) FROM journal_gaps j WHERE j.created_by IS NOT NULL AND j.reviewed_by IS NOT NULL AND j.posted_by IS NOT NULL AND lower(j.created_by)<>lower(j.reviewed_by) AND lower(j.created_by)<>lower(j.posted_by) AND lower(j.reviewed_by)<>lower(j.posted_by))::text AS journal_distinct_actor_candidates`);
+ return rows[0];
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -306,6 +332,7 @@ async function main() {
     const flexguardLedger=flexguardAvailable?await scanFlexGuardLedger(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const fgAllocationControls=flexguardAvailable?await scanFlexGuardAllocationControls(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const legacyBoundary=flexguardAvailable?await scanFlexGuardLegacyBoundary(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
+    const historicalEvidence=flexguardAvailable?await scanFlexGuardHistoricalEvidence(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const exceptionRegister=flexguardAvailable?await scanFlexGuardExceptionRegister(client):[];
     const fgLiability=flexguardAvailable?await scanFlexGuardLiability(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const vendorBankScopes=await scanVendorBankScopes(client);
@@ -313,7 +340,7 @@ async function main() {
     const settlementEvidence=await scanSettlementEvidence(client);
     await client.query('ROLLBACK');
     const ok = flexguardAvailable && exceptionRegister.length===0 && ['legacy_wallets_requiring_review','negative_running_balance_wallets','mixed_ledger_wallets'].every(k=>legacyBoundary[k]==='0') && fgLiability.schema_status==='AVAILABLE' && ['missing_purchase_evidence','lots_pending_ack','lots_with_variance','mismatched_postings','absolute_lot_variance_cents'].every(k=>fgLiability[k]==='0') && fgAllocationControls.schema_status==='AVAILABLE' && ['unverified_lot_allocations','legacy_journal_workflow_review','acknowledged_amount_mismatch'].every(k=>fgAllocationControls[k]==='0') && flexguardLedger.schema_status==='AVAILABLE' && ['invalid_balance','invoice_payment_review','missing_outbox','pending_finance_ack','invalid_posted_link'].every(k=>flexguardLedger[k]==='0') && vendorBankScopes.schema_status==='AVAILABLE' && vendorBankScopes.unassigned==='0' && vendorBankScopes.invalid_assigned_scope==='0' && Object.values(entityConstraints).every(v=>v==='0') && counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope','processed_without_journal_review'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,flexguard_ledger:flexguardLedger,flexguard_allocation_controls:fgAllocationControls,flexguard_liability:fgLiability,flexguard_legacy_boundary:legacyBoundary,flexguard_exception_register:exceptionRegister,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,flexguard_ledger:flexguardLedger,flexguard_allocation_controls:fgAllocationControls,flexguard_liability:fgLiability,flexguard_legacy_boundary:legacyBoundary,flexguard_exception_register:exceptionRegister,flexguard_historical_evidence:historicalEvidence,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok || counts.total===0) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
