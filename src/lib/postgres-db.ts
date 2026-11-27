@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {validateHostingerConfig} from './hostinger-config';
 import {executeAtomicBatch} from './postgres-atomic-batch';
 import fs from 'node:fs';
 import type { D1DB, D1Prepared } from './boq-auth';
@@ -71,7 +72,8 @@ async function ensureSchema(exec: QueryExecutor, schemaSQL: string): Promise<voi
 }
 
 async function createExecutor(): Promise<QueryExecutor> {
-  const pgUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const hostinger = process.env.RTICORE_RUNTIME === 'hostinger';
+  const pgUrl = hostinger ? validateHostingerConfig(process.env).toString() : process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
   if (pgUrl) {
     const schemaPath = path.join(process.cwd(), 'rticore_postgresql_schema.sql');
@@ -81,16 +83,19 @@ async function createExecutor(): Promise<QueryExecutor> {
       connect(): Promise<{query: PgPool['query']; release(error?: Error):void}>;
     };
     const pgMod = (await import(/* webpackIgnore: true */ 'pg' as string)) as {
-      Pool: new (opts: { connectionString: string }) => PgPool;
+      Pool: new (opts: { connectionString: string; ssl?: { rejectUnauthorized: boolean }; connectionTimeoutMillis?: number; max?: number }) => PgPool;
     };
-    const pool = new pgMod.Pool({ connectionString: pgUrl });
+    const pool = new pgMod.Pool({ connectionString: pgUrl, ...(hostinger ? {ssl: {rejectUnauthorized:true}, connectionTimeoutMillis:10000, max:5} : {}) });
     const exec: QueryExecutor = {
       query: (text, params) => pool.query(text, params),
       exec: (sql) => pool.query(sql),
       batch: (statements) => executeAtomicBatch(pool,statements),
     };
     // Hosted schema changes are operator-controlled, not request-time DDL.
-    if(process.env.RTICORE_RUNTIME==='hostinger')return exec;
+    if(hostinger){
+      await exec.query('SELECT 1 FROM rticore_members LIMIT 1');
+      return exec;
+    }
     await ensureSchema(exec, schemaSQL);
     // Business-rule triggers generated from the SQLite migrations; idempotent.
     const triggersPath = path.join(process.cwd(), 'rticore_postgresql_triggers.sql');
