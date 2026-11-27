@@ -11,10 +11,18 @@ export async function GET(req:Request){
   erpAssert(enabled(),'FlexGuard Enterprise release gate belum diaktifkan',503);
   erpAssert(!a.identity.rolePreview,'Role preview ditolak',403);
   const {db,email,role}=a.identity;const u=new URL(req.url);const entity=u.searchParams.get('legal_entity_id'),wallet=u.searchParams.get('wallet_id');
-  erpAssert(erpId(entity)&&erpId(wallet),'Legal entity dan wallet wajib');
   erpAssert(['finance','approver','admin'].includes(role),'Akses nilai moneter Finance ditolak',403);
+  if(!entity){
+   const entities=await db.prepare("SELECT u.id,u.label FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND rticore_fg_actor_role(u.tenant_id,u.id,?) IS NOT NULL ORDER BY u.label").bind(TENANT,email).all();
+   return erpReply({success:true,entities:entities.results,role});
+  }
+  erpAssert(erpId(entity)&&(!wallet||erpId(wallet)),'Legal entity atau wallet tidak valid');
   const allowed=await db.prepare("SELECT rticore_fg_actor_role(?,?,?) AS role").bind(TENANT,entity,email).first<{role:string|null}>();
   erpAssert(allowed?.role===role,'Akses legal entity ditolak',403);
+  if(!wallet){
+   const wallets=await db.prepare("SELECT w.id,w.status,w.entitlement_units,w.contract_id,w.customer_id,c.end_date,a.legal_name,CASE WHEN EXISTS(SELECT 1 FROM rticore_flexguard_events e WHERE e.tenant_id=w.tenant_id AND e.wallet_id=w.id) THEN 1 ELSE 0 END AS legacy_reconciliation_required FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes s ON s.tenant_id=c.tenant_id AND s.project_id=c.project_id AND s.status='approved' JOIN rticore_sales_accounts a ON a.tenant_id=w.tenant_id AND a.id=w.customer_id WHERE w.tenant_id=? AND s.legal_entity_id=? ORDER BY w.created_at DESC LIMIT 201").bind(TENANT,entity).all();
+   return erpReply({success:true,wallets:wallets.results.slice(0,200),role,truncated:wallets.results.length>200});
+  }
   const scope=await db.prepare("SELECT w.id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes p ON p.tenant_id=c.tenant_id AND p.project_id=c.project_id AND p.status='approved' WHERE w.tenant_id=? AND p.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first();
   erpAssert(scope,'Wallet di luar scope',403);
   const [lots,ledger,requests]=await Promise.all([
@@ -33,6 +41,12 @@ export async function POST(req:Request){
   erpAssert(!a.identity.rolePreview,'Role preview ditolak',403);erpOrigin(req);
   const v=await readBoundedJSON(req,8000) as Record<string,unknown>;
   const {db,email}=a.identity;erpAssert(erpId(v.legal_entity_id),'Legal entity wajib');
+  if(v.action==='create_wallet'||v.action==='approve_wallet'){
+   const create=v.action==='create_wallet';const target=create?v.contract_id:v.wallet_id;
+   erpAssert(erpId(target)&&(create?Number.isSafeInteger(v.entitlement_units):erpText(v.notes,12,1000)),'Data wallet tidak valid');
+   const row=await db.prepare("SELECT rticore_fg_wallet_command(?,?,?,?,?,CAST(? AS bigint),?) AS result").bind(TENANT,v.legal_entity_id,email,create?'create':'approve',target,create?Number(v.entitlement_units):null,create?null:String(v.notes)).first<{result:unknown}>();
+   erpAssert(row,'Wallet tidak tersedia',503);return erpReply({success:true,result:row.result},create?201:200);
+  }
   if(v.action==='submit'){
    erpAssert(erpId(v.wallet_id)&&typeof v.transaction_type==='string'&&Number.isSafeInteger(v.credit_amount)&&erpText(v.idempotency_key,16,128)&&erpText(v.reason,12,1000),'Parameter transaksi tidak valid');
    const refs=[v.invoice_id,v.lot_id,v.source_tx_id,v.milestone_id].map(nullableId);erpAssert(refs.every(x=>x!==undefined),'Referensi tidak valid');
