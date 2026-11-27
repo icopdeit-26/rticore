@@ -42,6 +42,19 @@ export function isEnabledD1ApiRoute(path: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
+  // Redirect anonymous native root before React streaming can turn redirect into a 200 HTML response.
+  // Cookie shape is only a routing hint; the server root still verifies the actual database session.
+  if (request.nextUrl.pathname === '/') {
+    if (process.env.RTICORE_RUNTIME === 'hostinger' && process.env.RTICORE_AUTH_MODE === 'business') {
+      const cookies=(request.headers.get('cookie')||'').split(';').map(s=>s.trim()).filter(s=>s.startsWith('__Host-rticore_session='));
+      if(cookies.length!==1||!/^__Host-rticore_session=[A-Za-z0-9_-]{43}$/.test(cookies[0])){
+        const response=NextResponse.redirect(new URL('/login',request.url),307);
+        response.headers.set('Cache-Control','no-store');
+        return response;
+      }
+    }
+    return NextResponse.next();
+  }
   if (isEnabledD1ApiRoute(request.nextUrl.pathname)) return NextResponse.next();
   return NextResponse.json(
     { success: false, message: 'API demo nonpersisten dinonaktifkan hingga migrasi otorisasi selesai.' },
@@ -49,4 +62,4 @@ export function middleware(request: NextRequest) {
   );
 }
 
-export const config = { matcher: ['/api/:path*'] };
+export const config = { matcher: ['/', '/api/:path*'] };

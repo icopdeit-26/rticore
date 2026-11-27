@@ -4,6 +4,8 @@ on:
     branches: ['fix/p0-business-login-entry-20261128', 'integration/v6-erp-finance-20261127', 'main']
   pull_request:
     paths:
+      - 'src/middleware.ts'
+      - 'tests/middleware-route-gate.test.cjs'
       - 'src/app/page.tsx'
       - 'src/app/layout.tsx'
       - 'src/app/login/page.tsx'
