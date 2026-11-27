@@ -28,10 +28,10 @@ test('Next.js 16 builds with webpack while custom webpack config remains', () =>
   assert.equal(pkg.scripts.dev, 'next dev --webpack');
 });
 
-test('Cloudflare build includes runtime compatibility guard and supported OpenNext adapter', () => {
-  assert.equal(pkg.devDependencies['@opennextjs/cloudflare'], '1.20.12');
-  assert.match(pkg.scripts['build:cf'], /test:runtime-compat/);
-  assert.match(pkg.scripts['build:cf'], /opennextjs-cloudflare build/);
+test('enterprise build retains regression gates and uses native Next.js', () => {
+  assert.match(pkg.scripts['build:enterprise'], /test:runtime-compat/);
+  assert.match(pkg.scripts['build:enterprise'], /npm run typecheck && npm run build$/);
+  assert.doesNotMatch(pkg.scripts['build:enterprise'], /opennextjs-cloudflare|wrangler/);
 });
 
 
