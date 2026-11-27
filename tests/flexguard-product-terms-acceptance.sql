@@ -171,4 +171,19 @@ BEGIN
   RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CATALOG_IMMUTABLE' THEN RAISE; END IF; END;
 END $cat$;
+DO $fg$
+DECLARE n bigint; lid text;
+BEGIN
+ SELECT count(*) INTO n FROM rticore_fg_historical_allocation_candidates('defendit360','fg-terms-a','fg-terms-maker@example.invalid');
+ IF n<>0 THEN RAISE EXCEPTION 'ALREADY_APPROVED_ALLOCATION_REOPENED'; END IF;
+ BEGIN
+  PERFORM rticore_fg_historical_allocation_candidates('defendit360','fg-terms-b','fg-terms-maker@example.invalid');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_ACCESS_DENIED' THEN RAISE; END IF; END;
+ SELECT id INTO lid FROM rticore_flexguard_credit_lots WHERE invoice_id='fg-ci-invoice';
+ BEGIN
+  PERFORM rticore_fg_historical_allocation_review('defendit360','fg-terms-a','fg-terms-maker@example.invalid','submit',lid,repeat('b',64),'Synthetic attempt to reopen approved allocation');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_HISTORICAL_SOURCE_REVIEW_REQUIRED' THEN RAISE; END IF; END;
+END $fg$;
 ROLLBACK;
