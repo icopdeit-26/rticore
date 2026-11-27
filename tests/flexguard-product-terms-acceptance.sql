@@ -76,4 +76,47 @@ BEGIN
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_SCOPE_INVALID' THEN RAISE; END IF; END;
  IF EXISTS(SELECT 1 FROM rticore_fg_contract_terms WHERE legal_entity_id='fg-terms-a') THEN RAISE EXCEPTION 'INVALID_BINDING_PERSISTED'; END IF;
 END $fg$;
+INSERT INTO rticore_erp_project_scopes(tenant_id,project_id,legal_entity_id,status,requested_by,reviewed_by) VALUES('defendit360','fg-ci-project','fg-terms-a','approved','ci-maker','ci-checker');
+INSERT INTO rticore_resource_people(id,tenant_id,email,display_name,skills,capacity_pd_month,daily_cost_idr,created_by) VALUES('fg-ci-person','defendit360','fg-terms-maker@example.invalid','FG CI person','test',20,100,'ci');
+INSERT INTO rticore_resource_allocations(id,tenant_id,opportunity_id,person_id,allocation_month,work_role,person_days,daily_cost_snapshot,created_by) VALUES('fg-ci-allocation','defendit360','fg-ci-opportunity','fg-ci-person',to_char(CURRENT_DATE,'YYYY-MM'),'analyst',2,100,'ci');
+INSERT INTO rticore_project_timesheets(id,tenant_id,project_id,person_id,allocation_id,work_date,minutes,cost_snapshot_cents,billable,description,created_by)
+VALUES('fg-ci-ts','defendit360','fg-ci-project','fg-ci-person','fg-ci-allocation',CURRENT_DATE::text,480,10000,1,'Synthetic approved work','fg-terms-maker@example.invalid');
+UPDATE rticore_project_timesheets SET status='approved',version=version+1,reviewed_by='fg-terms-checker@example.invalid',review_notes='Synthetic approved work' WHERE id='fg-ci-ts';
+INSERT INTO rticore_finance_integration_events(id,tenant_id,legal_entity_id,direction,event_type,source_system,source_document_id,correlation_id,idempotency_key,payload_json,payload_sha256,event_timestamp)
+SELECT 'fg-ci-ts-event','defendit360','fg-terms-a','outbox','timesheet.approved','RTICORE','fg-ci-ts','FG-CI-TS','FG-CI-TS-APPROVED',p,encode(sha256(convert_to(p,'UTF8')),'hex'),CURRENT_TIMESTAMP::text
+FROM (SELECT jsonb_build_object('timesheet_id','fg-ci-ts','project_id','fg-ci-project','minutes',480,'billable',true,'cost_snapshot_cents','10000','approved_by','fg-terms-checker@example.invalid')::text p) q;
+DO $fg$
+DECLARE r jsonb; wid text; lot text; reservation text; rid text; before_n bigint; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid';
+BEGIN
+ r:=rticore_fg_bind_contract('defendit360','fg-terms-a',maker,'create','fg-ci-contract','fg-terms-one',NULL);
+ IF r->>'status'<>'draft' THEN RAISE EXCEPTION 'BINDING_DRAFT_FAILED'; END IF;
+ r:=rticore_fg_bind_contract('defendit360','fg-terms-a',checker,'approve','fg-ci-contract','fg-terms-one','Synthetic independent binding approval');
+ IF r->>'status'<>'approved' OR NOT rticore_fg_contract_binding_valid('defendit360','fg-terms-a','fg-ci-contract','fg-terms-one') THEN RAISE EXCEPTION 'BINDING_POSITIVE_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_fg_wallet_command('defendit360','fg-terms-a',maker,'create','fg-ci-contract',21,NULL);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_ENTITLEMENT_BINDING_INVALID' THEN RAISE; END IF; END;
+ r:=rticore_fg_bound_wallet_command('defendit360','fg-terms-a',maker,'create','fg-ci-contract',NULL);wid:=r->>'id';
+ IF NOT EXISTS(SELECT 1 FROM rticore_flexguard_wallets WHERE id=wid AND entitlement_units=20 AND status='draft') THEN RAISE EXCEPTION 'BOUND_WALLET_FAILED'; END IF;
+ r:=rticore_fg_bound_wallet_command('defendit360','fg-terms-a',checker,'approve',wid,'Synthetic wallet approval');
+ IF r->>'status'<>'active' THEN RAISE EXCEPTION 'BOUND_WALLET_APPROVAL_FAILED'; END IF;
+ PERFORM rticore_fg_allocate_invoice('defendit360','fg-terms-a',maker,'submit',wid,'fg-ci-invoice',20,'Synthetic invoice allocation');
+ PERFORM rticore_fg_allocate_invoice('defendit360','fg-terms-a',checker,'approve',wid,'fg-ci-invoice',NULL,'Synthetic allocation approval');
+ r:=rticore_fg_submit('defendit360','fg-terms-a',maker,wid,'purchase',20,'fg-ci-invoice',NULL,NULL,NULL,'FG-CI-PURCHASE-0001','Synthetic purchase request');
+ r:=rticore_fg_review('defendit360','fg-terms-a',checker,r->>'id',true,'Synthetic purchase approval');lot:=r->>'lot_id';
+ r:=rticore_fg_submit('defendit360','fg-terms-a',maker,wid,'reservation',2,NULL,lot,NULL,NULL,'FG-CI-RESERVE-00001','Synthetic reserve request');
+ reservation:=r->>'id';PERFORM rticore_fg_review('defendit360','fg-terms-a',checker,reservation,true,'Synthetic reserve approval');
+ r:=rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-1','Synthetic PSA consumption');rid:=r->>'id';
+ IF r->>'credits'<>'1' OR r->>'status'<>'pending_approval' OR EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger WHERE id=rid) THEN RAISE EXCEPTION 'PSA_SUBMIT_FAILED'; END IF;
+ r:=rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-1','Synthetic PSA consumption');
+ IF r->>'id'<>rid OR r->>'replayed'<>'true' THEN RAISE EXCEPTION 'PSA_REPLAY_FAILED'; END IF;
+ SELECT count(*) INTO before_n FROM rticore_flexguard_requests WHERE wallet_id=wid;
+ BEGIN
+  PERFORM rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-2','Synthetic duplicate request');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN unique_violation THEN NULL; END;
+ IF (SELECT count(*) FROM rticore_flexguard_requests WHERE wallet_id=wid)<>before_n THEN RAISE EXCEPTION 'DUPLICATE_PARTIAL_REQUEST'; END IF;
+ r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
+ IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
+END $fg$;
 ROLLBACK;

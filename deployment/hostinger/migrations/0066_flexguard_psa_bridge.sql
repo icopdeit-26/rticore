@@ -9,18 +9,17 @@ CREATE TABLE IF NOT EXISTS rticore_fg_psa_consumption_evidence (
  FOREIGN KEY(tenant_id,timesheet_id) REFERENCES rticore_project_timesheets(tenant_id,id)
 );
 CREATE OR REPLACE FUNCTION rticore_fg_bound_wallet_command(p_tenant text,p_entity text,p_actor text,p_action text,p_id text,p_notes text) RETURNS jsonb LANGUAGE plpgsql SET search_path=public,pg_catalog AS $fg$
-DECLARE bid text; units bigint; cid text; w record;
+DECLARE bid text; units bigint; cid text; wallet_units bigint;
 BEGIN
  IF p_action='create' THEN cid:=p_id;
  ELSIF p_action='approve' THEN
-  SELECT * INTO w FROM rticore_flexguard_wallets WHERE tenant_id=p_tenant AND id=p_id;
+  SELECT contract_id,entitlement_units INTO cid,wallet_units FROM rticore_flexguard_wallets WHERE tenant_id=p_tenant AND id=p_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'FLEXGUARD_SCOPE_INVALID'; END IF;
-  cid:=w.contract_id;
  ELSE RAISE EXCEPTION 'FLEXGUARD_REQUEST_INVALID'; END IF;
  PERFORM 1 FROM rticore_service_contracts WHERE tenant_id=p_tenant AND id=cid FOR UPDATE;
  SELECT b.id,t.credits_included INTO bid,units FROM rticore_fg_contract_terms b JOIN rticore_fg_product_terms t ON t.id=b.terms_id AND t.tenant_id=b.tenant_id AND t.legal_entity_id=b.legal_entity_id
  WHERE b.tenant_id=p_tenant AND b.legal_entity_id=p_entity AND b.contract_id=cid AND rticore_fg_contract_binding_valid(p_tenant,p_entity,cid,b.terms_id);
- IF NOT FOUND OR (p_action='approve' AND w.entitlement_units<>units) THEN RAISE EXCEPTION 'FLEXGUARD_BINDING_INVALID'; END IF;
+ IF NOT FOUND OR (p_action='approve' AND wallet_units<>units) THEN RAISE EXCEPTION 'FLEXGUARD_BINDING_INVALID'; END IF;
  RETURN rticore_fg_wallet_command(p_tenant,p_entity,p_actor,p_action,p_id,CASE WHEN p_action='create' THEN units ELSE NULL END,p_notes);
 END $fg$;
 -- Preserve historic wallets; once a contract has approved binding, even the old command cannot create inconsistent entitlement.

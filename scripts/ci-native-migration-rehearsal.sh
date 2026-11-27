@@ -27,6 +27,7 @@ grep -q 'p0_journal_period_entity_fk' "$tmp/rejected.log"
 # Remove ONLY the intentional synthetic fixture; no real data is used.
 q -c "DELETE FROM rticore_gl_journals WHERE id='p0-rehearsal-bad'"
 q -f "$dir/0054_finance_entity_constraints.sql"
+q -f tests/flexguard-commercial-fixture.sql
 q -f rticore_postgresql_triggers.sql
 # Apply all approved native streams, and replay to detect unsafe DDL changes.
 for pass in 1 2; do
