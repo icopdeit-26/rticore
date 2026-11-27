@@ -190,6 +190,53 @@ export async function scanFlexGuardAllocationControls(client){
  return {schema_status:'AVAILABLE',...rows[0]};
 }
 
+// Compare each lot against real posted GL lines, not merely claimed event amounts.
+export async function scanFlexGuardLiability(client){
+ const ready=(await client.query("SELECT to_regclass('public.rticore_fg_finance_links') IS NOT NULL AS ready")).rows[0].ready;
+ if(!ready)return {schema_status:'MIGRATION_0058_REQUIRED'};
+ const {rows}=await client.query(`WITH acquisition AS (
+ SELECT lot.tenant_id,lot.legal_entity_id,lot.id AS lot_id,lot.unit_value_cents,
+   count(x.id) FILTER(WHERE x.transaction_type IN ('purchase','top_up')) AS acquisition_count,
+   max(f.credit_account_id) FILTER(WHERE x.transaction_type IN ('purchase','top_up') AND e.status='processed' AND j.status='posted') AS liability_account_id
+ FROM public.rticore_flexguard_credit_lots lot
+ LEFT JOIN public.rticore_flexguard_enterprise_ledger x ON x.tenant_id=lot.tenant_id AND x.legal_entity_id=lot.legal_entity_id AND x.lot_id=lot.id
+ LEFT JOIN public.rticore_finance_integration_events e ON e.tenant_id=x.tenant_id AND e.legal_entity_id=x.legal_entity_id AND e.id=x.finance_outbox_event_id
+ LEFT JOIN public.rticore_fg_finance_links f ON f.tenant_id=e.tenant_id AND f.legal_entity_id=e.legal_entity_id AND f.event_id=e.id AND f.journal_id=e.resulting_journal_id
+ LEFT JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.legal_entity_id=f.legal_entity_id AND j.id=f.journal_id
+ GROUP BY lot.tenant_id,lot.legal_entity_id,lot.id,lot.unit_value_cents
+), entries AS (
+ SELECT a.tenant_id,a.legal_entity_id,a.lot_id,a.acquisition_count,a.liability_account_id,
+ x.id AS tx_id,x.transaction_type,
+ (x.available_delta+x.reserved_delta)*a.unit_value_cents AS expected_delta,
+ e.id AS event_id,e.status AS event_status,j.id AS posted_journal,
+ CASE WHEN j.id IS NOT NULL AND a.liability_account_id IS NOT NULL THEN
+ (SELECT coalesce(sum(gl.credit_cents-gl.debit_cents),0) FROM public.rticore_gl_lines gl WHERE gl.tenant_id=j.tenant_id AND gl.journal_id=j.id AND gl.account_id=a.liability_account_id) ELSE 0 END AS posted_delta
+ FROM acquisition a
+ LEFT JOIN public.rticore_flexguard_enterprise_ledger x ON x.tenant_id=a.tenant_id AND x.legal_entity_id=a.legal_entity_id AND x.lot_id=a.lot_id
+ LEFT JOIN public.rticore_finance_integration_events e ON e.tenant_id=x.tenant_id AND e.legal_entity_id=x.legal_entity_id AND e.id=x.finance_outbox_event_id
+ LEFT JOIN public.rticore_fg_finance_links f ON f.tenant_id=e.tenant_id AND f.legal_entity_id=e.legal_entity_id AND f.event_id=e.id AND f.journal_id=e.resulting_journal_id
+ LEFT JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.legal_entity_id=f.legal_entity_id AND j.id=f.journal_id AND j.status='posted' AND e.status='processed'
+), per_lot AS (
+ SELECT tenant_id,legal_entity_id,lot_id,acquisition_count,liability_account_id,
+ coalesce(sum(expected_delta),0) AS expected_balance,
+ coalesce(sum(posted_delta),0) AS posted_balance,
+ count(*) FILTER(WHERE transaction_type IN ('purchase','top_up','consumption','expiry','adjustment') AND (event_status IS DISTINCT FROM 'processed' OR posted_journal IS NULL)) AS unacknowledged,
+ count(*) FILTER(WHERE transaction_type IN ('purchase','top_up','consumption','expiry','adjustment') AND posted_journal IS NOT NULL AND posted_delta IS DISTINCT FROM expected_delta) AS mismatched_posting
+ FROM entries GROUP BY tenant_id,legal_entity_id,lot_id,acquisition_count,liability_account_id
+)
+SELECT count(*)::text AS lots,
+ count(*) FILTER(WHERE acquisition_count<>1 OR liability_account_id IS NULL)::text AS missing_purchase_evidence,
+ count(*) FILTER(WHERE unacknowledged>0)::text AS lots_pending_ack,
+ count(*) FILTER(WHERE expected_balance<>posted_balance)::text AS lots_with_variance,
+ coalesce(sum(mismatched_posting),0)::text AS mismatched_postings,
+ coalesce(sum(expected_balance),0)::text AS expected_liability_cents,
+ coalesce(sum(posted_balance),0)::text AS posted_linked_liability_cents,
+ coalesce(sum(abs(expected_balance-posted_balance)),0)::text AS absolute_lot_variance_cents,
+ count(*) FILTER(WHERE acquisition_count=1 AND liability_account_id IS NOT NULL AND unacknowledged=0 AND expected_balance=posted_balance AND mismatched_posting=0)::text AS fully_matched_lots
+FROM per_lot`);
+ return {schema_status:'AVAILABLE',...rows[0]};
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -226,12 +273,13 @@ async function main() {
     const flexguardSources=flexguardAvailable?await scanFlexGuardSources(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const flexguardLedger=flexguardAvailable?await scanFlexGuardLedger(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const fgAllocationControls=flexguardAvailable?await scanFlexGuardAllocationControls(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
+    const fgLiability=flexguardAvailable?await scanFlexGuardLiability(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const vendorBankScopes=await scanVendorBankScopes(client);
     const entityConstraints=await scanEntityConstraints(client);
     const settlementEvidence=await scanSettlementEvidence(client);
     await client.query('ROLLBACK');
-    const ok = flexguardAvailable && fgAllocationControls.schema_status==='AVAILABLE' && ['unverified_lot_allocations','legacy_journal_workflow_review','acknowledged_amount_mismatch'].every(k=>fgAllocationControls[k]==='0') && flexguardLedger.schema_status==='AVAILABLE' && ['invalid_balance','invoice_payment_review','missing_outbox','pending_finance_ack','invalid_posted_link'].every(k=>flexguardLedger[k]==='0') && vendorBankScopes.schema_status==='AVAILABLE' && vendorBankScopes.unassigned==='0' && vendorBankScopes.invalid_assigned_scope==='0' && Object.values(entityConstraints).every(v=>v==='0') && counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope','processed_without_journal_review'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,flexguard_ledger:flexguardLedger,flexguard_allocation_controls:fgAllocationControls,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    const ok = flexguardAvailable && fgLiability.schema_status==='AVAILABLE' && ['missing_purchase_evidence','lots_pending_ack','lots_with_variance','mismatched_postings','absolute_lot_variance_cents'].every(k=>fgLiability[k]==='0') && fgAllocationControls.schema_status==='AVAILABLE' && ['unverified_lot_allocations','legacy_journal_workflow_review','acknowledged_amount_mismatch'].every(k=>fgAllocationControls[k]==='0') && flexguardLedger.schema_status==='AVAILABLE' && ['invalid_balance','invoice_payment_review','missing_outbox','pending_finance_ack','invalid_posted_link'].every(k=>flexguardLedger[k]==='0') && vendorBankScopes.schema_status==='AVAILABLE' && vendorBankScopes.unassigned==='0' && vendorBankScopes.invalid_assigned_scope==='0' && Object.values(entityConstraints).every(v=>v==='0') && counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope','processed_without_journal_review'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,flexguard_ledger:flexguardLedger,flexguard_allocation_controls:fgAllocationControls,flexguard_liability:fgLiability,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok || counts.total===0) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }
