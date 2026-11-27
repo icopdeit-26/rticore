@@ -58,6 +58,7 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
   ]},
   {id:'commercial',label:'05 · Commercial, Pricing & Approval',items:[
     item('BoQ Management','/boq',[...COMMERCIAL,'viewer']),
+    item('Service Catalog & Pricing','/erp/service-catalog',['finance','approver']),
     item('Approval Center · Lintas Modul','/approvals',COMMERCIAL),
     item('PO / SPK Verification','/sales/award',['admin','sales','finance','approver','legal']),
     item('Submission & Proposal Evidence','/sales/submission',COMMERCIAL),

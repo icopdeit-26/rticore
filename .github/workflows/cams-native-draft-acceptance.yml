@@ -1,0 +1,34 @@
+name: CAMS Native GL Acceptance
+on:
+  pull_request:
+  push:
+    branches: ['feature/cams-finance-docking-01','fix/cams-cost-center-scope-20261127','fix/cams-native-hostinger-20261127']
+permissions:
+  contents: read
+jobs:
+  native-gl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cams_docking_ci
+          POSTGRES_USER: cams_ci
+          POSTGRES_PASSWORD: isolated-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cams_ci -d cams_docking_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: cams_ci
+      PGPASSWORD: isolated-ci-only
+      PGDATABASE: cams_docking_ci
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Apply real native PostgreSQL schema
+        run: psql -v ON_ERROR_STOP=1 -f rticore_postgresql_schema.sql
+      - name: Rehearse historical migration rejection, replay, native IAM and CAMS, then backup and restore
+        run: bash scripts/ci-native-migration-rehearsal.sh

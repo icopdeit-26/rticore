@@ -1,6 +1,8 @@
 import {authorizeBoQ,privateHeaders,type D1DB} from '@/lib/boq-auth';
 import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import {supportingOriginal} from '@/lib/service-operations';
+import {atomicSales} from '@/lib/sales-transactions';
+import {buildFinanceOutboxStatement,operationalFinanceScope,operationalFinanceScopePredicate} from '@/lib/finance-docking-bridge';
 import {TENANT,safeID} from '@/lib/sales-workflow';
 import {walletTotals,canPostFlex,type FlexEventKind,type FlexEvent} from '@/lib/flexguard-ledger';
 export const dynamic='force-dynamic';
@@ -14,8 +16,8 @@ const txt=(v:unknown,max=1000)=>typeof v==='string'?v.trim().slice(0,max):'';
 function permitted(role:string,email:string,w:{owner_email:string;pm_email:string|null}){
  return !scoped.includes(role)||(role==='sales'?w.owner_email?.toLowerCase()===email:w.pm_email?.toLowerCase()===email);
 }
-const walletSQL="SELECT w.*,a.legal_name,c.status contract_status,c.model,c.end_date,p.opportunity_id,p.pm_email,o.created_by owner_email FROM rticore_flexguard_wallets w JOIN rticore_sales_accounts a ON a.id=w.customer_id AND a.tenant_id=w.tenant_id JOIN rticore_service_contracts c ON c.id=w.contract_id AND c.tenant_id=w.tenant_id JOIN rticore_delivery_projects p ON p.id=c.project_id AND p.tenant_id=c.tenant_id JOIN rticore_sales_opportunities o ON o.id=p.opportunity_id AND o.tenant_id=p.tenant_id";
-type Wallet={id:string;customer_id:string;contract_id:string;legal_name:string;status:string;entitlement_units:number;created_by:string;approved_by:string|null;end_date:string;opportunity_id:string;pm_email:string|null;owner_email:string};
+const walletSQL="SELECT w.*,a.legal_name,c.status contract_status,c.model,c.end_date,p.id project_id,p.opportunity_id,p.pm_email,o.created_by owner_email FROM rticore_flexguard_wallets w JOIN rticore_sales_accounts a ON a.id=w.customer_id AND a.tenant_id=w.tenant_id JOIN rticore_service_contracts c ON c.id=w.contract_id AND c.tenant_id=w.tenant_id JOIN rticore_delivery_projects p ON p.id=c.project_id AND p.tenant_id=c.tenant_id JOIN rticore_sales_opportunities o ON o.id=p.opportunity_id AND o.tenant_id=p.tenant_id";
+type Wallet={id:string;customer_id:string;contract_id:string;legal_name:string;status:string;entitlement_units:number;created_by:string;approved_by:string|null;end_date:string;project_id:string;opportunity_id:string;pm_email:string|null;owner_email:string};
 type LedgerRow={id:string;wallet_id:string;kind:FlexEventKind;units:number;invoice_id:string|null;opportunity_id:string|null;source_event_id:string|null;document_id:string|null;created_at:string;actor_email:string;explanation:string};
 async function events(db:D1DB,id:string){
  const rows=await db.prepare('SELECT id,wallet_id,kind,units,invoice_id,opportunity_id,source_event_id,document_id,created_at,actor_email,explanation FROM rticore_flexguard_events WHERE tenant_id=? AND wallet_id=? ORDER BY created_at,id LIMIT 5001').bind(TENANT,id).all<LedgerRow>();
@@ -53,6 +55,7 @@ export async function POST(req:Request){
  let p:Record<string,unknown>;
  try{p=await readBoundedJSON(req,8000);}catch(e){return fail(e instanceof Error?e.message:'Payload gagal',e instanceof RequestBodyError?e.status:400);}
  const action=txt(p.action,30);
+ if(process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_FLEXGUARD_ENTERPRISE_ENABLED==='1')return fail('Native FlexGuard enterprise menggunakan /api/erp/flexguard-enterprise; legacy write ditutup untuk mencegah dual ledger.',503);
  try{
   if(action==='create_wallet'){
    if(!['admin','finance'].includes(role)||!safeID(p.contract_id)||!bound(p.entitlement_units))return fail('Kontrak, kuota dan role Finance wajib',403);
@@ -90,11 +93,23 @@ export async function POST(req:Request){
   }
   if(['ISSUE','TOPUP'].includes(kind)&&!safeID(invoice))return fail('Invoice yang sudah dibayar penuh wajib',409);
   const id=crypto.randomUUID();
-  await db.batch([db.prepare('INSERT INTO rticore_flexguard_events(id,tenant_id,wallet_id,kind,units,invoice_id,opportunity_id,source_event_id,document_id,request_key,actor_email,explanation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
-   .bind(id,TENANT,w.id,kind,Number(p.units),invoice,opp,source,doc,txt(p.request_key,128),email,txt(p.explanation))]);
-  return reply({success:true,id,kind,status:'posted',message:'Transaksi tersimpan ke immutable D1 ledger.'},201);
+  const entity=await operationalFinanceScope(db,w.project_id);
+  const purchase=kind==='ISSUE'||kind==='TOPUP';
+  const eventType=purchase?'flexguard.credit_purchased':kind==='DEBIT'?'flexguard.credit_consumed':null;
+  // Financial valuation is performed by Finance under approved policy, never
+  // by accepting a client-supplied price or inventing a monetary amount.
+  const docking=entity&&eventType?await buildFinanceOutboxStatement(db,{legalEntityId:entity,eventType,sourceDocumentId:id,idempotencyKey:'FLEXGUARD:'+txt(p.request_key,128),payload:{flexguard_event_id:id,wallet_id:w.id,contract_id:w.contract_id,project_id:w.project_id,event_kind:kind,units:Number(p.units),invoice_id:invoice,opportunity_id:opp,source_event_id:source,document_id:doc,actor_email:email,valuation_required:true}}):null;
+  const write=db.prepare('INSERT INTO rticore_flexguard_events(id,tenant_id,wallet_id,kind,units,invoice_id,opportunity_id,source_event_id,document_id,request_key,actor_email,explanation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
+   .bind(id,TENANT,w.id,kind,Number(p.units),invoice,opp,source,doc,txt(p.request_key,128),email,txt(p.explanation));
+  if(entity){
+   // All related documents must belong to the same approved legal entity.
+   const invoiceGuard=invoice?" AND EXISTS(SELECT 1 FROM rticore_billing_invoices fi JOIN rticore_erp_project_scopes fs ON fs.tenant_id=fi.tenant_id AND fs.project_id=fi.project_id WHERE fi.tenant_id=? AND fi.id=? AND fs.legal_entity_id=? AND fs.status='approved')":"";
+   const opportunityGuard=opp?" AND EXISTS(SELECT 1 FROM rticore_erp_opportunity_scopes os WHERE os.tenant_id=? AND os.opportunity_id=? AND os.legal_entity_id=? AND os.status='approved')":"";
+   await atomicSales(db,operationalFinanceScopePredicate+invoiceGuard+opportunityGuard,[TENANT,w.project_id,entity,...(invoice?[TENANT,invoice,entity]:[]),...(opp?[TENANT,opp,entity]:[])],[write,...(docking?[docking.stmt]:[])]);
+  }else await db.batch([write]);
+  return reply({success:true,id,kind,status:'posted',message:'Transaksi tersimpan ke immutable ledger.',...(docking?{finance_event_id:docking.eventId}:{})},201);
  }catch(e){
-  const conflict=/FLEXGUARD_|constraint|UNIQUE/i.test(String(e));
+  const conflict=/FLEXGUARD_|constraint|UNIQUE|FINANCE_SCOPE_REQUIRED|could not serialize/i.test(String(e));
   return fail(conflict?'Transaksi ditolak oleh batas kuota, saldo, referensi asli, atau idempotency D1.':'Transaksi FlexGuard gagal: verifikasi skema 0030 dan bukti Vault.',conflict?409:503);
  }
 }

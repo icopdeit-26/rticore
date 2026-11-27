@@ -1,32 +1,24 @@
-'use client';
-import {useEffect,useState} from 'react';
-import {useRouter} from 'next/navigation';
-import Link from 'next/link';
+import {headers} from 'next/headers';
+import {redirect} from 'next/navigation';
+import {authorizeBoQ} from '@/lib/boq-auth';
 import {firstAccessibleHref} from '@/lib/enterprise-navigation';
+import {readSessionCookie} from '@/lib/business-iam-crypto';
+import {LegacyHomeEntry} from '@/components/auth/LegacyHomeEntry';
+export const dynamic='force-dynamic';
+export const runtime='nodejs';
 
-type State='checking'|'denied'|'no-workspace';
-/** The root is an identity-aware entry point, never a second CRM or KPI register. */
-export default function RTICoreHome(){
- const router=useRouter();
- const [state,setState]=useState<State>('checking');
- useEffect(()=>{
-  const controller=new AbortController();
-  void fetch('/api/sales/identity',{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal})
-   .then(async response=>{
-    if(!response.ok)throw Error('Akses belum terverifikasi');
-    const payload=await response.json();
-    if(payload.success!==true||typeof payload.identity?.role!=='string')throw Error('Identitas tidak valid');
-    const target=firstAccessibleHref(payload.identity.role);
-    if(!target){setState('no-workspace');return;}
-    router.replace(target);
-   })
-   .catch(()=>{if(!controller.signal.aborted)setState('denied');});
-  return ()=>controller.abort();
- },[router]);
- return <main className="mx-auto max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-live="polite">
-  <h1 className="text-xl font-bold text-slate-900">RTICORE · RTI</h1>
-  {state==='checking'&&<p role="status" className="text-sm text-slate-600">Memverifikasi sesi autentikasi dan keanggotaan database untuk membuka workspace sesuai role…</p>}
-  {state==='denied'&&<div role="alert" className="space-y-2 text-sm text-rose-800"><p>Workspace tidak dapat dibuka. Sesi autentikasi atau keanggotaan database belum terverifikasi. Tidak ada data demo yang ditampilkan.</p><Link href="/login" className="font-semibold underline">Buka halaman login RTICORE</Link></div>}
-  {state==='no-workspace'&&<p role="alert" className="text-sm text-amber-800">Identitas valid, tetapi belum memiliki modul yang diizinkan. Hubungi Administrator untuk memperoleh akses yang sesuai.</p>}
- </main>;
+// Native entry is server-side. A cookie alone never establishes a role.
+export default async function RTICoreHome(){
+ if(process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_AUTH_MODE==='business'){
+  const incoming=await headers();const cookie=incoming.get('cookie');
+  if(!readSessionCookie(cookie))redirect('/login');
+  const origin=process.env.RTICORE_PUBLIC_ORIGIN;
+  if(!origin)redirect('/login');
+  const auth=await authorizeBoQ(new Request(new URL('/api/sales/identity',origin),{headers:{cookie:cookie||''}}));
+  if(!auth.ok)redirect('/login');
+  const target=firstAccessibleHref(auth.identity.role);
+  if(target)redirect(target);
+  return <section className="mx-auto max-w-xl rounded-xl border bg-white p-6"><h1 className="text-xl font-bold">Akses workspace belum tersedia</h1><p className="mt-2">Akun terverifikasi, tetapi belum memiliki menu. Hubungi administrator.</p><a className="mt-4 block underline" href="/login">Kembali ke login</a></section>;
+ }
+ return <LegacyHomeEntry/>;
 }

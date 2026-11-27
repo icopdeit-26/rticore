@@ -1,0 +1,3 @@
+# P0 PR #1 incremental reconciliation: native health probes
+
+Reconciles only the liveness/readiness scope from PR #1 without importing obsolete VPS services, Cloudflare adapters, duplicate migrations or incompatible FlexGuard tables. Exact public routes only; no data mutation, secrets, connection latency or request-controlled response headers. Core readiness requires validated runtime and an active membership; Finance remains not certified. Unit tests use stubs; live Hostinger probes and schema preflight remain mandatory. Existing integration CI is not cancelled. Remaining PR #1 features and overlapping paths require separate reconciliation.

@@ -1,12 +1,13 @@
 name: RTICORE Comprehensive Automated Functional Release Gate
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/v6-erp-finance-20261127']
     paths:
       - src/**
       - migrations/**
       - tests/**
       - scripts/rticore-automated-functional-gate.mjs
+      - scripts/foundation-inventory.mjs
       - package.json
       - .github/workflows/rticore-automated-functional-gate.yml
   workflow_dispatch:
@@ -20,18 +21,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
           cache: npm
       - name: Install locked dependency graph
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Execute all automatable business gates (never deploy)
         run: npm run gate:automated
       - name: Publish non-sensitive source acceptance matrix
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: rticore-source-auto-release-matrix
           path: artifacts/rticore-automated-gate/result.json

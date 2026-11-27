@@ -55,3 +55,26 @@ test('approved allocation daily cost is prorated by minutes and frozen for proje
   }finally{h.close();}
  }
 });
+
+
+test('scoped timesheet approval writes hashed Finance outbox atomically and rolls back on outbox failure',async()=>{
+ const {h,p,day}=await setup();
+ try{
+  h.sql.prepare("INSERT INTO rticore_erp_org_units(id,tenant_id,code,label,kind,created_by) VALUES(?,?,?,?,?,?)").run('entity-psa',tenant,'PSA','PSA legal entity','legal_entity',users.admin);
+  h.sql.prepare("INSERT INTO rticore_erp_project_scopes(tenant_id,project_id,legal_entity_id,status,requested_by,reviewed_by) VALUES(?,?,?,'approved',?,?)").run(tenant,p.id,'entity-psa',users.admin,users.finance);
+  const id=(await expect(submit(h,p.id,day),201)).body.id;
+  const approve=()=>h.call('psa/timesheets','POST','finance',{action:'review',id,version:1,approve:true,notes:'Independent financial verification'});
+  h.sql.exec("CREATE TRIGGER fail_psa_outbox BEFORE INSERT ON rticore_finance_integration_events BEGIN SELECT RAISE(ABORT,'injected outbox failure'); END");
+  await expect(approve(),503);
+  assert.equal(h.sql.prepare('SELECT status FROM rticore_project_timesheets WHERE id=?').get(id).status,'submitted');
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_finance_integration_events').get().n,0);
+  h.sql.exec('DROP TRIGGER fail_psa_outbox');
+  const result=await expect(approve(),200);
+  const event=h.sql.prepare("SELECT * FROM rticore_finance_integration_events WHERE source_document_id=?").get(id);
+  assert.equal(result.body.finance_event_id,event.id);
+  assert.equal(event.event_type,'timesheet.approved');assert.equal(event.legal_entity_id,'entity-psa');
+  assert.equal(require('node:crypto').createHash('sha256').update(event.payload_json).digest('hex'),event.payload_sha256);
+  await expect(approve(),409);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM rticore_finance_integration_events WHERE source_document_id=?').get(id).n,1);
+ }finally{h.close();}
+});

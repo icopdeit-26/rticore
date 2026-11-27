@@ -1,0 +1,22 @@
+[Unit]
+Description=RTICORE native Next.js application
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=rticore
+Group=rticore
+WorkingDirectory=/opt/rticore/current
+EnvironmentFile=/etc/rticore/app.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/rticore/current/.next/cache
+UMask=0077
+[Install]
+WantedBy=multi-user.target

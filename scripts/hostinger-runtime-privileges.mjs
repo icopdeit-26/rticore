@@ -1,0 +1,13 @@
+// Read-only privilege certification. Runtime must not own or administer application schema.
+export async function assertRuntimeLeastPrivilege(client){
+ const {rows}=await client.query(`SELECT
+ EXISTS(SELECT 1 FROM pg_roles r WHERE pg_has_role(current_user,r.oid,'MEMBER') AND (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolbypassrls OR r.rolreplication)) AS privileged_role,
+ has_schema_privilege(current_user,'public','CREATE') AS schema_create,
+ EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname='public' AND pg_has_role(current_user,n.nspowner,'MEMBER')) AS schema_owner,
+ EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND (left(c.relname,8)='rticore_' OR left(c.relname,5)='cams_') AND pg_has_role(current_user,c.relowner,'MEMBER')) AS object_owner,
+ EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') AND (left(c.relname,8)='rticore_' OR left(c.relname,5)='cams_') AND has_table_privilege(current_user,c.oid,'TRUNCATE')) AS truncate_grant,
+ EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND (left(p.proname,8)='rticore_' OR left(p.proname,5)='cams_') AND pg_has_role(current_user,p.proowner,'MEMBER')) AS function_owner`);
+ const keys=['privileged_role','schema_create','schema_owner','object_owner','truncate_grant','function_owner'];
+ if(rows.length!==1||!keys.every(k=>rows[0][k]===false))throw new Error('Runtime database privilege certification failed');
+ return true;
+}

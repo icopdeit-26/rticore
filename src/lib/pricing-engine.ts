@@ -88,16 +88,34 @@ export const CLIENT_TIER_MULTIPLIERS: Record<ClientTier, { default: number; min:
   E: { default: 0.80, min: 0.75, max: 0.85, label: 'Tier E — Channel: via mitra reseller' },
 };
 
+// Fail closed on invalid numeric data before it reaches price/margin decisions.
+function nonNegative(value: number, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
+    throw new RangeError('Invalid pricing input: ' + field);
+  }
+  return value;
+}
+function positiveIndex(value: number, field: string): number {
+  if (nonNegative(value, field) <= 0) throw new RangeError('Invalid pricing index: ' + field);
+  return value;
+}
+function monetaryTotal(value: number, field: string): number {
+  if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER / 100) {
+    throw new RangeError('Pricing amount exceeds safe monetary precision: ' + field);
+  }
+  return value;
+}
+
 // Calculate DAI
 export function calculateDAI(indices: DAIIndices): number {
   const w1 = 0.40; // CPI
   const w2 = 0.30; // FX
   const w3 = 0.20; // Market
   const w4 = 0.10; // Urgency
-  const dai = (w1 * (indices.cpi_index || 1.0)) +
-              (w2 * (indices.fx_index || 1.0)) +
-              (w3 * (indices.market_index || 1.0)) +
-              (w4 * (indices.urgency_index || 1.0));
+  const dai = (w1 * positiveIndex(indices.cpi_index ?? 1.0, 'cpi_index')) +
+              (w2 * positiveIndex(indices.fx_index ?? 1.0, 'fx_index')) +
+              (w3 * positiveIndex(indices.market_index ?? 1.0, 'market_index')) +
+              (w4 * positiveIndex(indices.urgency_index ?? 1.0, 'urgency_index'));
   return Number(dai.toFixed(4));
 }
 
@@ -111,11 +129,12 @@ export function calculateHRCost(
 
   const details: BoQHRDetail[] = hrStaffing.map(item => {
     // Explicit zero is valid for an unconfigured role; do not silently apply another role's rate.
-    const costRate = Math.max(0, item.cost_rate_override ?? RATE_CARD_COST[location][item.role_level]);
-    const sellingRate = Math.max(0, item.selling_rate_override ?? BASE_SELLING_RATE[item.role_level]);
-    const subtotal = item.mandays * costRate;
-    totalHRCost += subtotal;
-    totalSellingBaseline += item.mandays * sellingRate;
+    const costRate = nonNegative(item.cost_rate_override ?? RATE_CARD_COST[location]?.[item.role_level], 'cost rate');
+    const sellingRate = nonNegative(item.selling_rate_override ?? BASE_SELLING_RATE[item.role_level], 'selling rate');
+    const mandays = nonNegative(item.mandays, 'mandays');
+    const subtotal = monetaryTotal(mandays * costRate, 'staff cost');
+    totalHRCost = monetaryTotal(totalHRCost + subtotal, 'total staff cost');
+    totalSellingBaseline = monetaryTotal(totalSellingBaseline + mandays * sellingRate, 'selling baseline');
 
     return {
       role_level: item.role_level,
@@ -143,7 +162,9 @@ export function calculateBoQ(params: {
   const cD = params.component_d_total ?? 0;
   const cE = params.component_e_total ?? 0;
 
-  const total_internal_cost = cA + cB + cC + cD + cE;
+  [cA, cB, cC, cD, cE, params.quoted_price].forEach((value, i) => nonNegative(value, 'BoQ component ' + i));
+  monetaryTotal(params.quoted_price, 'quoted price');
+  const total_internal_cost = monetaryTotal(cA + cB + cC + cD + cE, 'internal cost');
   const gross_profit = params.quoted_price - total_internal_cost;
   const gross_margin_pct = params.quoted_price > 0
     ? Number(((gross_profit / params.quoted_price) * 100).toFixed(2))
@@ -174,7 +195,11 @@ export function calculate3Ranges(params: {
   tierMultiplier: number;
 }): { floor_price: number; standard_price: number; premium_price: number } {
   // Floor: Total Internal Cost / (1 - 0.20) => ensures 20% margin
-  const floor_price = Math.round(params.totalInternalCost / (1 - 0.20));
+  nonNegative(params.totalInternalCost, 'internal cost');
+  nonNegative(params.totalSellingBaseline, 'selling baseline');
+  positiveIndex(params.dai, 'DAI');
+  positiveIndex(params.tierMultiplier, 'tier multiplier');
+  const floor_price = monetaryTotal(Math.ceil(params.totalInternalCost / (1 - 0.20)), 'floor price');
 
   // Standard: Baseline Selling * DAI * Tier Multiplier
   let standard_price = Math.round(params.totalSellingBaseline * params.dai * params.tierMultiplier);
@@ -185,7 +210,8 @@ export function calculate3Ranges(params: {
   }
 
   // Premium: Standard * 1.25
-  const premium_price = Math.round(standard_price * 1.25);
+  monetaryTotal(standard_price, 'standard price');
+  const premium_price = monetaryTotal(Math.round(standard_price * 1.25), 'premium price');
 
   return {
     floor_price,

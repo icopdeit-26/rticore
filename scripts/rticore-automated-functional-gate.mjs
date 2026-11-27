@@ -23,19 +23,19 @@ const groups=[
  {name:'11 Administration',checks:['test:admin','test:modules-13-15','test:ai']},
  {name:'Cross-module Transaction & SoD',checks:['test:p1-p2','test:rticore-negative','test:scoping-upload']},
  {name:'Postal Reference & Import',checks:['test:postal']},
- {name:'Server Runtime & Layout',checks:['test:runtime-compat','test:layout']},
+ {name:'Server Runtime & Layout',checks:['test:runtime-compat','test:layout','test:native-entry-regression','test:foundation-inventory']},
  {name:'Release evidence & abuse prevention',checks:['test:release-controls']},
  {name:'Integrated Commercial Operations',checks:['test:consolidation','test:sales-transactions','test:service-operations']},
 ];
 const manual=[
- 'Cloudflare Access OTP/JWT nyata per role dan negative cross-owner UAT',
+ 'Native Business IAM password/TOTP nyata per role dan negative cross-owner UAT',
  'Tanda tangan Finance/Legal/Security/release owner serta pemeriksaan original Vault',
  'Perangkat Android fisik dan validasi UX langsung oleh pengguna',
  'API key provider AI asli dan uji external outbound berizin'
 ];
 const infrastructure=[
- 'Hash SHA-256 dump D1 original + independent restore/rollback di environment Cloudflare terpisah',
- 'Migrasi 0033 dari baseline UAT/produksi yang diverifikasi dan real transaction replay pada dedicated isolated Access UAT',
+ 'Hash SHA-256 backup PostgreSQL asli + independent restore/rollback di staging terpisah',
+ 'Inventory native PostgreSQL migration ledger, isolated replay and authenticated Hostinger staging UAT',
  'Kontinuitas kunci AES Vault/AI dan monitoring/backup restore',
  'Deploy produksi, rollback rehearsal dan signoff yang sesuai'
 ];
@@ -89,7 +89,7 @@ const artifact={
  source_dirty:spawnSync('git',['diff','--quiet','HEAD'],{cwd:root}).status!==0,
  status:ok?'PASS':'FAIL',menu_routes:structure,tests:evidence,
  matrix,user_uat_pending:manual,non_user_infrastructure_pending:infrastructure,
- production_release:'HOLD',notes:'Source test PASS is not remote D1 UAT, manual signoff or production availability.'
+ production_release:'HOLD',notes:'Source test PASS is not authenticated Hostinger UAT, manual signoff or production availability.'
 };
 const dir=join(root,'artifacts','rticore-automated-gate');mkdirSync(dir,{recursive:true});
 writeFileSync(join(dir,'result.json'),JSON.stringify(artifact,null,2)+'\n',{mode:0o600});

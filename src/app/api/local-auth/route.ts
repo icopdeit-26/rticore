@@ -4,11 +4,7 @@ import {getRuntimeEnv, isLocalMode} from '@/lib/runtime-env';
 import {LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL_SECONDS, createLocalSession, isLoopbackRequest, isSameLocalOrigin, validSessionSecret} from '@/lib/local-auth';
 import {ROLE_PREVIEW_COOKIE} from '@/lib/role-preview';
 
-/**
- * Local-mode login (RTICORE_LOCAL_MODE=1 only). In cloud mode this endpoint
- * reports localMode:false and refuses every write, so Cloudflare Access stays
- * the only authentication path in deployed environments.
- */
+/** Local-only authentication; native production never exposes account selection. */
 const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} as const;
 const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers});
 type LocalEnv={RTICORE_DB?:D1DB;RTICORE_LOCAL_SESSION_SECRET?:string};
@@ -23,7 +19,7 @@ async function localContext(request:Request){
 }
 
 export async function GET(request:Request){
-  if(!isLocalMode())return json({success:true,localMode:false,...(process.env.RTICORE_RUNTIME==='hostinger'?{authMode:'oidc'}:{})});
+  if(!isLocalMode())return process.env.RTICORE_RUNTIME==='hostinger'?json({success:true,localMode:false,authMode:process.env.RTICORE_AUTH_MODE==='business'?'business':'oidc'}):json({success:false,localMode:false},503);
   const ctx=await localContext(request);
   if('error' in ctx)return ctx.error;
   try{

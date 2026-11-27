@@ -1,0 +1,30 @@
+name: RTICORE Native IAM staging smoke (read only)
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type NATIVE_STAGING_ONLY'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  native-smoke:
+    runs-on: ubuntu-24.04
+    environment: rticore-uat
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Enforce explicit staging confirmation
+        env:
+          CONFIRM: ${{ inputs.confirmation }}
+          RTICORE_PUBLIC_ORIGIN: ${{ vars.RTICORE_NATIVE_UAT_ORIGIN }}
+          RTICORE_AUTH_MODE: ${{ vars.RTICORE_NATIVE_UAT_AUTH_MODE || 'business' }}
+          RTICORE_OIDC_ISSUER: ${{ vars.RTICORE_NATIVE_UAT_ISSUER }}
+        run: |
+          test "$CONFIRM" = NATIVE_STAGING_ONLY
+          node -e "const u=new URL(process.env.RTICORE_PUBLIC_ORIGIN);if(u.hostname==='rticore.store'||u.hostname==='www.rticore.store')process.exit(1)"
+          npm run uat:native-iam

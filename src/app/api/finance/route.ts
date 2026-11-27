@@ -987,14 +987,15 @@ export async function POST(req: Request) {
       erpAssert(erpId(v.journal_id) && erpText(v.review_notes, 12, 500), 'ID jurnal dan catatan review wajib');
       const j = await db
         .prepare(
-          'SELECT j.id, j.legal_entity_id, j.created_by, j.status, j.version, coalesce((SELECT sum(l.debit_cents) FROM rticore_gl_lines l WHERE l.tenant_id=j.tenant_id AND l.journal_id=j.id),0) AS debit_cents FROM rticore_gl_journals j WHERE j.tenant_id=? AND j.id=?',
+          'SELECT j.id, j.legal_entity_id, j.created_by, j.status, j.version, j.source_type, coalesce((SELECT sum(l.debit_cents) FROM rticore_gl_lines l WHERE l.tenant_id=j.tenant_id AND l.journal_id=j.id),0) AS debit_cents FROM rticore_gl_journals j WHERE j.tenant_id=? AND j.id=?',
         )
         .bind(TENANT, v.journal_id as string)
-        .first<{ id: string; legal_entity_id: string; created_by: string; status: string; version: number; debit_cents: number }>();
+        .first<{ id: string; legal_entity_id: string; created_by: string; status: string; version: number; debit_cents: number; source_type: string }>();
       erpAssert(j, 'Jurnal tidak ditemukan', 404);
       await requireFinanceEntity(a.identity, j.legal_entity_id);
       erpAssert(legalEntityId === j.legal_entity_id, 'Legal entity jurnal tidak sesuai', 403);
       erpAssert(j.status === 'draft', 'Jurnal sudah diproses', 409);
+      erpAssert(j.source_type !== 'camsrti', 'Use scoped CAMS Inbox independent approval', 403);
 
       const authCheck = validateFinanceApprovalAuthority({
         makerEmail: j.created_by,
@@ -1022,7 +1023,7 @@ export async function POST(req: Request) {
         db.prepare("UPDATE rticore_finance_journal_workflows SET lifecycle_stage='posted', posted_by=?, posted_at=CURRENT_TIMESTAMP, version=version+1 WHERE tenant_id=? AND journal_id=?").bind(email,TENANT,j.id),
       );
       await erpAtom(a.identity,
-        "EXISTS(SELECT 1 FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id AND p.legal_entity_id=j.legal_entity_id WHERE j.tenant_id=? AND j.legal_entity_id=? AND j.id=? AND j.status='draft' AND j.version=? AND p.status='open' AND NOT EXISTS(SELECT 1 FROM rticore_finance_period_controls c WHERE c.tenant_id=p.tenant_id AND c.period_id=p.id AND c.close_stage!='open'))",
+        "EXISTS(SELECT 1 FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id AND p.legal_entity_id=j.legal_entity_id WHERE j.tenant_id=? AND j.legal_entity_id=? AND j.id=? AND j.status='draft' AND j.source_type!='camsrti' AND j.version=? AND p.status='open' AND NOT EXISTS(SELECT 1 FROM rticore_finance_period_controls c WHERE c.tenant_id=p.tenant_id AND c.period_id=p.id AND c.close_stage!='open'))",
         [TENANT, legalEntityId, j.id, j.version], writes, 'rti_finance', j.id,
         post ? 'JOURNAL_POSTED' : 'JOURNAL_APPROVED', { amount_cents: j.debit_cents });
       return erpReply({ success: true });

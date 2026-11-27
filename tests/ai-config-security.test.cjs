@@ -16,13 +16,18 @@ test('all six providers are allowlisted and client cannot invent outbound endpoi
  for(const host of ['api.openai.com','generativelanguage.googleapis.com','api.anthropic.com','api.groq.com','openrouter.ai','api.deepseek.com'])
   assert.ok(vault.includes(host),host);
 });
-test('only server stores ciphertext; GET response cannot leak key, admin JWT protects requests',()=>{
+test('only server stores ciphertext; GET response cannot leak key, native signed OIDC and active membership protect requests',()=>{
  const route=text('src/app/api/ai/config/route.ts');
  const auth=text('src/lib/boq-auth.ts');
  const vault=text('src/lib/ai-credential-vault.ts');
  assert.match(route,/authorizeBoQ\(req\)/);
  assert.match(route,/auth\.identity\.role!=='admin'/);
- assert.match(auth,/jwtVerify/);
+ assert.match(auth,/verifyNativeOIDCToken\(token,/);
+ assert.match(auth,/requireActiveNativeSession\(token,/);
+ const oidc=text('src/lib/native-oidc.ts');
+ assert.match(oidc,/jwtVerify/);
+ assert.match(oidc,/payload\.acr!=='2'/);
+ assert.doesNotMatch(auth,/cf-access-jwt-assertion/);
  assert.match(auth,/rticore_members/);
  assert.match(route,/listProviders/);
  assert.doesNotMatch(route,/config:\s*updated|configs:\s*appStore\.getAIConfigs/);

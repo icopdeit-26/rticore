@@ -28,6 +28,10 @@ server {
   proxy_set_header X-Original-URI $request_uri;
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
  }
  location /oauth2/ {
   limit_req zone=rticore_auth burst=10 nodelay;
@@ -38,13 +42,70 @@ server {
   proxy_set_header X-Forwarded-Host $host;
   proxy_set_header X-Auth-Request-Redirect https://rticore.example.invalid/login;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
  }
- location = /api/health/live {
-  proxy_pass http://127.0.0.1:3000;
-  proxy_set_header X-RTICore-OIDC-Token "";
+ # Public login shell and immutable build assets only; no business APIs are public.
+ location = /login {
+   proxy_pass http://127.0.0.1:3000;
   proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Host $host;
+  proxy_set_header X-Forwarded-Proto https;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-RTICore-OIDC-Token "";
+  proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
+  proxy_set_header CF-Access-JWT-Assertion "";
  }
- location / {
+ location ^~ /_next/static/ {
+   proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Host $host;
+  proxy_set_header X-Forwarded-Proto https;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-RTICore-OIDC-Token "";
+  proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
+  proxy_set_header CF-Access-JWT-Assertion "";
+ }
+ location = /logo-rti-light.png {
+   proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Host $host;
+  proxy_set_header X-Forwarded-Proto https;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-RTICore-OIDC-Token "";
+  proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
+  proxy_set_header CF-Access-JWT-Assertion "";
+ }
+ location = /favicon.ico {
+   proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Host $host;
+  proxy_set_header X-Forwarded-Proto https;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-RTICore-OIDC-Token "";
+  proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
+  proxy_set_header CF-Access-JWT-Assertion "";
+ }
+ # API auth failures stay HTTP errors, never a HTML login redirect.
+ location ^~ /api/ {
   limit_req zone=rticore_api burst=60 nodelay;
   auth_request /oauth2/auth;
   auth_request_set $oidc_token $upstream_http_x_auth_request_access_token;
@@ -54,6 +115,8 @@ server {
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-Frame-Options "DENY" always;
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
   proxy_pass http://127.0.0.1:3000;
   proxy_set_header Host $host;
   proxy_set_header X-Forwarded-Host $host;
@@ -61,9 +124,38 @@ server {
   proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header X-RTICore-OIDC-Token $oidc_token;
   proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
   proxy_set_header CF-Access-JWT-Assertion "";
   proxy_set_header X-Finance-Role "";
  }
- # Login bootstrap is a proxy sign-in redirect, not a bypass to the app.
- error_page 401 = /oauth2/sign_in;
+ location / {
+  limit_req zone=rticore_api burst=60 nodelay;
+  auth_request /oauth2/auth;
+  error_page 401 = /oauth2/sign_in;
+  auth_request_set $oidc_token $upstream_http_x_auth_request_access_token;
+  auth_request_set $session_cookie $upstream_http_set_cookie;
+  add_header Set-Cookie $session_cookie;
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+  proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Host $host;
+  proxy_set_header X-Forwarded-Proto https;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-RTICore-OIDC-Token $oidc_token;
+  proxy_set_header Authorization "";
+  proxy_set_header X-Forwarded-User "";
+  proxy_set_header X-Forwarded-Email "";
+  proxy_set_header X-Auth-Request-User "";
+  proxy_set_header X-Auth-Request-Email "";
+  proxy_set_header CF-Access-JWT-Assertion "";
+  proxy_set_header X-Finance-Role "";
+ }
 }

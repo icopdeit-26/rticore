@@ -13,14 +13,17 @@ const js = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 }).outputText;
 const sandboxModule = { exports: {} };
+const runtimeEnv={};
 const nextServer = {
   NextResponse: {
     next: () => ({ status: 200, allowed: true }),
+    redirect: (url,status)=>({status,location:url.pathname,headers:new Map()}),
     json: (body, options) => ({ status: options.status, body, headers: options.headers })
   }
 };
 vm.runInNewContext(js, {
   exports: sandboxModule.exports,
+  process:{env:runtimeEnv},URL,
   require: name => {
     assert.equal(name, 'next/server');
     return nextServer;
@@ -29,6 +32,7 @@ vm.runInNewContext(js, {
 const { middleware, isEnabledD1ApiRoute } = sandboxModule.exports;
 
 const permitted = [
+  '/api/health/live', '/api/health/ready',
   '/api/boq', '/api/boq/catalog', '/api/ai/config', '/api/ai/generate',
   '/api/ai/assist', '/api/scoping/upload', '/api/reference/postal',
   '/api/marketing/leads', '/api/marketing/campaigns',
@@ -37,6 +41,7 @@ const permitted = [
   '/api/partners', '/api/reports', '/api/admin/system', '/api/psa/timesheets', '/api/platform/diagnostics',
 ];
 const blocked = [
+  '/api/health', '/api/health/ready/debug', '/api/health/live-extra',
   '/api/opportunities', '/api/proposals', '/api/tenders', '/api/approvals',
   '/api/partners/export', '/api/reports/arbitrary', '/api/admin/system/debug',
   '/api/partners-malicious', '/api/report', '/api/admin',
@@ -66,4 +71,16 @@ test('each newly enabled route still calls real server-side Access authorization
     assert.match(code, /await\s+authorizeBoQ\(req\)/);
     assert.match(code, /if\s*\(!a\.ok\)\s*return\s+a\.response/);
   }
+});
+
+test('native root redirects missing, malformed and duplicate cookie before streaming, never treats shape as authentication',()=>{
+ Object.assign(runtimeEnv,{RTICORE_RUNTIME:'hostinger',RTICORE_AUTH_MODE:'business'});
+ const req=cookie=>({nextUrl:{pathname:'/'},url:'https://rticore.example/',headers:{get:()=>cookie}});
+ try{
+  for(const cookie of [null,'__Host-rticore_session=forged','__Host-rticore_session='+'a'.repeat(43)+'; __Host-rticore_session='+'b'.repeat(43)]){
+   const result=middleware(req(cookie));assert.equal(result.status,307);assert.equal(result.location,'/login');assert.equal(result.headers.get('Cache-Control'),'no-store');
+  }
+  assert.equal(middleware(req('__Host-rticore_session='+'a'.repeat(43))).status,200,'server must still authorize token');
+  runtimeEnv.RTICORE_AUTH_MODE='oidc';assert.equal(middleware(req(null)).status,200);
+ }finally{delete runtimeEnv.RTICORE_RUNTIME;delete runtimeEnv.RTICORE_AUTH_MODE;}
 });
