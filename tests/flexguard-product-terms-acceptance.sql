@@ -67,4 +67,13 @@ BEGIN
  IF EXISTS(SELECT 1 FROM rticore_fg_product_terms WHERE package_code='FG-DUPLICATE') THEN RAISE EXCEPTION 'PARTIAL_PRODUCT_PERSISTED'; END IF;
  IF (SELECT count(*) FROM rticore_operations_events WHERE entity_id=rid AND action IN ('PRODUCT_TERMS_CREATED','PRODUCT_TERMS_APPROVED'))<>2 THEN RAISE EXCEPTION 'AUDIT_MISSING'; END IF;
 END $fg$;
+DO $fg$
+BEGIN
+ IF rticore_fg_contract_binding_valid('defendit360','fg-terms-a','nonexistent-contract','fg-terms-one') THEN RAISE EXCEPTION 'UNEXPECTED_BINDING'; END IF;
+ BEGIN
+  PERFORM rticore_fg_bind_contract('defendit360','fg-terms-a','fg-terms-maker@example.invalid','create','nonexistent-contract','fg-terms-one',NULL);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_SCOPE_INVALID' THEN RAISE; END IF; END;
+ IF EXISTS(SELECT 1 FROM rticore_fg_contract_terms WHERE legal_entity_id='fg-terms-a') THEN RAISE EXCEPTION 'INVALID_BINDING_PERSISTED'; END IF;
+END $fg$;
 ROLLBACK;
