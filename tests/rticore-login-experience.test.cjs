@@ -35,5 +35,5 @@ test('no malicious return URL or client role elevation is accepted',()=>{
  const root=read('src/app/page.tsx');
  assert.doesNotMatch(page,/searchParams|next=|redirectTo=|callbackUrl|window\.location/);
  assert.doesNotMatch(panel,/searchParams|next=|redirectTo=|callbackUrl|window\.location/);
- assert.match(root,/<Link href="\/login"/);
+ assert.match(root,/redirect\('\/login'\)/);
 });
