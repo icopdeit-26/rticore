@@ -25,13 +25,14 @@ export async function GET(req:Request){
   }
   const scope=await db.prepare("SELECT w.id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes p ON p.tenant_id=c.tenant_id AND p.project_id=c.project_id AND p.status='approved' WHERE w.tenant_id=? AND p.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first();
   erpAssert(scope,'Wallet di luar scope',403);
-  const [lots,ledger,requests]=await Promise.all([
+  const [lots,ledger,requests,allocations]=await Promise.all([
    db.prepare("SELECT l.*,coalesce((SELECT sum(e.available_delta) FROM rticore_flexguard_enterprise_ledger e WHERE e.tenant_id=l.tenant_id AND e.lot_id=l.id),0) AS available,coalesce((SELECT sum(e.reserved_delta) FROM rticore_flexguard_enterprise_ledger e WHERE e.tenant_id=l.tenant_id AND e.lot_id=l.id),0) AS reserved FROM rticore_flexguard_credit_lots l WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY expires_at,id LIMIT 201").bind(TENANT,entity,wallet).all(),
-   db.prepare("SELECT l.*,e.status AS docking_status FROM rticore_flexguard_enterprise_ledger l LEFT JOIN rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.id=l.finance_outbox_event_id WHERE l.tenant_id=? AND l.legal_entity_id=? AND l.wallet_id=? ORDER BY l.created_at DESC,l.id LIMIT 201").bind(TENANT,entity,wallet).all(),
-   db.prepare("SELECT * FROM rticore_flexguard_requests WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC,id LIMIT 201").bind(TENANT,entity,wallet).all()
+   db.prepare("SELECT l.*,e.status AS docking_status,e.resulting_journal_id,j.status AS journal_status FROM rticore_flexguard_enterprise_ledger l LEFT JOIN rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.id=l.finance_outbox_event_id LEFT JOIN rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.legal_entity_id=e.legal_entity_id AND j.id=e.resulting_journal_id WHERE l.tenant_id=? AND l.legal_entity_id=? AND l.wallet_id=? ORDER BY l.created_at DESC,l.id LIMIT 201").bind(TENANT,entity,wallet).all(),
+   db.prepare("SELECT * FROM rticore_flexguard_requests WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC,id LIMIT 201").bind(TENANT,entity,wallet).all(),
+   db.prepare('SELECT * FROM rticore_fg_invoice_allocations WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC LIMIT 201').bind(TENANT,entity,wallet).all()
   ]);
   const legacy=await db.prepare("SELECT id FROM rticore_flexguard_events WHERE tenant_id=? AND wallet_id=? LIMIT 1").bind(TENANT,wallet).first();
-  return erpReply({success:true,lots:lots.results.slice(0,200),ledger:ledger.results.slice(0,200),requests:requests.results.slice(0,200),truncated:[lots,ledger,requests].some(x=>x.results.length>200),legacy_reconciliation_required:!!legacy});
+  return erpReply({success:true,lots:lots.results.slice(0,200),ledger:ledger.results.slice(0,200),requests:requests.results.slice(0,200),allocations:allocations.results.slice(0,200),truncated:[lots,ledger,requests,allocations].some(x=>x.results.length>200),legacy_reconciliation_required:!!legacy});
  }catch(e){return erpError(e);}
 }
 export async function POST(req:Request){
@@ -57,6 +58,17 @@ export async function POST(req:Request){
    erpAssert(erpId(v.request_id)&&typeof v.approve==='boolean'&&erpText(v.notes,12,1000),'Review tidak valid');
    const row=await db.prepare("SELECT rticore_fg_review(?,?,?,?,CAST(? AS boolean),?) AS result").bind(TENANT,v.legal_entity_id,email,v.request_id,v.approve?'true':'false',v.notes).first<{result:unknown}>();
    erpAssert(row,'Review tidak tersedia',503);return erpReply({success:true,result:row.result});
+  }
+  if(v.action==='allocate_invoice'){
+   erpAssert(erpId(v.wallet_id)&&erpId(v.invoice_id)&&['submit','approve','reject'].includes(String(v.allocation_action))&&erpText(v.notes,12,500),'Data alokasi invoice tidak valid');
+   const submit=v.allocation_action==='submit';erpAssert(!submit||Number.isSafeInteger(v.credit_amount),'Jumlah kredit wajib');
+   const row=await db.prepare("SELECT rticore_fg_allocate_invoice(?,?,?,?,?,?,CAST(? AS bigint),?) AS result").bind(TENANT,v.legal_entity_id,email,String(v.allocation_action),v.wallet_id,v.invoice_id,submit?Number(v.credit_amount):null,v.notes).first<{result:unknown}>();
+   erpAssert(row,'Alokasi tidak tersedia',503);return erpReply({success:true,result:row.result});
+  }
+  if(v.action==='journal_command'){
+   erpAssert(erpId(v.journal_id)&&['approve','post'].includes(String(v.journal_action))&&erpText(v.notes,12,500),'Data jurnal tidak valid');
+   const row=await db.prepare("SELECT rticore_fg_journal_command(?,?,?,?,?,?) AS result").bind(TENANT,v.legal_entity_id,email,v.journal_id,String(v.journal_action),v.notes).first<{result:unknown}>();
+   erpAssert(row,'Jurnal tidak tersedia',503);return erpReply({success:true,result:row.result});
   }
   if(v.action==='dock'){
    erpAssert(erpId(v.event_id)&&['draft','link_purchase','ack'].includes(String(v.docking_action)),'Docking action tidak valid');
