@@ -1,11 +1,10 @@
-import {getCloudflareContext} from '@opennextjs/cloudflare';
 import {getLocalD1} from './local-d1';
 import {getLocalPostgresDB} from './postgres-db';
 
 /**
  * Single entry point for runtime bindings.
  *
- * Cloud (default): Cloudflare Worker env via OpenNext (D1 binding, secrets, vars).
+ * Production: native Node.js environment with persistent PostgreSQL.
  * Local (RTICORE_LOCAL_MODE=1 on Node.js): local PostgreSQL database (.pgdata or
  * DATABASE_URL) + values from .env.local. No Cloudflare account, Access, D1 or
  * external cloud service is used.
@@ -15,7 +14,7 @@ declare const navigator:{userAgent?:string}|undefined;
 
 export function isLocalMode():boolean{
   if(typeof navigator!=='undefined'&&navigator?.userAgent==='Cloudflare-Workers')return false;
-  return typeof process!=='undefined'&&process?.env?.RTICORE_LOCAL_MODE==='1';
+  return typeof process!=='undefined'&&process?.env?.NODE_ENV!=='production'&&process?.env?.RTICORE_LOCAL_MODE==='1';
 }
 
 const LOCAL_KEYS=['RTICORE_ACCESS_AUD','RTICORE_ACCESS_TEAM_DOMAIN','RTICORE_AI_ENCRYPTION_KEY',
@@ -28,7 +27,9 @@ export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
     for(const key of LOCAL_KEYS)if(process?.env?.[key])env[key]=process.env[key];
     return env as T;
   }
-  return withLegacySecretNames((await getCloudflareContext({async:true})).env) as T;
+  if(process?.env?.RTICORE_LOCAL_MODE==='1')throw new Error('Local authentication forbidden in production');
+  if(!process?.env?.DATABASE_URL&&!process?.env?.POSTGRES_URL)throw new Error('Persistent PostgreSQL configuration required');
+  return withLegacySecretNames({...process.env,RTICORE_DB:getLocalPostgresDB(),RTICORE_LOCAL_MODE:'0'}) as T;
 }
 
 // Worker secrets cannot be read back or renamed, so those provisioned before the
