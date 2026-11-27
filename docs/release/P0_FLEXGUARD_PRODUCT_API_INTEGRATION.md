@@ -1,0 +1,3 @@
+# P0 FlexGuard product and pricing integration increment
+PR18 and PR19 exact-SHA checks passed; combine both trees into a new candidate without main merge.
+0064 exposes atomic product creation + conversion entries and independent approval with entity-scoped Finance assignments and limit. API is disabled unless explicit native product flag is set. Preview is read-only: pricing target-margin and contractual credit estimate do not verify PSA actual timesheets, grant entitlement, create transactions or post accounting. Product terms are not yet bound to an approved contract version; approved commercial evidence and native PSA-to-ledger bridge are required for live consumption. No automatic historical repair. Staging actual business records/access not verified.
