@@ -41,7 +41,7 @@ export async function POST(req:Request){
    if(line.costCenterId!==null){
     const target=Object.prototype.hasOwnProperty.call(costMap,line.costCenterId)?costMap[line.costCenterId]:undefined;
     if(typeof target!=='string'||!target)throw new DockingError('COST_CENTER_MAPPING_REQUIRED',409);
-    const cc=await db.prepare("WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id=? AND id=? UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON s.parent_id=u.id WHERE u.tenant_id=? AND u.active=1) SELECT id FROM scope WHERE id=? AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id=? AND kind='cost_center' AND active=1)").bind(TENANT,target,TENANT,entity,target).first();
+    const cc=await db.prepare("WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id=? AND id=? UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON s.parent_id=u.id WHERE u.tenant_id=? AND u.active=1) SELECT id FROM scope WHERE id=? AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id=? AND kind='cost_center' AND active=1)").bind(TENANT,entity,TENANT,entity,target).first();
     if(!cc)throw new DockingError('COST_CENTER_SCOPE_INVALID',409);
     costCenterId=target;
    }
