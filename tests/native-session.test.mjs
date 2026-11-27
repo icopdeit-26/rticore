@@ -26,3 +26,13 @@ test('native mutation denies insecure or noncanonical trusted origins',()=>{
   assert.equal(nativeRequestOriginAllowed(new Request('https://rticore.example.invalid',{method:'POST',headers:{origin}}),origin),false);
  }
 });
+
+test('introspection rejects invalid inputs and insecure issuers before network access',async()=>{
+ const never=async()=>{assert.fail('unexpected network call');};
+ for(const token of ['', 'x'.repeat(16385)]) await assert.rejects(requireActiveNativeSession(token,cfg,'one',never));
+ await assert.rejects(requireActiveNativeSession('synthetic',cfg,'',never));
+ for(const issuer of ['http://sso.example.invalid','https://user@sso.example.invalid','https://sso.example.invalid?x=1','https://sso.example.invalid#fragment']) await assert.rejects(requireActiveNativeSession('synthetic',{...cfg,issuer},'one',never));
+});
+test('introspection rejects malformed response bodies',async()=>{
+ for(const data of [null,[],true,'active',{}]) await assert.rejects(requireActiveNativeSession('synthetic',cfg,'one',async()=>Response.json(data)));
+});
