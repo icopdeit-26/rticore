@@ -869,6 +869,7 @@ test('Domain 04 & 08 (65 UAT Scenarios): Procure-to-Pay, 3-Way Match, Vendor Ban
         action: 'request_vendor_bank_change',
         legal_entity_id: legal,
         vendor_id: 'vendor-fin-01',
+        purchase_order_id: poId,
         bank_name: 'Bank Mandiri Corporate',
         account_holder_name: 'PT Cyber OEM Distributor',
         masked_account_number: '****8899',
@@ -1881,6 +1882,7 @@ test('Domain 12 (35 UAT Scenarios): 17-Point Closing Checklist, 5-Stage Period L
         period_code: '2026-11',
         close_stage: 'soft_close',
         completed_tasks_count: 10,
+        completed_task_codes: core.FINANCIAL_CLOSING_17_CHECKLIST.slice(0,10).map(x=>x.code),
       }),
       200,
     );
@@ -1893,57 +1895,22 @@ test('Domain 12 (35 UAT Scenarios): 17-Point Closing Checklist, 5-Stage Period L
         period_id: periodId,
         period_code: '2026-11',
         close_stage: 'under_review',
-        completed_tasks_count: 15,
+        completed_tasks_count: 17,
+        completed_task_codes: core.FINANCIAL_CLOSING_17_CHECKLIST.map(x=>x.code),
       }),
       200,
     );
     executed++;
 
-    // Negative: Cannot Hard Close when completed_tasks_count < 17 or controller == cfo
-    await expect(
-      h.call('finance', 'POST', 'finance', {
-        action: 'update_closing_cockpit',
-        legal_entity_id: legal,
-        period_id: periodId,
-        period_code: '2026-11',
-        close_stage: 'hard_close',
-        completed_tasks_count: 16,
-        controller_reviewed_by: users.finance,
-        cfo_approved_by: users.approver,
-      }),
-      422,
-    );
+    // Reject forged sign-off, then reject bypassing persisted CFO approval.
+    const closeRequest={action:'update_closing_cockpit',legal_entity_id:legal,period_id:periodId,period_code:'2026-11',completed_tasks_count:17};
+    await expect(h.call('finance','POST','finance',{...closeRequest,close_stage:'hard_close',controller_reviewed_by:users.finance,cfo_approved_by:users.approver}),403);
     executed++;
-
-    await expect(
-      h.call('finance', 'POST', 'finance', {
-        action: 'update_closing_cockpit',
-        legal_entity_id: legal,
-        period_id: periodId,
-        period_code: '2026-11',
-        close_stage: 'hard_close',
-        completed_tasks_count: 17,
-        controller_reviewed_by: users.finance,
-        cfo_approved_by: users.finance, // Same actor forbidden
-      }),
-      422,
-    );
+    await expect(h.call('finance','POST','approver',{...closeRequest,close_stage:'hard_close'}),409);
     executed++;
-
-    // Valid Hard Close with 17 completed tasks and independent Controller & CFO
-    await expect(
-      h.call('finance', 'POST', 'approver', {
-        action: 'update_closing_cockpit',
-        legal_entity_id: legal,
-        period_id: periodId,
-        period_code: '2026-11',
-        close_stage: 'hard_close',
-        completed_tasks_count: 17,
-        controller_reviewed_by: users.finance,
-        cfo_approved_by: users.approver,
-      }),
-      200,
-    );
+    // Persist independent CFO approval, then hard close.
+    await expect(h.call('finance','POST','approver',{...closeRequest,close_stage:'approved'}),200);
+    await expect(h.call('finance','POST','approver',{...closeRequest,close_stage:'hard_close'}),200);
     executed++;
 
     // Negative: Non-CFO/Controller cannot reopen hard-closed period
@@ -2048,8 +2015,10 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
     // 1-3: Configure Mode A (Standalone), Mode B (Docked), Mode C (Multi-Entity) & Safe Disconnect
     for (const mode of ['standalone', 'docked', 'multi_entity']) {
       await expect(
-        h.call('finance', 'POST', 'approver', {
+        h.call('finance', 'POST', 'admin', {
           action: 'configure_docking',
+          legal_entity_id: legal,
+          webhook_secret: 'synthetic-ci-only-webhook-secret-32-characters',
           operating_mode: mode,
           connection_status: 'connected',
           rticore_endpoint: 'https://github.com/elanghaqeem-hash/India',
@@ -2063,7 +2032,7 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
     const mapDomains = ['tenant', 'user', 'customer', 'vendor', 'contract', 'project', 'service_catalog', 'coa'];
     for (const dom of mapDomains) {
       await expect(
-        h.call('finance', 'POST', 'finance', {
+        h.call('finance', 'POST', 'admin', {
           action: 'register_integration_mapping',
           legal_entity_id: legal,
           domain: dom,
@@ -2080,7 +2049,7 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
     for (let i = 0; i < core.RTICORE_DOCKING_EVENT_TYPES.length; i++) {
       const evType = core.RTICORE_DOCKING_EVENT_TYPES[i];
       await expect(
-        h.call('finance', 'POST', 'finance', {
+        h.call('finance', 'POST', 'admin', {
           action: 'ingest_docking_event',
           event_id: `ev-${i + 1}-${crypto.randomUUID()}`,
           event_type: evType,
@@ -2101,7 +2070,7 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
 
     // 34: Negative: Duplicate idempotency_key rejected (409) — prevents duplicate financial posting
     await expect(
-      h.call('finance', 'POST', 'finance', {
+      h.call('finance', 'POST', 'admin', {
         action: 'ingest_docking_event',
         event_id: crypto.randomUUID(),
         event_type: 'customer.created',
@@ -2123,12 +2092,12 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
     const failedRow = h.sql.prepare("SELECT id FROM rticore_finance_integration_events WHERE status='failed' LIMIT 1").get();
     const original = h.sql.prepare('SELECT payload_json,payload_sha256,retry_count FROM rticore_finance_integration_events WHERE id=?').get(failedRow.id);
     h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run('{"amount_cents":999}',failedRow.id);
-    await expect(h.call('finance','POST','finance',{action:'retry_docking_event',event_id:failedRow.id}),409);
+    await expect(h.call('finance','POST','approver',{action:'retry_docking_event',event_id:failedRow.id}),409);
     assert.equal(h.sql.prepare('SELECT retry_count FROM rticore_finance_integration_events WHERE id=?').get(failedRow.id).retry_count,original.retry_count);
     h.sql.prepare('UPDATE rticore_finance_integration_events SET payload_json=? WHERE id=?').run(original.payload_json,failedRow.id);
     await expect(h.call('finance','POST','admin',{action:'retry_docking_event',event_id:failedRow.id}),403);
     const dlqRes = await expect(
-      h.call('finance', 'POST', 'finance', {
+      h.call('finance', 'POST', 'approver', {
         action: 'retry_docking_event',
         event_id: failedRow.id,
         move_to_dlq: true,
@@ -2137,7 +2106,7 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
     );
     assert.equal(dlqRes.body.status, 'dead_letter');
     const reprocessRes = await expect(
-      h.call('finance', 'POST', 'finance', {
+      h.call('finance', 'POST', 'approver', {
         action: 'retry_docking_event',
         event_id: failedRow.id,
         move_to_dlq: false,
@@ -2219,7 +2188,7 @@ test('Domain 14 (35 UAT Scenarios): COSO Risk & Control Matrix, 15 Automated Fin
 
     // 28. Cross-tenant event injection rejected (403)
     await expect(
-      h.call('finance', 'POST', 'finance', {
+      h.call('finance', 'POST', 'admin', {
         action: 'ingest_docking_event',
         event_id: crypto.randomUUID(),
         event_type: 'customer.created',
@@ -2239,7 +2208,7 @@ test('Domain 14 (35 UAT Scenarios): COSO Risk & Control Matrix, 15 Automated Fin
 
     // 29. Webhook timestamp replay (>300s drift) rejected (422)
     await expect(
-      h.call('finance', 'POST', 'finance', {
+      h.call('finance', 'POST', 'admin', {
         action: 'ingest_docking_event',
         event_id: crypto.randomUUID(),
         event_type: 'customer.created',

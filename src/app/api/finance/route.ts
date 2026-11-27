@@ -1,3 +1,4 @@
+import { nextFinanceClose, type CloseState } from '@/lib/finance-close-policy';
 import { operationEvent } from '@/lib/operations';
 import { verifyFinancePayload } from '@/lib/finance-docking-bridge';
 import { authorizeBoQ, type BoQIdentity } from '@/lib/boq-auth';
@@ -116,7 +117,7 @@ async function resolveEffectiveFinanceRole(
       .bind(TENANT, identity.email.toLowerCase(), legalEntityId)
       .first<{ finance_role: FinanceRoleId; approval_limit_cents: number }>();
     if (assigned) {
-      return { financeRole: assigned.finance_role, customLimitCents: Number(assigned.approval_limit_cents) };
+      return { financeRole: assigned.finance_role, customLimitCents: Math.min(Number(assigned.approval_limit_cents),getFinanceRoleDefinition(assigned.finance_role).defaultLimitCents) };
     }
   }
   return { financeRole: mapRTICoreRoleToFinanceRole(identity.role) };
@@ -237,7 +238,7 @@ export async function GET(req: Request) {
       legalEntityId
         ? db.prepare('SELECT * FROM rticore_finance_ap_extensions WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 150').bind(TENANT, legalEntityId).all()
         : Promise.resolve({ results: [] }),
-      Promise.resolve({ results: [] as Record<string,unknown>[] }) /* shared vendor banking: no certified entity ownership */,
+      db.prepare("SELECT b.id,b.vendor_id,b.bank_name,b.account_holder_name,b.masked_account_number,b.currency,b.status,b.version,b.created_at,b.approved_at,v.legal_name AS vendor_name FROM rticore_finance_vendor_bank_accounts b JOIN rticore_finance_vendor_bank_scopes sc ON sc.tenant_id=b.tenant_id AND sc.bank_account_id=b.id JOIN rticore_purchase_orders p ON p.tenant_id=sc.tenant_id AND p.id=sc.purchase_order_id AND p.vendor_id=b.vendor_id JOIN rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id JOIN rticore_vendors v ON v.tenant_id=b.tenant_id AND v.id=b.vendor_id WHERE b.tenant_id=? AND sc.legal_entity_id=? AND os.legal_entity_id=sc.legal_entity_id AND os.status='approved' AND p.status='approved' ORDER BY b.created_at DESC LIMIT 150").bind(TENANT,legalEntityId).all(),
       legalEntityId
         ? db.prepare('SELECT * FROM rticore_treasury_accounts WHERE tenant_id=? AND legal_entity_id=? LIMIT 100').bind(TENANT, legalEntityId).all()
         : Promise.resolve({ results: [] }),
@@ -479,6 +480,7 @@ export async function POST(req: Request) {
     // Fixed server-side resource queries: never interpolate a caller-supplied table or field.
     // Bind the effective role to the authoritative target, not to a supplied entity ID.
     const references: Record<string, readonly [string, string][]> = {
+      approve_vendor_bank_change: [['id',"SELECT sc.legal_entity_id FROM rticore_finance_vendor_bank_scopes sc JOIN rticore_finance_vendor_bank_accounts b ON b.tenant_id=sc.tenant_id AND b.id=sc.bank_account_id JOIN rticore_purchase_orders p ON p.tenant_id=sc.tenant_id AND p.id=sc.purchase_order_id AND p.vendor_id=b.vendor_id JOIN rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id WHERE sc.tenant_id=? AND sc.bank_account_id=? AND os.legal_entity_id=sc.legal_entity_id AND os.status='approved' AND p.status='approved'"]],
       approve_finance_role: [['id','SELECT legal_entity_id FROM rticore_finance_role_assignments WHERE tenant_id=? AND id=?']],
       approve_posting_rule: [['id','SELECT legal_entity_id FROM rticore_finance_posting_rules WHERE tenant_id=? AND id=?']],
       approve_and_post_journal: [['journal_id','SELECT legal_entity_id FROM rticore_gl_journals WHERE tenant_id=? AND id=?']],
@@ -556,9 +558,6 @@ export async function POST(req: Request) {
       (operation === 'docking' && ['super_admin','cfo'].includes(financeRole)) ||
       (operation === 'globalAdmin' && a.identity.role === 'admin' && financeRole === 'super_admin');
     erpAssert(permitted, 'Kewenangan action Finance ditolak', 403);
-    // These legacy records have tenant-wide ownership, not a certified legal entity.
-    erpAssert(!['request_vendor_bank_change','approve_vendor_bank_change'].includes(action),
-      'Perubahan rekening vendor memerlukan model kepemilikan legal entity yang terverifikasi', 503);
 
     // =========================================================================
     // WP01: RBAC ROLE ASSIGNMENT & MASTER DATA (F02, F25)
@@ -580,6 +579,7 @@ export async function POST(req: Request) {
         'Data pengajuan role keuangan tidak valid',
       );
       const targetDef = getFinanceRoleDefinition(v.target_role as FinanceRoleId);
+      erpAssert(Number(v.approval_limit_cents)<=targetDef.defaultLimitCents,'Approval limit melebihi kebijakan role',422);
       const id = crypto.randomUUID();
       await erpAtom(
         a.identity,
@@ -972,8 +972,8 @@ export async function POST(req: Request) {
 
       await erpAtom(
         a.identity,
-        "EXISTS(SELECT 1 FROM rticore_gl_periods WHERE tenant_id=? AND id=? AND status='open')",
-        [TENANT, periodRow.id],
+        "EXISTS(SELECT 1 FROM rticore_gl_periods p WHERE p.tenant_id=? AND p.id=? AND p.legal_entity_id=? AND p.status='open' AND NOT EXISTS(SELECT 1 FROM rticore_finance_period_controls c WHERE c.tenant_id=p.tenant_id AND c.period_id=p.id AND c.close_stage!='open'))",
+        [TENANT, periodRow.id, legalEntityId],
         writes,
         'rti_finance',
         journalId,
@@ -1022,7 +1022,7 @@ export async function POST(req: Request) {
         db.prepare("UPDATE rticore_finance_journal_workflows SET lifecycle_stage='posted', posted_by=?, posted_at=CURRENT_TIMESTAMP, version=version+1 WHERE tenant_id=? AND journal_id=?").bind(email,TENANT,j.id),
       );
       await erpAtom(a.identity,
-        "EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND legal_entity_id=? AND id=? AND status='draft' AND version=?)",
+        "EXISTS(SELECT 1 FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id AND p.legal_entity_id=j.legal_entity_id WHERE j.tenant_id=? AND j.legal_entity_id=? AND j.id=? AND j.status='draft' AND j.version=? AND p.status='open' AND NOT EXISTS(SELECT 1 FROM rticore_finance_period_controls c WHERE c.tenant_id=p.tenant_id AND c.period_id=p.id AND c.close_stage!='open'))",
         [TENANT, legalEntityId, j.id, j.version], writes, 'rti_finance', j.id,
         post ? 'JOURNAL_POSTED' : 'JOURNAL_APPROVED', { amount_cents: j.debit_cents });
       return erpReply({ success: true });
@@ -1302,7 +1302,7 @@ export async function POST(req: Request) {
     if (action === 'request_vendor_bank_change') {
       erpAssert(roleDef.canMake, 'Hanya Maker AP/Procurement yang dapat mengajukan rekening bank vendor', 403);
       erpAssert(
-        erpId(v.vendor_id) &&
+        erpId(v.vendor_id) && erpId(v.purchase_order_id) &&
           erpText(v.bank_name, 3, 120) &&
           erpText(v.account_holder_name, 3, 160) &&
           erpText(v.masked_account_number, 4, 32) &&
@@ -1310,12 +1310,14 @@ export async function POST(req: Request) {
           erpId(v.evidence_document_id),
         'Pengajuan rekening bank vendor wajib menyertakan alasan dan dokumen bukti',
       );
+      const scopeArgs = [TENANT, v.purchase_order_id as string, v.vendor_id as string, legalEntityId, v.evidence_document_id as string];
+      erpAssert(await db.prepare("SELECT 1 AS ok WHERE "+"EXISTS(SELECT 1 FROM rticore_purchase_orders p JOIN rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id JOIN rticore_document_library d ON d.tenant_id=p.tenant_id AND d.opportunity_id=p.opportunity_id WHERE p.tenant_id=? AND p.id=? AND p.vendor_id=? AND p.status='approved' AND os.status='approved' AND os.legal_entity_id=? AND d.id=?)").bind(...scopeArgs).first(), 'Vendor, PO atau dokumen bukti bukan milik legal entity yang disetujui', 403);
       const id = crypto.randomUUID();
       const accHash = await sha256Hex(`${v.vendor_id}:${v.bank_name}:${v.masked_account_number}`);
       await erpAtom(
         a.identity,
-        '1=1',
-        [],
+        "EXISTS(SELECT 1 FROM rticore_purchase_orders p JOIN rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id JOIN rticore_document_library d ON d.tenant_id=p.tenant_id AND d.opportunity_id=p.opportunity_id WHERE p.tenant_id=? AND p.id=? AND p.vendor_id=? AND p.status='approved' AND os.status='approved' AND os.legal_entity_id=? AND d.id=?)",
+        scopeArgs,
         [
           db
             .prepare(
@@ -1333,6 +1335,8 @@ export async function POST(req: Request) {
               v.evidence_document_id as string,
               email,
             ),
+          db.prepare('INSERT INTO rticore_finance_vendor_bank_scopes(tenant_id,bank_account_id,legal_entity_id,purchase_order_id) VALUES(?,?,?,?)')
+            .bind(TENANT,id,legalEntityId,v.purchase_order_id as string),
         ],
         'rti_finance',
         id,
@@ -1356,8 +1360,8 @@ export async function POST(req: Request) {
       );
       await erpAtom(
         a.identity,
-        "EXISTS(SELECT 1 FROM rticore_finance_vendor_bank_accounts WHERE tenant_id=? AND id=? AND status='pending_approval')",
-        [TENANT, vb.id],
+        "EXISTS(SELECT 1 FROM rticore_finance_vendor_bank_accounts b JOIN rticore_finance_vendor_bank_scopes sc ON sc.tenant_id=b.tenant_id AND sc.bank_account_id=b.id JOIN rticore_purchase_orders p ON p.tenant_id=sc.tenant_id AND p.id=sc.purchase_order_id AND p.vendor_id=b.vendor_id JOIN rticore_erp_opportunity_scopes os ON os.tenant_id=p.tenant_id AND os.opportunity_id=p.opportunity_id WHERE b.tenant_id=? AND b.id=? AND b.status='pending_approval' AND b.version=? AND sc.legal_entity_id=? AND os.legal_entity_id=sc.legal_entity_id AND os.status='approved' AND p.status='approved')",
+        [TENANT, vb.id, vb.version, legalEntityId],
         [
           db
             .prepare(
@@ -1569,11 +1573,11 @@ export async function POST(req: Request) {
     if (action === 'approve_psak115_obligation') {
       erpAssert(roleDef.canApprove && erpId(v.id) && erpText(v.review_notes, 12, 500), 'Approval PSAK 115 memerlukan Approver independen dan catatan', 403);
       const ob = await db
-        .prepare('SELECT id, created_by, status FROM rticore_finance_performance_obligations WHERE tenant_id=? AND id=?')
+        .prepare('SELECT id, created_by, status, allocated_transaction_price_cents FROM rticore_finance_performance_obligations WHERE tenant_id=? AND id=?')
         .bind(TENANT, v.id as string)
-        .first<{ id: string; created_by: string; status: string }>();
+        .first<{ id: string; created_by: string; status: string; allocated_transaction_price_cents:number }>();
       erpAssert(ob && ob.status === 'draft', 'Performance Obligation tidak berstatus draft', 409);
-      erpAssert(ob.created_by.toLowerCase() !== email.toLowerCase(), 'Maker dilarang menyetujui Performance Obligation sendiri', 403);
+      erpAssert(validateFinanceApprovalAuthority({makerEmail:ob.created_by,approverEmail:email,approverRole:financeRole,customApprovalLimitCents:customLimitCents,transactionAmountCents:Number(ob.allocated_transaction_price_cents)}).ok,'Approval PSAK115 harus independen dan dalam limit',403);
       await erpAtom(
         a.identity,
         "EXISTS(SELECT 1 FROM rticore_finance_performance_obligations WHERE tenant_id=? AND id=? AND status='draft')",
@@ -2343,52 +2347,33 @@ export async function POST(req: Request) {
     // WP07 & WP08: FINANCIAL CLOSING COCKPIT, CONSOLIDATION & ICOFR (F20, F22, F23)
     // =========================================================================
     if (action === 'update_closing_cockpit') {
-      erpAssert(
-        erpId(v.legal_entity_id) && erpId(v.period_id) && erpPeriod(v.period_code),
-        'Period ID, Legal Entity, dan Period Code wajib',
-      );
-      const stage = String(v.close_stage || 'soft_close');
-      const completedCount = Number(v.completed_tasks_count ?? 17);
-      const controllerEmail = (v.controller_reviewed_by as string) || email;
-      const cfoEmail = (v.cfo_approved_by as string) || null;
-
-      if (stage === 'approved' || stage === 'hard_close') {
-        erpAssert(
-          completedCount === 17 && cfoEmail && controllerEmail.toLowerCase() !== cfoEmail.toLowerCase(),
-          'Hard Close membutuhkan seluruh 17 checklist selesai serta sign-off independen Controller dan CFO',
-          422,
-        );
+      erpAssert(erpId(v.period_id) && erpPeriod(v.period_code), 'Period ID dan Period Code wajib');
+      erpAssert(!Object.hasOwn(v,'controller_reviewed_by') && !Object.hasOwn(v,'cfo_approved_by'), 'Identitas sign-off hanya dari sesi terautentikasi',403);
+      const p = await db.prepare('SELECT period,status FROM rticore_gl_periods WHERE tenant_id=? AND legal_entity_id=? AND id=?').bind(TENANT,legalEntityId,v.period_id).first<{period:string;status:string}>();
+      erpAssert(p && p.period===v.period_code && p.status==='open','Periode tidak sesuai atau telah terkunci',409);
+      const old = await db.prepare('SELECT close_stage,completed_tasks_count,controller_reviewed_by,cfo_approved_by,checklist_json,reopen_count FROM rticore_finance_period_controls WHERE tenant_id=? AND legal_entity_id=? AND period_id=?').bind(TENANT,legalEntityId,v.period_id).first<CloseState & {checklist_json:string;reopen_count:number}>();
+      const next = nextFinanceClose(old,v.close_stage,v.completed_tasks_count,email,financeRole);
+      if(!next.ok)throw new ERPError(next.message,next.status);
+      const state=next.state;
+      const known=FINANCIAL_CLOSING_17_CHECKLIST.map(x=>x.code);
+      const provided=Array.isArray(v.completed_task_codes)?v.completed_task_codes:[];
+      let checklistJson=old?.checklist_json||'[]';
+      if(state.close_stage==='soft_close'||state.close_stage==='under_review'){
+        erpAssert(provided.length===state.completed_tasks_count && new Set(provided).size===provided.length && provided.every(x=>known.some(k=>k===x)), 'Kode checklist selesai wajib valid dan unik',422);
+        checklistJson=JSON.stringify(provided);
+      }else{
+        const saved:unknown=JSON.parse(checklistJson);
+        erpAssert(Array.isArray(saved)&&saved.length===17&&new Set(saved).size===17&&known.every(k=>saved.includes(k)),'Checklist Controller belum tersertifikasi',409);
       }
-
-      const checklistJson = JSON.stringify(v.checklist || FINANCIAL_CLOSING_17_CHECKLIST);
-      await erpAtom(
-        a.identity,
-        '1=1',
-        [],
-        [
-          db
-            .prepare(
-              'INSERT INTO rticore_finance_period_controls(tenant_id,period_id,legal_entity_id,period_code,period_type,close_stage,checklist_json,completed_tasks_count,controller_reviewed_by,cfo_approved_by) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,period_id) DO UPDATE SET close_stage=excluded.close_stage, checklist_json=excluded.checklist_json, completed_tasks_count=excluded.completed_tasks_count, controller_reviewed_by=excluded.controller_reviewed_by, cfo_approved_by=excluded.cfo_approved_by, updated_at=CURRENT_TIMESTAMP',
-            )
-            .bind(
-              TENANT,
-              v.period_id as string,
-              v.legal_entity_id as string,
-              v.period_code as string,
-              String(v.period_type || 'monthly'),
-              stage,
-              checklistJson,
-              completedCount,
-              controllerEmail,
-              cfoEmail,
-            ),
-        ],
-        'rti_finance',
-        v.period_id as string,
-        'CLOSING_COCKPIT_UPDATE',
-        { close_stage: stage, completed_tasks_count: completedCount },
-      );
-      return erpReply({ success: true, close_stage: stage });
+      const guard=old
+        ? "EXISTS(SELECT 1 FROM rticore_finance_period_controls WHERE tenant_id=? AND legal_entity_id=? AND period_id=? AND close_stage=? AND completed_tasks_count=? AND checklist_json=? AND reopen_count=? AND coalesce(controller_reviewed_by,'')=? AND coalesce(cfo_approved_by,'')=?)"
+        : 'NOT EXISTS(SELECT 1 FROM rticore_finance_period_controls WHERE tenant_id=? AND period_id=?)';
+      const args=old?[TENANT,legalEntityId,v.period_id,old.close_stage,old.completed_tasks_count,old.checklist_json,old.reopen_count,old.controller_reviewed_by||'',old.cfo_approved_by||'']:[TENANT,v.period_id];
+      await erpAtom(a.identity,guard,args,[
+        db.prepare("INSERT INTO rticore_finance_period_controls(tenant_id,period_id,legal_entity_id,period_code,period_type,close_stage,checklist_json,completed_tasks_count,controller_reviewed_by,cfo_approved_by) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,period_id) DO UPDATE SET close_stage=excluded.close_stage,checklist_json=excluded.checklist_json,completed_tasks_count=excluded.completed_tasks_count,controller_reviewed_by=excluded.controller_reviewed_by,cfo_approved_by=excluded.cfo_approved_by,updated_at=CURRENT_TIMESTAMP")
+          .bind(TENANT,v.period_id,legalEntityId,v.period_code,'monthly',state.close_stage,checklistJson,state.completed_tasks_count,state.controller_reviewed_by,state.cfo_approved_by)
+      ],'rti_finance',v.period_id,'CLOSING_COCKPIT_UPDATE',{close_stage:state.close_stage,completed_tasks_count:state.completed_tasks_count});
+      return erpReply({success:true,close_stage:state.close_stage});
     }
 
     if (action === 'reopen_closed_period') {
@@ -2406,15 +2391,17 @@ export async function POST(req: Request) {
         .bind(TENANT, v.period_id as string)
         .first<{ period_id: string; close_stage: string; reopen_count: number }>();
       erpAssert(curr, 'Kontrol periode tidak ditemukan', 404);
+      erpAssert(financeRole==='cfo','Reopen hanya CFO',403);
+      erpAssert(['approved','hard_close'].includes(curr.close_stage),'Periode belum ditutup',409);
 
       await erpAtom(
         a.identity,
-        '1=1',
-        [],
+        "EXISTS(SELECT 1 FROM rticore_finance_period_controls WHERE tenant_id=? AND legal_entity_id=? AND period_id=? AND close_stage=? AND reopen_count=?)",
+        [TENANT,legalEntityId,curr.period_id,curr.close_stage,curr.reopen_count],
         [
           db
             .prepare(
-              "UPDATE rticore_finance_period_controls SET close_stage='soft_close', reopen_count=reopen_count+1, last_reopen_reason=?, last_reopened_by=?, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND period_id=?",
+              "UPDATE rticore_finance_period_controls SET close_stage='soft_close', controller_reviewed_by=NULL, cfo_approved_by=NULL, completed_tasks_count=0, checklist_json='[]', reopen_count=reopen_count+1, last_reopen_reason=?, last_reopened_by=?, updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND period_id=?",
             )
             .bind(String(v.reopen_reason).trim(), email, TENANT, curr.period_id),
         ],
