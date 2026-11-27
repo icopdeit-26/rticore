@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {nativeMigrationManifest,validateManifest} from '../scripts/native-migration-manifest.mjs';
 import {duplicateMigrationVersions,schemaInventory,checkSchemaInventory,vendorScopeFKs,nativeLedgerCollisions} from '../scripts/hostinger-schema-inventory.mjs';
 const expected=schemaInventory('CREATE TABLE IF NOT EXISTS t (id TEXT);','CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION fn();');
 const good={tables:['t'],triggers:[{table:'t',name:'tr',function:'fn',function_schema:'public',enabled:'O'}],foreignKeys:vendorScopeFKs.map(r=>({...r,validated:true,target_schema:'public'}))};
@@ -61,4 +62,17 @@ test('migration trigger inventory cannot be omitted or disabled',()=>{
  assert.deepEqual(checkSchemaInventory(full,good).missingTriggers,[{name:'migration_guard',table:'t',function:'guard'}]);
  assert.equal(checkSchemaInventory(full,{...good,triggers:[...good.triggers,{name:'migration_guard',table:'t',function:'guard',function_schema:'public',enabled:'D'}]}).missingTriggers.length,1);
  assert.throws(()=>schemaInventory('CREATE TABLE IF NOT EXISTS t (id TEXT);','CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION fn();','CREATE TRIGGER unsupported;'));
+});
+
+test('reviewed manifest covers both native streams, ordered and content-hashed; never implies applied status',()=>{
+ const rows=nativeMigrationManifest();
+ assert.ok(rows.some(r=>r.path.endsWith('0070_flexguard_historical_review.sql')));
+ assert.ok(rows.some(r=>r.path==='sql/native-postgres/0054_cams_draft.sql'));
+ assert.ok(rows.every(r=>/^[a-f0-9]{64}$/.test(r.sha256)));
+ const manifest=JSON.parse(fs.readFileSync('deployment/hostinger/native-migration-manifest.json','utf8'));
+ const actual=d=>fs.readdirSync(d);
+ assert.throws(()=>validateManifest(manifest,d=>[...actual(d),'9999_unreviewed.sql']),/manifest drift/);
+ assert.throws(()=>validateManifest(manifest,d=>[...actual(d),'0053_collision.sql']),/collision/);
+ const reversed=structuredClone(manifest);reversed.streams[0].files.reverse();
+ assert.throws(()=>validateManifest(reversed,actual),/manifest drift/);
 });

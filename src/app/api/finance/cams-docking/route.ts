@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getLocalPostgresDB } from '@/lib/postgres-db';
+import { camsDatabaseMode } from '@/lib/cams-runtime-boundary';
 import { TENANT } from '@/lib/sales-workflow';
 import { readBoundedJSON, RequestBodyError } from '@/lib/bounded-json';
 import { DockingError, journalEnvelope,envelopeHash,minorUnits,validToken,lineSignature } from '@/lib/cams-journal-contract';
@@ -9,7 +10,7 @@ type MappedLine={accountId:string;debit:string;credit:string;costCenterId?:strin
 type Receipt={id:string;source_tenant_id:string;source_journal_id:string;idempotency_key:string;payload_hash:string;legal_entity_id:string;period_code:string;mapped_lines_json:MappedLine[]|string};
 const reply=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 function context(req:Request){
- if(process.env.CAMS_FINANCE_DOCKING_ENABLED!=='true'||!((process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_LOCAL_MODE==='0'&&process.env.RTICORE_DB_ENGINE!=='sqlite')||(process.env.NODE_ENV!=='production'&&process.env.RTICORE_LOCAL_MODE==='1'))||!process.env.DATABASE_URL||process.env.RTICORE_DB_ENGINE==='sqlite')throw new DockingError('DOCKING_DISABLED',503);
+ if(process.env.CAMS_FINANCE_DOCKING_ENABLED!=='true'||!camsDatabaseMode(process.env))throw new DockingError('DOCKING_DISABLED',503);
  if(!validToken(req.headers.get('authorization'),process.env.CAMS_FINANCE_SERVICE_TOKEN))throw new DockingError('UNAUTHORIZED',401);
  const source=process.env.CAMS_FINANCE_SOURCE_TENANT_ID,entity=process.env.CAMS_FINANCE_LEGAL_ENTITY_ID;
  if(!source||!entity||!process.env.CAMS_FINANCE_COA_MAP_JSON)throw new DockingError('MAPPING_NOT_CONFIGURED',503);

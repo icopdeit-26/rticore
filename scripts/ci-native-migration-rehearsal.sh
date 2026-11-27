@@ -7,6 +7,7 @@ q() { psql -X -v ON_ERROR_STOP=1 "$@"; }
 dir=deployment/hostinger/migrations
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+node scripts/native-migration-manifest.mjs --paths >"$tmp/native-paths"
 q -f "$dir/0053_finance_vendor_bank_entity_scope.sql"
 # Reproduce a legacy cross-entity period reference on the real pre-0054 schema.
 q <<'SQL'
@@ -31,11 +32,9 @@ q -f tests/flexguard-commercial-fixture.sql
 q -f rticore_postgresql_triggers.sql
 # Apply all approved native streams, and replay to detect unsafe DDL changes.
 for pass in 1 2; do
-  for f in 0053_finance_vendor_bank_entity_scope 0054_finance_entity_constraints 0057_flexguard_native_enterprise 0058_flexguard_finance_receiver 0059_flexguard_wallet_onboarding 0060_flexguard_allocation_and_journal_controls 0061_flexguard_maintenance_queue 0062_business_iam 0063_flexguard_product_terms 0064_flexguard_product_commands 0065_flexguard_contract_binding 0066_flexguard_psa_bridge 0067_enterprise_service_catalog 0068_catalog_pricing_workflow 0069_catalog_boq_binding 0070_flexguard_historical_review; do
-    q -f "$dir/$f.sql"
-  done
-  q -f sql/native-postgres/0053_cams_finance_inbox.sql
-  q -f sql/native-postgres/0054_cams_draft.sql
+  while IFS= read -r migration; do
+    q -f "$migration"
+  done <"$tmp/native-paths"
 done
 q -f tests/cams-native-draft-acceptance.sql
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]

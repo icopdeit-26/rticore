@@ -1,7 +1,7 @@
 name: Native schema inventory gate
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/v6-erp-finance-20261127']
   push:
     branches: [main]
   workflow_dispatch:
@@ -17,3 +17,4 @@ jobs:
         with:
           node-version: '22'
       - run: node --test tests/hostinger-schema-inventory.test.mjs
+      - run: node scripts/native-migration-manifest.mjs
