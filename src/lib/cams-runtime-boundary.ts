@@ -12,6 +12,7 @@ export function camsInboxScope(env:CamsRuntimeEnv,requestedEntity:string|null){
  if(!source||!entity||!requestedEntity||requestedEntity!==entity)return null;
  return {mode,source,entity};
 }
-export function camsLegacyPostingAllowed(env:CamsRuntimeEnv){
- return camsDatabaseMode(env)==='local'&&env.CAMS_FINANCE_DOCKING_ENABLED==='true';
+// Deliberately limited to disposable development acceptance. Hostinger stays held.
+export function camsReviewAllowed(env:CamsRuntimeEnv){
+ return camsDatabaseMode(env)==='local'&&env.CAMS_FINANCE_DOCKING_ENABLED==='true'&&env.CAMS_FINANCE_REVIEW_ENABLED==='true';
 }

@@ -26,7 +26,8 @@
       "directory": "sql/native-postgres",
       "files": [
         "0053_cams_finance_inbox.sql",
-        "0054_cams_draft.sql"
+        "0054_cams_draft.sql",
+        "0055_cams_independent_review.sql"
       ]
     }
   ]
