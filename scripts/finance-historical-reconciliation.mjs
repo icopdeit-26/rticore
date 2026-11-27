@@ -237,6 +237,22 @@ FROM per_lot`);
  return {schema_status:'AVAILABLE',...rows[0]};
 }
 
+// Legacy wallets require independently verified source evidence, never automatic opening credit.
+export async function scanFlexGuardLegacyBoundary(client){
+ const {rows}=await client.query(`WITH running AS (
+ SELECT tenant_id,wallet_id,
+ sum(CASE WHEN kind IN ('ISSUE','TOPUP','RELEASE','REFUND') THEN units WHEN kind IN ('RESERVE','EXPIRY') THEN -units ELSE 0 END) OVER w AS available,
+ sum(CASE WHEN kind='RESERVE' THEN units WHEN kind IN ('RELEASE','DEBIT') THEN -units ELSE 0 END) OVER w AS reserved,
+ sum(CASE WHEN kind='DEBIT' THEN units WHEN kind='REFUND' THEN -units ELSE 0 END) OVER w AS consumed
+ FROM public.rticore_flexguard_events WINDOW w AS (PARTITION BY tenant_id,wallet_id ORDER BY rowid ROWS UNBOUNDED PRECEDING)
+ ), legacy AS (SELECT DISTINCT tenant_id,wallet_id FROM running)
+ SELECT (SELECT count(*) FROM running)::text AS legacy_events,
+ (SELECT count(*) FROM legacy)::text AS legacy_wallets_requiring_review,
+ (SELECT count(*) FROM (SELECT DISTINCT tenant_id,wallet_id FROM running WHERE available<0 OR reserved<0 OR consumed<0) bad)::text AS negative_running_balance_wallets,
+ (SELECT count(*) FROM legacy l WHERE EXISTS(SELECT 1 FROM public.rticore_flexguard_enterprise_ledger n WHERE n.tenant_id=l.tenant_id AND n.wallet_id=l.wallet_id) OR EXISTS(SELECT 1 FROM public.rticore_flexguard_requests n WHERE n.tenant_id=l.tenant_id AND n.wallet_id=l.wallet_id AND n.status IN ('posted','pending_approval')))::text AS mixed_ledger_wallets`);
+ return rows[0];
+}
+
 async function main() {
   // Require an explicitly approved separate staging database and expected DB name.
   if (process.env.RTICORE_RECONCILIATION_SCOPE !== 'staging' ||
@@ -273,13 +289,14 @@ async function main() {
     const flexguardSources=flexguardAvailable?await scanFlexGuardSources(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const flexguardLedger=flexguardAvailable?await scanFlexGuardLedger(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const fgAllocationControls=flexguardAvailable?await scanFlexGuardAllocationControls(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
+    const legacyBoundary=flexguardAvailable?await scanFlexGuardLegacyBoundary(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const fgLiability=flexguardAvailable?await scanFlexGuardLiability(client):{schema_status:'MISSING_ENTERPRISE_LEDGER'};
     const vendorBankScopes=await scanVendorBankScopes(client);
     const entityConstraints=await scanEntityConstraints(client);
     const settlementEvidence=await scanSettlementEvidence(client);
     await client.query('ROLLBACK');
-    const ok = flexguardAvailable && fgLiability.schema_status==='AVAILABLE' && ['missing_purchase_evidence','lots_pending_ack','lots_with_variance','mismatched_postings','absolute_lot_variance_cents'].every(k=>fgLiability[k]==='0') && fgAllocationControls.schema_status==='AVAILABLE' && ['unverified_lot_allocations','legacy_journal_workflow_review','acknowledged_amount_mismatch'].every(k=>fgAllocationControls[k]==='0') && flexguardLedger.schema_status==='AVAILABLE' && ['invalid_balance','invoice_payment_review','missing_outbox','pending_finance_ack','invalid_posted_link'].every(k=>flexguardLedger[k]==='0') && vendorBankScopes.schema_status==='AVAILABLE' && vendorBankScopes.unassigned==='0' && vendorBankScopes.invalid_assigned_scope==='0' && Object.values(entityConstraints).every(v=>v==='0') && counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope','processed_without_journal_review'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
-    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,flexguard_ledger:flexguardLedger,flexguard_allocation_controls:fgAllocationControls,flexguard_liability:fgLiability,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
+    const ok = flexguardAvailable && ['legacy_wallets_requiring_review','negative_running_balance_wallets','mixed_ledger_wallets'].every(k=>legacyBoundary[k]==='0') && fgLiability.schema_status==='AVAILABLE' && ['missing_purchase_evidence','lots_pending_ack','lots_with_variance','mismatched_postings','absolute_lot_variance_cents'].every(k=>fgLiability[k]==='0') && fgAllocationControls.schema_status==='AVAILABLE' && ['unverified_lot_allocations','legacy_journal_workflow_review','acknowledged_amount_mismatch'].every(k=>fgAllocationControls[k]==='0') && flexguardLedger.schema_status==='AVAILABLE' && ['invalid_balance','invoice_payment_review','missing_outbox','pending_finance_ack','invalid_posted_link'].every(k=>flexguardLedger[k]==='0') && vendorBankScopes.schema_status==='AVAILABLE' && vendorBankScopes.unassigned==='0' && vendorBankScopes.invalid_assigned_scope==='0' && Object.values(entityConstraints).every(v=>v==='0') && counts.invalid_payload === 0 && counts.requires_source_reconciliation === 0 && ['unbalanced_posted_journals','invalid_journal_links','duplicate_event_keys','invalid_account_scope','processed_without_journal_review'].every(k=>invariantCounts[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch','processed_cost_ledger_review'].every(k=>timesheetSources[k]==='0') && ['missing_source','invalid_opportunity_scope','source_mismatch'].every(k=>procurementSources[k]==='0') && ['missing_source','invalid_project_scope','source_mismatch'].every(k=>contractSources[k]==='0') && ['missing_source','invalid_entity_scope','source_mismatch'].every(k=>flexguardSources[k]==='0') && Object.values(settlementEvidence).every(v=>v==='0');
+    console.log(JSON.stringify({scope:'staging',mode:'read_only',...counts,integrity:invariantCounts,timesheet_sources:timesheetSources,procurement_sources:procurementSources,contract_sources:contractSources,flexguard_sources:flexguardSources,settlement_evidence:settlementEvidence,flexguard_ledger:flexguardLedger,flexguard_allocation_controls:fgAllocationControls,flexguard_liability:fgLiability,flexguard_legacy_boundary:legacyBoundary,vendor_bank_scopes:vendorBankScopes,entity_constraints:entityConstraints,digest_scan:counts.invalid_payload===0&&counts.requires_source_reconciliation===0?'PASS':'FAIL',automated_scan:!ok?'FAIL':counts.total===0?'NO_DATA':'PASS',source_reconciliation_certified:false},null,2));
     if (!ok || counts.total===0) process.exitCode = 1;
   } finally { await client.end().catch(()=>{}); }
 }

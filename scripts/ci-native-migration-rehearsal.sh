@@ -27,16 +27,18 @@ grep -q 'p0_journal_period_entity_fk' "$tmp/rejected.log"
 # Remove ONLY the intentional synthetic fixture; no real data is used.
 q -c "DELETE FROM rticore_gl_journals WHERE id='p0-rehearsal-bad'"
 q -f "$dir/0054_finance_entity_constraints.sql"
+q -f tests/flexguard-commercial-fixture.sql
 q -f rticore_postgresql_triggers.sql
 # Apply all approved native streams, and replay to detect unsafe DDL changes.
 for pass in 1 2; do
-  for f in 0053_finance_vendor_bank_entity_scope 0054_finance_entity_constraints 0057_flexguard_native_enterprise 0058_flexguard_finance_receiver 0059_flexguard_wallet_onboarding 0060_flexguard_allocation_and_journal_controls 0061_flexguard_maintenance_queue 0062_business_iam; do
+  for f in 0053_finance_vendor_bank_entity_scope 0054_finance_entity_constraints 0057_flexguard_native_enterprise 0058_flexguard_finance_receiver 0059_flexguard_wallet_onboarding 0060_flexguard_allocation_and_journal_controls 0061_flexguard_maintenance_queue 0062_business_iam 0063_flexguard_product_terms 0064_flexguard_product_commands 0065_flexguard_contract_binding 0066_flexguard_psa_bridge; do
     q -f "$dir/$f.sql"
   done
   q -f sql/native-postgres/0053_cams_finance_inbox.sql
   q -f sql/native-postgres/0054_cams_draft.sql
 done
 q -f tests/cams-native-draft-acceptance.sql
+q -f tests/flexguard-product-terms-acceptance.sql
 # Use a separate local database for a real logical backup/restore rehearsal.
 pg_dump --format=custom --file="$tmp/rticore.dump"
 createdb cams_docking_restore_ci
@@ -46,4 +48,5 @@ export PGDATABASE=cams_docking_restore_ci
 [[ "$(q -Atc "SELECT count(*) FROM pg_constraint WHERE conname LIKE 'p0\\_%\\_entity\\_fk' AND contype='f' AND convalidated")" == 16 ]]
 [[ "$(q -Atc "SELECT to_regclass('public.rticore_iam_credentials') IS NOT NULL AND to_regclass('public.rticore_iam_sessions') IS NOT NULL")" == t ]]
 q -f tests/cams-native-draft-acceptance.sql
+q -f tests/flexguard-product-terms-acceptance.sql
 echo 'PASS: disposable migration rejection, replay, CAMS acceptance and logical restore (not production certification)'

@@ -44,12 +44,14 @@ export async function POST(req:Request){
   const v=await readBoundedJSON(req,8000) as Record<string,unknown>;
   const {db,email}=a.identity;erpAssert(erpId(v.legal_entity_id),'Legal entity wajib');
   if(v.action==='create_wallet'||v.action==='approve_wallet'){
+   erpAssert(process.env.RTICORE_FLEXGUARD_PRODUCT_ENABLED!=='1','Gunakan contractual bound wallet command',409);
    const create=v.action==='create_wallet';const target=create?v.contract_id:v.wallet_id;
    erpAssert(erpId(target)&&(create?Number.isSafeInteger(v.entitlement_units):erpText(v.notes,12,1000)),'Data wallet tidak valid');
    const row=await db.prepare("SELECT rticore_fg_wallet_command(?,?,?,?,?,CAST(? AS bigint),?) AS result").bind(TENANT,v.legal_entity_id,email,create?'create':'approve',target,create?Number(v.entitlement_units):null,create?null:String(v.notes)).first<{result:unknown}>();
    erpAssert(row,'Wallet tidak tersedia',503);return erpReply({success:true,result:row.result},create?201:200);
   }
   if(v.action==='submit'){
+   erpAssert(process.env.RTICORE_FLEXGUARD_PRODUCT_ENABLED!=='1'||v.transaction_type!=='consumption','Gunakan PSA consumption bridge',409);
    erpAssert(erpId(v.wallet_id)&&typeof v.transaction_type==='string'&&Number.isSafeInteger(v.credit_amount)&&erpText(v.idempotency_key,16,128)&&erpText(v.reason,12,1000),'Parameter transaksi tidak valid');
    const refs=[v.invoice_id,v.lot_id,v.source_tx_id,v.milestone_id].map(nullableId);erpAssert(refs.every(x=>x!==undefined),'Referensi tidak valid');
    const row=await db.prepare("SELECT rticore_fg_submit(?,?,?,?,?,CAST(? AS bigint),?,?,?,?,?,?) AS result").bind(TENANT,v.legal_entity_id,email,v.wallet_id,v.transaction_type,Number(v.credit_amount),refs[0]??null,refs[1]??null,refs[2]??null,refs[3]??null,v.idempotency_key,v.reason).first<{result:unknown}>();

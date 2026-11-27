@@ -22,7 +22,7 @@
     "test:executive": "node --test tests/rticore-executive-dashboard.test.cjs",
     "test:consolidation": "node --test tests/marketing-sales-consolidation.test.cjs tests/marketing-sales-atomic-bridge.test.cjs tests/marketing-sales-runtime-integration.test.cjs tests/rticore-cloudflare-access-real-uat-guard.test.cjs tests/marketing-sales-remote-preflight-guard.test.cjs",
     "test:layout": "node --experimental-strip-types --test tests/quotation-layout.test.cjs tests/ai-chat-format.test.cjs tests/ai-conversation.test.cjs",
-    "test:pricing": "node --test tests/pricing-technical-writer.test.cjs",
+    "test:pricing": "node --test tests/pricing-technical-writer.test.cjs tests/enterprise-pricing-core.test.cjs",
     "test:boq": "node --test tests/boq-export.test.cjs",
     "test:quotation-docx": "node --experimental-strip-types --test tests/quotation-docx.test.cjs",
     "test:post-po": "node --experimental-strip-types --test tests/post-po-documents.test.cjs tests/post-po-canonical.test.cjs",
