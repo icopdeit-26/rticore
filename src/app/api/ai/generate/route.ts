@@ -49,7 +49,7 @@ export async function POST(req:Request){
  const history=parseConversationHistory(payload?.history);
  if(history===null)return json({success:false,message:'Format atau panjang riwayat percakapan tidak valid.'},400);
  if(containsPersonalIdentifier(prompt)||history.some(turn=>containsPersonalIdentifier(turn.content))||containsRestrictedAIData(prompt)||history.some(turn=>containsRestrictedAIData(turn.content)))
-  return json({success:false,message:'Hapus identitas pribadi, kredensial dan rahasia sebelum mengirim ke provider AI.'},422);
+  return json({success:false,message:'Hapus email, telepon, NIK/NPWP, kredensial dan rahasia sebelum mengirim ke provider AI.'},422);
 
  // Answer a pure language-preference update deterministically. No external call,
  // no loss of prior topic, and no extra exposure of prior discussion to a model.

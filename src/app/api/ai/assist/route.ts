@@ -35,7 +35,7 @@ export async function POST(req:Request){
    return json({success:false,message:'Pilih provider, tujuan penggunaan, dan konfirmasi pengiriman data sebelum analisis.'},400);
  // No customer personal identifiers may be sent to an external LLM via this feature.
  if(containsPersonalIdentifier(prompt)||containsRestrictedAIData(prompt))
-   return json({success:false,message:'Hapus identitas pribadi, kredensial dan rahasia dari prompt AI. Gunakan data anonim.'},422);
+   return json({success:false,message:'Hapus email, telepon, NIK/NPWP, kredensial dan rahasia dari prompt AI. Gunakan data anonim.'},422);
  const {db,email}=a.identity;
  if(process.env.RTICORE_RUNTIME==='hostinger'&&provider!=='auto'&&provider!=='openai')return json({success:false,message:'Runtime hanya mengizinkan OpenAI.'},403);
  try{
