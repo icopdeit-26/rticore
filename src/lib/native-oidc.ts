@@ -11,10 +11,11 @@ export async function verifyNativeOIDCToken(token:string, config:NativeOIDCConfi
  }
  const {payload}=await jwtVerify(token,resolver,{
    issuer:config.issuer,audience:config.audience,algorithms:['RS256'],
-   requiredClaims:['exp','iat','sub','email','email_verified','azp','typ','sid'],
+   requiredClaims:['exp','iat','sub','email','email_verified','azp','typ','sid','acr'],
    clockTolerance:5,maxTokenAge:'15m'
  });
- if(payload.typ!=='Bearer'||payload.email_verified!==true||payload.azp!==config.clientId||
+ // Require the signed Keycloak level of authentication, never a client-supplied MFA flag.
+ if(payload.acr!=='2'||payload.typ!=='Bearer'||payload.email_verified!==true||payload.azp!==config.clientId||
     typeof payload.email!=='string'||typeof payload.sub!=='string'||!payload.sub||typeof payload.sid!=='string'||!payload.sid||
     typeof payload.exp!=='number'||typeof payload.iat!=='number'||payload.exp<=payload.iat||payload.exp-payload.iat>900)
    throw new Error('Access token policy rejected');

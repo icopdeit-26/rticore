@@ -1,16 +1,8 @@
-import {getCloudflareContext} from '@opennextjs/cloudflare';
 import {getLocalD1} from './local-d1';
 import {getLocalPostgresDB} from './postgres-db';
 import {validateHostingerConfig} from './hostinger-config';
 
-/**
- * Single entry point for runtime bindings.
- *
- * Cloud (default): Cloudflare Worker env via OpenNext (D1 binding, secrets, vars).
- * Local (RTICORE_LOCAL_MODE=1 on Node.js): local PostgreSQL database (.pgdata or
- * DATABASE_URL) + values from .env.local. No Cloudflare account, Access, D1 or
- * external cloud service is used.
- */
+/** Native Node runtime: explicit Hostinger or loopback development; no remote fallback. */
 declare const process:{env:Record<string,string|undefined>}|undefined;
 declare const navigator:{userAgent?:string}|undefined;
 
@@ -19,8 +11,8 @@ export function isLocalMode():boolean{
   return typeof process!=='undefined'&&process?.env?.RTICORE_RUNTIME!=='hostinger'&&process?.env?.RTICORE_LOCAL_MODE==='1';
 }
 
-const LOCAL_KEYS=['RTICORE_PUBLIC_ORIGIN','RTICORE_OIDC_CLIENT_SECRET','RTICORE_OIDC_ISSUER','RTICORE_OIDC_CLIENT_ID','RTICORE_OIDC_AUDIENCE','RTICORE_ACCESS_AUD','RTICORE_ACCESS_TEAM_DOMAIN','RTICORE_AI_ENCRYPTION_KEY',
-  'RTICORE_DOCUMENT_ENCRYPTION_KEY','RTICORE_SECURITY_ALLOWED_HOSTS','RTICORE_LOCAL_SESSION_SECRET'] as const;
+const LOCAL_KEYS=['RTICORE_PUBLIC_ORIGIN','RTICORE_OIDC_CLIENT_SECRET','RTICORE_OIDC_ISSUER','RTICORE_OIDC_CLIENT_ID','RTICORE_OIDC_AUDIENCE','RTICORE_AI_ENCRYPTION_KEY',
+  'RTICORE_DOCUMENT_ENCRYPTION_KEY','RTICORE_SECURITY_ALLOWED_HOSTS','RTICORE_SIEM_OUTBOUND_TOKEN','RTICORE_EDR_OUTBOUND_TOKEN','RTICORE_LOCAL_SESSION_SECRET'] as const;
 
 export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
   if(typeof navigator==='undefined'||navigator?.userAgent!=='Cloudflare-Workers'){
@@ -38,7 +30,7 @@ export async function getRuntimeEnv<T=Record<string,unknown>>():Promise<T>{
     for(const key of LOCAL_KEYS)if(process?.env?.[key])env[key]=process.env[key];
     return env as T;
   }
-  return withLegacySecretNames((await getCloudflareContext({async:true})).env) as T;
+  throw new Error('RTICORE runtime not configured: native Hostinger or explicit local mode required');
 }
 
 // Worker secrets cannot be read back or renamed, so those provisioned before the

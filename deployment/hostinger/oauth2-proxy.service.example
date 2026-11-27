@@ -1,0 +1,19 @@
+[Unit]
+Description=RTICORE native OIDC gateway
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=rticore-proxy
+Group=rticore-proxy
+EnvironmentFile=/etc/rticore/oauth2-proxy.env
+ExecStart=/usr/local/bin/oauth2-proxy --config=/etc/rticore/oauth2-proxy.cfg
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+[Install]
+WantedBy=multi-user.target

@@ -121,7 +121,7 @@ export default function AISettingsPage(){
    <section className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
      <h2 className="text-sm font-extrabold text-slate-900">Daftar penyedia AI</h2>
-     <p className="text-[11px] text-slate-500">Prioritas terkecil dipilih terlebih dahulu; provider gagal akan dilewati.</p>
+     <p className="text-[11px] text-slate-500">Pada Hostinger hanya OpenAI yang diizinkan; provider lain disimpan untuk histori dan tidak dipakai untuk failover.</p>
     </div>
     {configs.map((p,idx)=><article key={p.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
@@ -177,7 +177,7 @@ export default function AISettingsPage(){
    </section>
    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
     <div className="flex items-center gap-2"><Bot className="h-4 w-4 text-violet-700"/><h2 className="text-sm font-extrabold text-slate-900">AI Live Test Console</h2></div>
-    <p className="mt-1 text-xs text-slate-500">Pengujian mengikuti provider yang diaktifkan, berdasarkan urutan prioritas. Hanya gunakan informasi nonrahasia.</p>
+    <p className="mt-1 text-xs text-slate-500">Pada Hostinger, pengujian dan generasi hanya menggunakan OpenAI. Hanya gunakan informasi nonrahasia.</p>
     <label className="mt-4 block text-xs font-bold text-slate-700">Prompt pengujian
      <textarea rows={3} maxLength={2000} value={prompt} onChange={e=>setPrompt(e.target.value)}
        className={'mt-1 '+smallInput} />

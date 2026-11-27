@@ -66,6 +66,10 @@ try {
   if (Object.values(account.rows[0] || {}).some(Boolean)) throw new Error('Runtime role has excessive database privileges');
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
   if (!active.rowCount) throw new Error('No active membership provisioned');
+  if(process.env.RTICORE_AUTH_MODE==='business'){
+    const enrolled=await client.query("SELECT count(*)::int n FROM rticore_iam_credentials c JOIN rticore_members m ON m.email=c.email WHERE c.enrolled_at IS NOT NULL AND m.active=1 AND m.role='admin'");
+    if(enrolled.rows[0]?.n<2)throw Error('Two independently enrolled administrators required before cutover');
+  }
   await client.query('ROLLBACK');
   console.log('Hostinger core preflight passed; Finance release certification remains separate.');
 } catch {

@@ -4,6 +4,8 @@ import type { AIConversationRequest, AIConversationTurn } from './ai-conversatio
 import { AI_PROVIDERS, type ProviderId, type AIProviderRow, type AIProviderPublic,
   publicProvider, isProviderId } from './ai-provider-registry';
 
+import {providerAllowed} from './ai-runtime-policy';
+
 type AIEnv = { RTICORE_AI_ENCRYPTION_KEY?: string };
 const utf8=new TextEncoder();
 const decode=new TextDecoder();
@@ -11,9 +13,9 @@ const decode=new TextDecoder();
 export async function encryptionKey():Promise<CryptoKey>{
  let env:AIEnv;
  try {env=(await getRuntimeEnv<AIEnv>());}
- catch {throw new Error('Secret enkripsi Cloudflare belum tersedia.');}
+ catch {throw new Error('Secret enkripsi Hostinger belum tersedia.');}
  const configured=env.RTICORE_AI_ENCRYPTION_KEY;
- if(!configured)throw new Error('Secret RTICORE_AI_ENCRYPTION_KEY belum dikonfigurasi di Worker.');
+ if(!configured)throw new Error('Secret RTICORE_AI_ENCRYPTION_KEY belum dikonfigurasi di Hostinger.');
  let bytes:Uint8Array;
  try {bytes=Uint8Array.from(atob(configured),c=>c.charCodeAt(0));}
  catch {throw new Error('Konfigurasi enkripsi tidak valid.');}
@@ -63,6 +65,7 @@ export async function auditConfig(db:D1DB,email:string,id:ProviderId,action:stri
 /** Probe one allowlisted provider. Never return upstream body, token or header values. */
 export async function probeProvider(id:ProviderId,model:string,apiKey:string):Promise<{ok:boolean;message:string;latencyMs:number}>{
  const started=Date.now();
+ if(!providerAllowed(id,process.env.RTICORE_RUNTIME))return {ok:false,message:'Runtime Hostinger hanya mengizinkan OpenAI.',latencyMs:0};
  let url:string, headers:Record<string,string>={'Content-Type':'application/json'};
  let body:unknown;
  if(id==='gemini'){
@@ -82,7 +85,7 @@ export async function probeProvider(id:ProviderId,model:string,apiKey:string):Pr
    mistral:'https://api.mistral.ai/v1/chat/completions',
   };
   url=endpoints[id];headers.Authorization='Bearer '+apiKey;
-  body={model,messages:[{role:'user',content:'Respond PONG'}],max_tokens:12};
+  body={model,messages:[{role:'user',content:'Respond PONG'}],...(id==='openai'?{max_completion_tokens:256}:{max_tokens:12})};
  }
  try {
   const res=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(15000),cache:'no-store'});
@@ -95,6 +98,7 @@ export async function probeProvider(id:ProviderId,model:string,apiKey:string):Pr
 
 /** Admin-only test console and future server-side routing. Never use for public unauthenticated input. */
 export async function invokeAI(id:ProviderId,model:string,apiKey:string,prompt:string|AIConversationRequest):Promise<string>{
+ if(!providerAllowed(id,process.env.RTICORE_RUNTIME))throw new Error('Provider tidak diizinkan oleh kebijakan Hostinger.');
  let url:string,headers:Record<string,string>={'Content-Type':'application/json'};
  const system = typeof prompt === 'string' ? undefined : prompt.system;
  const messages:AIConversationTurn[] = typeof prompt === 'string'
@@ -119,7 +123,7 @@ export async function invokeAI(id:ProviderId,model:string,apiKey:string,prompt:s
    mistral:'https://api.mistral.ai/v1/chat/completions',
   };
   url=endpoints[id];headers.Authorization='Bearer '+apiKey;
-  body={model,messages:[...(system?[{role:'system',content:system}]:[]),...messages],max_tokens:750};
+  body={model,messages:[...(system?[{role:'system',content:system}]:[]),...messages],...(id==='openai'?{max_completion_tokens:1500}:{max_tokens:750})};
  }
  const res=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(25000),cache:'no-store'});
  if(!res.ok)throw new Error('Provider '+id+' gagal (HTTP '+res.status+').');
@@ -136,7 +140,7 @@ export async function runPriorityChain(db:D1DB,prompt:string|AIConversationReque
 }>{
  const started=Date.now();
  const rows=(await getProviderRows(db)).filter(row=>row.enabled===1 && row.tested_ok===1 && !!row.key_ciphertext &&
-  isProviderId(row.provider_id)).sort((a,b)=>a.priority-b.priority);
+  isProviderId(row.provider_id) && providerAllowed(row.provider_id,process.env.RTICORE_RUNTIME)).sort((a,b)=>a.priority-b.priority);
  if(!rows.length)throw new Error('Belum ada provider AI aktif dengan API key.');
  const attempts=[] as string[];
  for(const row of rows){

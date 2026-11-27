@@ -14,11 +14,11 @@
     "test:pg-triggers": "node --test tests/rticore-postgres-triggers.test.cjs",
     "test:local-mode": "node --test tests/rticore-local-mode.test.cjs",
     "build": "node scripts/build-hostinger.mjs",
-    "start": "next start",
+    "start": "node --experimental-strip-types scripts/start-hostinger.mjs",
     "typecheck": "tsc --noEmit",
-    "build:cf": "npm run test:pricing && npm run test:quotation-docx && npm run test:post-po && npm run test:boq && npm run test:boq-domain && npm run test:ai && npm run test:boq-workflow && npm run test:sales && npm run test:sales-transactions && npm run test:document-vault && npm run test:activities && npm run test:scoping-upload && npm run test:marketing && npm run test:rticore-negative && npm run test:runtime-compat && npm run test:activities && npm run test:p1-p2 && npm run test:bid-readiness && npm run test:feasibility && npm run test:executive && npm run test:feasibility && npm run test:admin && npm run test:modules-13-15 && npm run test:postal && npm run test:flexguard && npm run test:service-operations && npm run test:psa-timesheets && npm run test:project-manager && opennextjs-cloudflare build",
-    "deploy:cf": "opennextjs-cloudflare deploy",
-    "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "build:cf": "npm run build:enterprise",
+    "deploy:cf": "node -e \"console.error('Legacy Cloudflare deployment retired; use reviewed Hostinger release.');process.exit(1)\"",
+    "preview:cf": "node -e \"console.error('Legacy Cloudflare deployment retired; use reviewed Hostinger release.');process.exit(1)\"",
     "test:executive": "node --test tests/rticore-executive-dashboard.test.cjs",
     "test:consolidation": "node --test tests/marketing-sales-consolidation.test.cjs tests/marketing-sales-atomic-bridge.test.cjs tests/marketing-sales-runtime-integration.test.cjs tests/rticore-cloudflare-access-real-uat-guard.test.cjs tests/marketing-sales-remote-preflight-guard.test.cjs",
     "test:layout": "node --experimental-strip-types --test tests/quotation-layout.test.cjs tests/ai-chat-format.test.cjs tests/ai-conversation.test.cjs",
@@ -65,7 +65,16 @@
     "test:erp:extensions": "node --test tests/rticore-erp-enterprise-extensions.test.cjs",
     "test:finance-520": "node --test tests/rti-finance-uat-520.test.cjs",
     "test:branding": "node --test tests/rticore-branding.test.cjs tests/rticore-tenant-compat.test.cjs",
-    "test:all": "node tests/run-browser-http-uat.cjs --all"
+    "test:all": "node tests/run-browser-http-uat.cjs --all",
+    "test:native-iam": "node --experimental-strip-types --test tests/native-oidc.test.mjs tests/native-session.test.mjs tests/native-iam-realm.test.mjs tests/hostinger-config.test.mjs tests/native-hostinger-boundary.test.mjs tests/native-openai-policy.test.mjs tests/native-iam-render.test.mjs tests/business-iam-crypto.test.mjs",
+    "uat:native-iam": "node scripts/native-iam-smoke.mjs",
+    "test:native-sales-cron": "node --test tests/native-sales-cron.test.mjs",
+    "cron:sales": "node scripts/run-native-sales-cron.mjs",
+    "build:enterprise": "npm run test:pricing && npm run test:quotation-docx && npm run test:post-po && npm run test:boq && npm run test:boq-domain && npm run test:ai && npm run test:boq-workflow && npm run test:sales && npm run test:sales-transactions && npm run test:document-vault && npm run test:activities && npm run test:scoping-upload && npm run test:marketing && npm run test:rticore-negative && npm run test:runtime-compat && npm run test:activities && npm run test:p1-p2 && npm run test:bid-readiness && npm run test:feasibility && npm run test:executive && npm run test:feasibility && npm run test:admin && npm run test:modules-13-15 && npm run test:postal && npm run test:flexguard && npm run test:service-operations && npm run test:psa-timesheets && npm run test:project-manager && npm run typecheck && npm run build",
+    "iam:render": "node scripts/render-native-iam.mjs",
+    "iam:invite": "node --experimental-strip-types scripts/business-iam-invite.mjs",
+    "iam:revoke": "node --experimental-strip-types scripts/business-iam-revoke.mjs",
+    "cron:iam": "node scripts/business-iam-cleanup.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
@@ -81,7 +90,6 @@
     "unpdf": "1.8.1"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "1.20.12",
     "@types/node": "^22.13.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -90,7 +98,7 @@
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
-    "wrangler": "4.151.2"
+    "esbuild": "0.28.2"
   },
   "overrides": {
     "miniflare": {

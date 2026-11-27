@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { getRuntimeEnv } from './runtime-env';
+import {verifyBusinessSession} from './business-iam';
 import { verifyNativeOIDCToken } from './native-oidc';
 import {nativeRequestOriginAllowed,requireActiveNativeSession} from './native-session';
 import { emailFromLocalSession, validSessionSecret } from './local-auth';
@@ -22,14 +22,18 @@ export interface D1DB {
  prepare(query:string):D1Prepared;
  batch(statements:D1Prepared[]):Promise<unknown[]>;
 }
-type CloudEnv={RTICORE_RUNTIME?:string;RTICORE_PUBLIC_ORIGIN?:string;RTICORE_OIDC_CLIENT_SECRET?:string;RTICORE_OIDC_ISSUER?:string;RTICORE_OIDC_CLIENT_ID?:string;RTICORE_OIDC_AUDIENCE?:string;RTICORE_DB?:D1DB;RTICORE_ACCESS_AUD?:string;RTICORE_ACCESS_TEAM_DOMAIN?:string;RTICORE_LOCAL_MODE?:string;RTICORE_LOCAL_SESSION_SECRET?:string};
+type CloudEnv={RTICORE_RUNTIME?:string;RTICORE_PUBLIC_ORIGIN?:string;RTICORE_OIDC_CLIENT_SECRET?:string;RTICORE_OIDC_ISSUER?:string;RTICORE_OIDC_CLIENT_ID?:string;RTICORE_OIDC_AUDIENCE?:string;RTICORE_DB?:D1DB;RTICORE_LOCAL_MODE?:string;RTICORE_LOCAL_SESSION_SECRET?:string};
 export type BoQIdentity={email:string;role:BoQRole;assignedRole:BoQRole;rolePreview:boolean;db:D1DB};
 type Result={ok:true;identity:BoQIdentity}|{ok:false;response:NextResponse};
 const deny=(status:number,message:string):Result=>({ok:false,response:NextResponse.json({success:false,message},{status,headers:{'Cache-Control':'no-store'}})});
-const cache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-/** Cloud: verified Cloudflare Access JWT. Local: HMAC-signed local session cookie. */
+/** Native: verified OIDC + MFA + active session. Local: signed loopback cookie. */
 async function verifiedEmail(request:Request,env:CloudEnv):Promise<{email:string}|{error:Result}>{
  if(env.RTICORE_RUNTIME==='hostinger'){
+   if(process.env.RTICORE_AUTH_MODE==='business'){
+     if(!env.RTICORE_DB||!env.RTICORE_PUBLIC_ORIGIN)return {error:deny(503,'Business IAM belum dikonfigurasi.')};
+     if(!nativeRequestOriginAllowed(request,env.RTICORE_PUBLIC_ORIGIN))return {error:deny(403,'Origin tidak diizinkan.')};
+     try{const email=await verifyBusinessSession(env.RTICORE_DB,request);return email?{email}:{error:deny(401,'Login dan MFA diperlukan.')};}catch{return {error:deny(503,'Business IAM tidak tersedia.')};}
+   }
    const issuer=env.RTICORE_OIDC_ISSUER, audience=env.RTICORE_OIDC_AUDIENCE, client=env.RTICORE_OIDC_CLIENT_ID;
    if(!issuer||!audience||!client||!env.RTICORE_OIDC_CLIENT_SECRET||!env.RTICORE_PUBLIC_ORIGIN)return {error:deny(503,'OIDC production belum dikonfigurasi.')};
    if(!nativeRequestOriginAllowed(request,env.RTICORE_PUBLIC_ORIGIN))return {error:deny(403,'Origin tidak diizinkan.')};
@@ -48,21 +52,11 @@ async function verifiedEmail(request:Request,env:CloudEnv):Promise<{email:string
    const email=await emailFromLocalSession(request.headers.get('cookie'),env.RTICORE_LOCAL_SESSION_SECRET);
    return email?{email}:{error:deny(401,'Login lokal diperlukan. Buka /login.')};
  }
- const domain=env.RTICORE_ACCESS_TEAM_DOMAIN, aud=env.RTICORE_ACCESS_AUD;
- if(!domain||!aud||!domain.endsWith('.cloudflareaccess.com')||aud.length<30)
-  return {error:deny(503,'Database atau autentikasi RTICORE belum dikonfigurasi.')};
- const token=request.headers.get('cf-access-jwt-assertion');
- if(!token)return {error:deny(401,'Login Cloudflare Access diperlukan.')};
- try{
-   let keys=cache.get(domain);
-   if(!keys){keys=createRemoteJWKSet(new URL('https://'+domain+'/cdn-cgi/access/certs'));cache.set(domain,keys);}
-   const verified=await jwtVerify(token,keys,{issuer:'https://'+domain,audience:aud,algorithms:['RS256'],clockTolerance:30});
-   return {email:String(verified.payload.email||'').trim().toLowerCase()};
- }catch{return {error:deny(401,'Token login Access tidak valid atau kedaluwarsa.')};}
+ return {error:deny(503,'Native IAM belum dikonfigurasi.')};
 }
 export async function authorizeBoQ(request:Request,options:{ignoreRolePreview?:boolean}={}):Promise<Result>{
  let env:CloudEnv;
- try {env=await getRuntimeEnv<CloudEnv>();}catch{return deny(503,'D1 runtime tidak tersedia');}
+ try {env=await getRuntimeEnv<CloudEnv>();}catch{return deny(503,'Runtime database tidak tersedia');}
  const db=env.RTICORE_DB;
  if(!db)return deny(503,'Database atau autentikasi RTICORE belum dikonfigurasi.');
  const identity=await verifiedEmail(request,env);
