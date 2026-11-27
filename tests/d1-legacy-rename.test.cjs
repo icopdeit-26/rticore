@@ -56,10 +56,12 @@ test('generation refuses to overwrite an existing target',async()=>{
   assert.throws(()=>generate([{type:'table',name:'india_a',sql:'CREATE TABLE india_a(x)'},{type:'table',name:'rticore_a',sql:'CREATE TABLE rticore_a(x)'}]),/already exists/);
 });
 
-test('Cloudflare runtime keeps legacy secrets and decrypts legacy ciphertext',()=>{
+test('Native runtime retains legacy secret mapping and decrypts legacy ciphertext',()=>{
   const env=source('src/lib/runtime-env.ts');
   for(const name of ['AI_ENCRYPTION_KEY','DOCUMENT_ENCRYPTION_KEY','SECURITY_ALLOWED_HOSTS','SIEM_OUTBOUND_TOKEN','EDR_OUTBOUND_TOKEN'])assert.match(env,new RegExp("'"+name+"'"));
-  assert.match(env,/withLegacySecretNames\(\(await getCloudflareContext/);
+  assert.match(env,/export function withLegacySecretNames/);
+  assert.doesNotMatch(env,/getCloudflareContext/);
+  assert.match(env,/native Hostinger or explicit local mode required/);
   assert.match(source('src/lib/document-vault.ts'),/decrypt\(\)\.catch\(\(\)=>decrypt\('INDIA-DOCUMENT-v1'\)\)/);
   assert.match(source('src/lib/ai-credential-vault.ts'),/decrypt\('RTICORE-AI:'\)\.catch\(\(\)=>decrypt\('INDIA-AI:'\)\)/);
 });

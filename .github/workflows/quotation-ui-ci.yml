@@ -40,7 +40,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Browser UAT of all ten Sales stages on Android viewport and desktop
         run: |
-          npm run start -- -p 3100 > /tmp/rticore-stage-filter-uat.log 2>&1 &
+          node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3100 > /tmp/rticore-stage-filter-uat.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
           for i in $(seq 1 90); do

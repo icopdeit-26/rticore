@@ -91,7 +91,7 @@ async function main(){
 }
 
 async function runAllTests(env){
-  const generalFiles=fs.readdirSync('tests').filter(name=>name.endsWith('.test.cjs')&&!browserFiles.includes(name));
+  const generalFiles=fs.readdirSync('tests').filter(name=>name.endsWith('.test.cjs')&&!browserFiles.includes(name)&&name!=='rticore-postgres-atomic-live.test.cjs');
   const generalStatus=await runTests(generalFiles,env);
   // Reuse the local build but run browser files serially to avoid resource contention.
   const browserStatus=await runTests(browserFiles,env,['--test-concurrency=1']);

@@ -75,6 +75,11 @@ async function setupFinanceEnvironment(h) {
 
   await expect(h.call('erp/organization', 'POST', 'admin', { action: 'request_opportunity_scope', opportunity_id: 'opp-qa', legal_entity_id: legal }), 200);
   await expect(h.call('erp/organization', 'POST', 'approver', { action: 'review_opportunity_scope', opportunity_id: 'opp-qa', version: 1, approve: true }), 200);
+  const scopedProject = project(h);
+  if (scopedProject) {
+    await expect(h.call('erp/organization','POST','admin',{action:'request_project_scope',project_id:scopedProject.id,legal_entity_id:legal}),200);
+    await expect(h.call('erp/organization','POST','approver',{action:'review_project_scope',project_id:scopedProject.id,version:1,approve:true}),200);
+  }
 }
 
 // Dedicated negative tests supplement, rather than replace, the 520-case suite.
