@@ -30,4 +30,12 @@ BEGIN
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CAMS_ACCOUNT_INVALID' THEN RAISE; END IF; END;
  IF EXISTS(SELECT 1 FROM rticore_gl_journals WHERE source_key='OUTBOX-JRN-bad') THEN RAISE EXCEPTION 'Partial draft persisted'; END IF;
 END $$;
+
+-- Positive and negative hierarchy coverage for receiver's legal-entity scope.
+INSERT INTO rticore_erp_org_units(id,tenant_id,code,label,kind,created_by) VALUES('cams-ci-other','defendit360','CAMS-CI-OTHER','Other Entity','legal_entity','ci');
+INSERT INTO rticore_erp_org_units(id,tenant_id,code,label,kind,parent_id,created_by) VALUES('cams-ci-other-cost','defendit360','CAMS-CI-OTHER-COST','Other Cost','cost_center','cams-ci-other','ci');
+DO $ BEGIN
+ IF NOT EXISTS(WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id='defendit360' AND id='cams-ci-entity' UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON s.parent_id=u.id WHERE u.tenant_id='defendit360' AND u.active=1) SELECT 1 FROM scope WHERE id='cams-ci-entity' AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id='cams-ci-cost' AND kind='cost_center' AND active=1)) THEN RAISE EXCEPTION 'VALID_COST_CENTER_REJECTED'; END IF;
+ IF EXISTS(WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id='defendit360' AND id='cams-ci-entity' UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON s.parent_id=u.id WHERE u.tenant_id='defendit360' AND u.active=1) SELECT 1 FROM scope WHERE id='cams-ci-entity' AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id='cams-ci-other-cost' AND kind='cost_center' AND active=1)) THEN RAISE EXCEPTION 'CROSS_ENTITY_COST_CENTER_ACCEPTED'; END IF;
+END $;
 ROLLBACK;
