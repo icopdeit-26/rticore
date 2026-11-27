@@ -35,7 +35,7 @@ BEGIN
  FOR a IN SELECT value FROM jsonb_array_elements(p) LOOP
   IF jsonb_typeof(a) IS DISTINCT FROM 'object' OR (a->>'phase_code') IS NULL OR (a->>'phase_code') NOT IN ('presales_assessment','scope_validation','preparation','kickoff','technical_execution','analysis','quality_assurance','reporting','presentation','retest','project_management','closure') OR (a->>'resource_role') IS NULL OR (a->>'resource_role') NOT IN ('junior_analyst','analyst','senior_analyst','consultant','senior_consultant','specialist','lead_pentester','principal_consultant','soc_analyst_l1','soc_analyst_l2','soc_analyst_l3','incident_responder','digital_forensic_specialist','threat_intelligence_analyst','grc_consultant','project_manager','solution_architect','subject_matter_expert','external_associate') OR coalesce(length(a->>'activity_name'),0) NOT BETWEEN 3 AND 160 OR jsonb_typeof(a->'resource_count') IS DISTINCT FROM 'number' OR (a->>'resource_count') !~ '^[0-9]+$' OR (a->>'resource_count')::numeric NOT BETWEEN 1 AND 50 OR jsonb_typeof(a->'hours_hundredths') IS DISTINCT FROM 'number' OR (a->>'hours_hundredths') !~ '^[0-9]+$' OR (a->>'hours_hundredths')::numeric NOT BETWEEN 1 AND 100000 OR jsonb_typeof(a->'billable') IS DISTINCT FROM 'boolean' THEN RETURN false; END IF;
  END LOOP;
- RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(p) a WHERE a->>'billable'='true');
+ RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(p) AS entry(value) WHERE entry.value->>'billable'='true');
 END $cat$;
 CREATE OR REPLACE FUNCTION rticore_catalog_workflow_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_catalog AS $cat$
 BEGIN
