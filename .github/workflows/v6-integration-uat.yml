@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --version && git rev-parse HEAD
-      - run: node --test tests/hostinger-schema-inventory.test.mjs
+      - run: node --test tests/hostinger-schema-inventory.test.mjs tests/rticore-hostinger-native-runtime.test.cjs
   erp-catalog-and-regressions:
     needs: runner-smoke
     runs-on: ubuntu-24.04

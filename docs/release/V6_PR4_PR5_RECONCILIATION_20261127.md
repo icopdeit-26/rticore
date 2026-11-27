@@ -1,0 +1,4 @@
+# Reconciliation of PR #4 and #5
+PR #4: compared all added lines against integrated Finance code and tests. Existing main contains the stricter P0 action policy, reference ownership, scope-filtered vendor bank register, missing-reference fail-closed behavior and dual-entity maker requirement. The digest retry negative test uses an authorized approver instead of a Finance maker, so the test checks tampering rather than insufficient role. Retained this later behavior and transactional outbox from PR #14.
+PR #5: retained the later SERIALIZABLE pinned-client batch with changes() support, rollback/discard, verified TLS and no request-time schema DDL on Hostinger. Reconciled older static test to current native OIDC policy. Original Cloudflare Access setup note is historical only.
+Neither source review nor ancestry establishes production or live database acceptance. CI and staging evidence remain mandatory.
