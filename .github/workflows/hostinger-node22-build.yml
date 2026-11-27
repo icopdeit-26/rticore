@@ -51,6 +51,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run test:runtime-compat
       - run: npm run test:native-iam
+      - run: npm run test:native-sales-cron
       - run: node --test tests/finance-p0-action-authorization.test.cjs
       - run: node --experimental-strip-types --test tests/finance-close-policy.test.mjs
       - run: npm run test:finance-520

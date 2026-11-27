@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {runSalesCron,statements} from '../automation/sales-cron/native-postgres.mjs';
+test('all 8 legacy alert rules are native idempotent PostgreSQL inserts',()=>{assert.equal(statements.length,8);for(const sql of statements){assert.match(sql,/^INSERT INTO rticore_sales_activity_alerts/);assert.match(sql,/ON CONFLICT \(alert_key\) DO NOTHING$/);assert.doesNotMatch(sql,/INSERT OR IGNORE|printf\(/);}});
+function fake({locked=true,failAt=-1}={}){const seen=[];return {seen,async query(sql){seen.push(sql);if(sql.includes('pg_try_advisory'))return {rows:[{acquired:locked}]};if(sql===statements[failAt])throw Error('synthetic failure');return {rowCount:sql.startsWith('INSERT')?1:0};}};}
+test('all writes commit together and concurrent runs skip safely',async()=>{const a=fake();assert.deepEqual(await runSalesCron(a),{skipped:false,inserted:8});assert.equal(a.seen[0],'BEGIN');assert.equal(a.seen.at(-1),'COMMIT');const b=fake({locked:false});assert.deepEqual(await runSalesCron(b),{skipped:true,inserted:0});assert.ok(!b.seen.some(x=>x.startsWith('INSERT')));assert.equal(b.seen.at(-1),'ROLLBACK');});
+test('failure rolls back the batch',async()=>{const a=fake({failAt:3});await assert.rejects(runSalesCron(a));assert.equal(a.seen.at(-1),'ROLLBACK');assert.ok(!a.seen.includes('COMMIT'));});

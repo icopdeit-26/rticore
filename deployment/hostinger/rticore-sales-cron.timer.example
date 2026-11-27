@@ -1,0 +1,8 @@
+[Unit]
+Description=RTICORE Sales alerts every 15 minutes
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+Unit=rticore-sales-cron.service
+[Install]
+WantedBy=timers.target

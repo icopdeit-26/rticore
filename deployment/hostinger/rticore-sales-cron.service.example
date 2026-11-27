@@ -1,0 +1,17 @@
+[Unit]
+Description=RTICORE native Sales alerts (PostgreSQL)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=rticore-cron
+Group=rticore-cron
+WorkingDirectory=/opt/rticore/current
+EnvironmentFile=/etc/rticore/sales-cron.env
+ExecStart=/usr/bin/node scripts/run-native-sales-cron.mjs
+TimeoutStartSec=300
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
