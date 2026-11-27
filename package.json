@@ -74,7 +74,8 @@
     "iam:render": "node scripts/render-native-iam.mjs",
     "iam:invite": "node --experimental-strip-types scripts/business-iam-invite.mjs",
     "iam:revoke": "node --experimental-strip-types scripts/business-iam-revoke.mjs",
-    "cron:iam": "node scripts/business-iam-cleanup.mjs"
+    "cron:iam": "node scripts/business-iam-cleanup.mjs",
+    "test:native-entry-regression": "node --test tests/native-business-login-entry.test.cjs tests/rticore-access-entrypoints.test.cjs tests/middleware-route-gate.test.cjs tests/rticore-legacy-consolidation.test.cjs tests/enterprise-command-palette.test.cjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",

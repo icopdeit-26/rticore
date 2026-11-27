@@ -22,13 +22,21 @@ test('legacy route compatibility reuses existing D1-backed sales workspaces',()=
   assert.ok(fs.existsSync(path.join(root,'src/app',target,'page.tsx')),target);
  }
 });
-test('root and approval center derive role from real Access/D1 identity',()=>{
- for(const page of ['src/app/page.tsx','src/app/approvals/page.tsx']){
+test('native root, legacy entry and approval center derive role from server-verified identity',()=>{
+ const native=read('src/app/page.tsx');
+ assert.match(native,/readSessionCookie\(cookie\)/);
+ assert.match(native,/await authorizeBoQ\(new Request/);
+ assert.match(native,/if\(!auth.ok\)redirect\('\/login'\)/);
+ assert.match(native,/firstAccessibleHref\(auth.identity.role\)/);
+ assert.match(native,/<LegacyHomeEntry\/>/);
+ assert.doesNotMatch(native,/role: *'admin'|getState\(\)/);
+ for(const page of ['src/components/auth/LegacyHomeEntry.tsx','src/app/approvals/page.tsx']){
   const code=read(page);
   assert.match(code,/fetch\('\/api\/sales\/identity'/);
   assert.doesNotMatch(code,/role: *'admin'|getState\(\)/);
  }
- assert.match(read('src/app/page.tsx'),/firstAccessibleHref/);
+ assert.match(read('src/components/auth/LegacyHomeEntry.tsx'),/firstAccessibleHref\(payload.identity.role\)/);
+ assert.doesNotMatch(read('src/components/auth/LegacyHomeEntry.tsx'),/appStore|post-po-dummy|Math\.random\(/);
  assert.match(read('src/app/approvals/page.tsx'),/STATIONS\.filter\(s=>role&&s\.roles\.includes\(role\)\)/);
  assert.match(read('src/app/flexguard/page.tsx'),/BLOCKED/);
  assert.match(read('src/app/post-po/page.tsx'),/hasDualVerifiedPO/);
