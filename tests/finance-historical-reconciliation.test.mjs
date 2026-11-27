@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {classifyEvent,summarizeEvents} from '../scripts/finance-historical-reconciliation.mjs';
+const payload='{"amount":42,"note":"uji integritas"}';
+const digest=createHash('sha256').update(payload).digest('hex');
+test('exact stored UTF-8 digest matches',()=>assert.equal(classifyEvent({payload_json:payload,payload_sha256:digest}),'digest_valid'));
+test('legacy pseudo-digest and altered payload are not automatically trusted',()=>{
+  assert.equal(classifyEvent({payload_json:payload,payload_sha256:'a'.repeat(64)}),'requires_source_reconciliation');
+  assert.equal(classifyEvent({payload_json:payload.replace('42','43'),payload_sha256:digest}),'requires_source_reconciliation');
+});
+test('invalid JSON and nonobject payloads are rejected',()=>{
+  for(const payload_json of ['{','null','[]','42']) assert.equal(classifyEvent({payload_json,payload_sha256:digest}),'invalid_payload');
+});
+test('processed exceptions are counted separately without mutating rows',()=>{
+  const rows=Object.freeze([Object.freeze({payload_json:payload,payload_sha256:digest,status:'validated'}),Object.freeze({payload_json:payload,payload_sha256:'b'.repeat(64),status:'processed'}),Object.freeze({payload_json:'{',payload_sha256:digest,status:'failed'})]);
+  assert.deepEqual(summarizeEvents(rows),{total:3,digest_valid:1,invalid_payload:1,requires_source_reconciliation:1,processed_exceptions:1});
+});
