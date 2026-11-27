@@ -4,6 +4,12 @@ on:
     branches: [main]
     paths:
       - 'next.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/**'
+      - 'src/**'
+      - 'migrations/**'
+      - 'rticore_postgresql_*.sql'
       - 'tests/**'
       - '.github/workflows/hostinger-node22-build.yml'
   workflow_dispatch:

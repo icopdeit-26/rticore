@@ -50,6 +50,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
   const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(null);
   const [dockingMode, setDockingMode] = useState<'standalone' | 'docked' | 'multi_entity'>('docked');
   const [dockingStatus, setDockingStatus] = useState<'connected' | 'disconnected'>('connected');
+  const [dockingSecret, setDockingSecret] = useState('');
 
   const requestVersion = useRef(0);
   const loadFinanceData = useCallback(async () => {
@@ -131,6 +132,10 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
         setFeedback({ kind: 'err', text: json.message || 'Transaksi ditolak oleh kontrol keuangan' });
       } else {
         setFeedback({ kind: 'ok', text: successMsg });
+        if (body.action === 'configure_docking') {
+          setDockingStatus(body.connection_status === 'disconnected' ? 'disconnected' : 'connected');
+          setDockingSecret('');
+        }
         if (body.action === 'ai_financial_query' && json.insight) {
           setAiResult(json.insight);
         }
@@ -651,18 +656,19 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                     <option value="docked">Mode B — RTICore Docked</option>
                     <option value="multi_entity">Mode C — Enterprise Multi-Entity</option>
                   </select>
+                  <input type="password" aria-label="Docking secret" autoComplete="new-password" value={dockingSecret} onChange={e => setDockingSecret(e.target.value)} minLength={32} maxLength={512} placeholder="Secret (min. 32 karakter)" className="h-9 rounded-xl border border-slate-200 px-3 text-xs" />
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || loading || !scopedPayload || dockingSecret.length < 32 || dockingSecret.trim() !== dockingSecret}
                     onClick={() => {
                       const nextStatus = dockingStatus === 'connected' ? 'disconnected' : 'connected';
-                      setDockingStatus(nextStatus);
                       void executeFinanceAction(
                         {
                           action: 'configure_docking',
                           operating_mode: dockingMode,
                           connection_status: nextStatus,
-                          rticore_endpoint: 'https://github.com/elanghaqeem-hash/India',
+                          rticore_endpoint: 'https://rticore.store',
+                          webhook_secret: dockingSecret,
                         },
                         `Status RTICore Docking diperbarui ke ${nextStatus.toUpperCase()} (data historis tetap dipertahankan)`,
                       );

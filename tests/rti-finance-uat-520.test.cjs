@@ -2045,6 +2045,11 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
     const core = h.load('src/lib/rti-finance-core.ts');
     let executed = 0;
 
+    // Reject missing, weak and historical default secrets before any write.
+    for (const secret of [undefined, 'weak', 'rticore-default-docking-secret']) {
+      const denied = await h.call('finance', 'POST', 'approver', {action:'configure_docking', operating_mode:'docked', connection_status:'connected', rticore_endpoint:'https://rticore.example.invalid', webhook_secret:secret});
+      await expect(Promise.resolve(denied), 422);
+    }
     // 1-3: Configure Mode A (Standalone), Mode B (Docked), Mode C (Multi-Entity) & Safe Disconnect
     for (const mode of ['standalone', 'docked', 'multi_entity']) {
       await expect(
@@ -2052,7 +2057,8 @@ test('Domain 13 (35 UAT Scenarios): RTICore Docking Modes, 22 Event Contracts, I
           action: 'configure_docking',
           operating_mode: mode,
           connection_status: 'connected',
-          rticore_endpoint: 'https://github.com/elanghaqeem-hash/India',
+          rticore_endpoint: 'https://rticore.example.invalid',
+          webhook_secret: 'synthetic-fixture-only-secret-0123456789',
         }),
         201,
       );

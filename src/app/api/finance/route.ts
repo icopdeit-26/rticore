@@ -980,18 +980,19 @@ export async function POST(req: Request) {
         'Konfigurasi Docking tidak valid',
       );
       const id = erpId(v.id) ? (v.id as string) : crypto.randomUUID();
-      const secretHash = await sha256Hex(String(v.webhook_secret || 'rticore-default-docking-secret'));
+      erpAssert(typeof v.webhook_secret === 'string' && v.webhook_secret.length >= 32 && v.webhook_secret.length <= 512 && v.webhook_secret.trim() === v.webhook_secret && v.webhook_secret !== 'rticore-default-docking-secret', 'Docking memerlukan secret eksplisit minimal 32 karakter');
+      const secretHash = await sha256Hex(v.webhook_secret as string);
       const eventsJson = JSON.stringify(
         Array.isArray(v.subscribed_events) ? v.subscribed_events : RTICORE_DOCKING_EVENT_TYPES,
       );
       await erpAtom(
         a.identity,
-        '1=1',
-        [],
+        'NOT EXISTS(SELECT 1 FROM rticore_finance_docking_connections WHERE id=? AND tenant_id<>?)',
+        [id, TENANT],
         [
           db
             .prepare(
-              'INSERT INTO rticore_finance_docking_connections(id,tenant_id,operating_mode,connection_status,rticore_endpoint,auth_protocol,webhook_secret_sha256,subscribed_events_json,last_health_check_at,last_health_status,configured_by) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,?) ON CONFLICT(id) DO UPDATE SET operating_mode=excluded.operating_mode, connection_status=excluded.connection_status, rticore_endpoint=excluded.rticore_endpoint, subscribed_events_json=excluded.subscribed_events_json, last_health_check_at=CURRENT_TIMESTAMP, version=rticore_finance_docking_connections.version+1, updated_at=CURRENT_TIMESTAMP',
+              'INSERT INTO rticore_finance_docking_connections(id,tenant_id,operating_mode,connection_status,rticore_endpoint,auth_protocol,webhook_secret_sha256,subscribed_events_json,last_health_check_at,last_health_status,configured_by) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,?) ON CONFLICT(id) DO UPDATE SET operating_mode=excluded.operating_mode, connection_status=excluded.connection_status, rticore_endpoint=excluded.rticore_endpoint, webhook_secret_sha256=excluded.webhook_secret_sha256, subscribed_events_json=excluded.subscribed_events_json, last_health_check_at=CURRENT_TIMESTAMP, version=rticore_finance_docking_connections.version+1, updated_at=CURRENT_TIMESTAMP WHERE rticore_finance_docking_connections.tenant_id=excluded.tenant_id',
             )
             .bind(
               id,
