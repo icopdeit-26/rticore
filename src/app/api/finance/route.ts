@@ -65,7 +65,7 @@ const FINANCE_ACTION_POLICY: Record<string, readonly [FinanceMenuId, string]> = 
   value_flexguard_event: ['F19', 'make'],
   create_enterprise_budget: ['F12', 'make'],
   consume_or_reserve_budget: ['F12', 'make'],
-  submit_expense_claim: ['F14', 'selfExpense'],
+  submit_expense_claim: ['F14', 'make'],
   review_expense_claim: ['F14', 'approve'],
   create_payroll_batch: ['F15', 'make'],
   create_tax_rule: ['F16', 'make'],
@@ -551,7 +551,6 @@ export async function POST(req: Request) {
       'Akses action Finance ditolak', 403);
     const permitted = operation === 'read' ||
       (operation === 'make' && roleDef.canMake) ||
-      (operation === 'selfExpense' && (roleDef.canMake || (financeRole === 'business_unit_head' && ['sales','marketing'].includes(a.identity.role)))) ||
       (operation === 'approve' && roleDef.canApprove && roleDef.canCheck) ||
       (operation === 'makeOrAdmin' && (roleDef.canMake || financeRole === 'super_admin')) ||
       (operation === 'admin' && ['super_admin','cfo','financial_controller'].includes(financeRole)) ||
