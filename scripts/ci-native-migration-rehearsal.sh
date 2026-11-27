@@ -3,6 +3,26 @@
 set -euo pipefail
 [[ "${CI:-}" == true && "${PGHOST:-}" == 127.0.0.1 && "${PGPORT:-}" == 5432 && "${PGUSER:-}" == cams_ci && "${PGDATABASE:-}" == cams_docking_ci && -z "${PGSERVICE:-}" && -z "${PGHOSTADDR:-}" ]]
 q() { psql -X -v ON_ERROR_STOP=1 "$@"; }
+# Real independent PostgreSQL sessions, disposable databases only. All 40 contenders
+# use the same actor; exactly 20 must reserve successfully.
+ai_concurrency() {
+  local tag="$1" actor
+  [[ "$tag" == original || "$tag" == restored ]]
+  actor="ai-concurrency-${tag}@example.invalid"
+  q -c "INSERT INTO rticore_members(email,role,active,created_by) VALUES('$actor','admin',1,'ci')"
+  local i
+  for i in $(seq 1 40); do
+    q -Atc "SELECT rticore_reserve_ai_request('ai-concurrency-$tag-$i','defendit360','$actor','chat')" >"$tmp/ai-$tag-$i" &
+    if (( i % 8 == 0 )); then
+      # Each worker must return exactly one boolean. Failure is detected below.
+      wait
+    fi
+  done
+  [[ "$(grep -hxc 't' "$tmp"/ai-"$tag"-* | awk '{s+=$1} END{print s}')" == 20 ]]
+  [[ "$(grep -hxc 'f' "$tmp"/ai-"$tag"-* | awk '{s+=$1} END{print s}')" == 20 ]]
+  [[ "$(q -Atc "SELECT count(*) FROM rticore_sales_ai_audit WHERE actor_email='$actor' AND provider_id='request'")" == 20 ]]
+}
+
 [[ "$(q -Atc 'SELECT current_database()')" == cams_docking_ci ]]
 dir=deployment/hostinger/migrations
 tmp=$(mktemp -d)
@@ -39,6 +59,7 @@ done
 q -f tests/cams-native-draft-acceptance.sql
 q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
+ai_concurrency original
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
 q -f tests/flexguard-product-terms-acceptance.sql
 # Use a separate local database for a real logical backup/restore rehearsal.
@@ -52,6 +73,7 @@ export PGDATABASE=cams_docking_restore_ci
 q -f tests/cams-native-draft-acceptance.sql
 q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
+ai_concurrency restored
 q -f tests/flexguard-product-terms-acceptance.sql
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
 echo 'PASS: disposable migration rejection, replay, CAMS acceptance and logical restore (not production certification)'
