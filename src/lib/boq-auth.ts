@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { getRuntimeEnv } from './runtime-env';
+import { verifyNativeOIDCToken } from './native-oidc';
+import {nativeRequestOriginAllowed,requireActiveNativeSession} from './native-session';
 import { emailFromLocalSession, validSessionSecret } from './local-auth';
 import {accessRestricted} from './system-settings';
 import type { BoQRole } from './boq-domain';
@@ -20,13 +22,26 @@ export interface D1DB {
  prepare(query:string):D1Prepared;
  batch(statements:D1Prepared[]):Promise<unknown[]>;
 }
-type CloudEnv={RTICORE_DB?:D1DB;RTICORE_ACCESS_AUD?:string;RTICORE_ACCESS_TEAM_DOMAIN?:string;RTICORE_LOCAL_MODE?:string;RTICORE_LOCAL_SESSION_SECRET?:string};
+type CloudEnv={RTICORE_RUNTIME?:string;RTICORE_PUBLIC_ORIGIN?:string;RTICORE_OIDC_CLIENT_SECRET?:string;RTICORE_OIDC_ISSUER?:string;RTICORE_OIDC_CLIENT_ID?:string;RTICORE_OIDC_AUDIENCE?:string;RTICORE_DB?:D1DB;RTICORE_ACCESS_AUD?:string;RTICORE_ACCESS_TEAM_DOMAIN?:string;RTICORE_LOCAL_MODE?:string;RTICORE_LOCAL_SESSION_SECRET?:string};
 export type BoQIdentity={email:string;role:BoQRole;assignedRole:BoQRole;rolePreview:boolean;db:D1DB};
 type Result={ok:true;identity:BoQIdentity}|{ok:false;response:NextResponse};
 const deny=(status:number,message:string):Result=>({ok:false,response:NextResponse.json({success:false,message},{status,headers:{'Cache-Control':'no-store'}})});
 const cache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 /** Cloud: verified Cloudflare Access JWT. Local: HMAC-signed local session cookie. */
 async function verifiedEmail(request:Request,env:CloudEnv):Promise<{email:string}|{error:Result}>{
+ if(env.RTICORE_RUNTIME==='hostinger'){
+   const issuer=env.RTICORE_OIDC_ISSUER, audience=env.RTICORE_OIDC_AUDIENCE, client=env.RTICORE_OIDC_CLIENT_ID;
+   if(!issuer||!audience||!client||!env.RTICORE_OIDC_CLIENT_SECRET||!env.RTICORE_PUBLIC_ORIGIN)return {error:deny(503,'OIDC production belum dikonfigurasi.')};
+   if(!nativeRequestOriginAllowed(request,env.RTICORE_PUBLIC_ORIGIN))return {error:deny(403,'Origin tidak diizinkan.')};
+   // Proxy forwards the signed Keycloak access token. Never trust email/role headers.
+   const token=request.headers.get('x-rticore-oidc-token');
+   if(!token)return {error:deny(401,'Login SSO diperlukan.')};
+   try{
+     const identity=await verifyNativeOIDCToken(token,{issuer,audience,clientId:client});
+     await requireActiveNativeSession(token,{issuer,clientId:client,clientSecret:env.RTICORE_OIDC_CLIENT_SECRET},identity.subject);
+     return {email:identity.email};
+   }catch{return {error:deny(401,'Token SSO tidak valid atau kedaluwarsa.')};}
+ }
  if(env.RTICORE_LOCAL_MODE==='1'){
    if(!validSessionSecret(env.RTICORE_LOCAL_SESSION_SECRET))
     return {error:deny(503,'Mode lokal belum dikonfigurasi. Jalankan: npm run local:setup')};
