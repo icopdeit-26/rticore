@@ -52,7 +52,7 @@ export function translateSQLiteToPostgres(sql: string): string {
 type QueryExecutor = {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
   exec(sql: string): Promise<unknown>;
-  batch?(statements: { sql: string; args: unknown[] }[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }[]>;
+  batch(statements: { sql: string; args: unknown[] }[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }[]>;
 };
 
 const globalPg = globalThis as unknown as {
@@ -228,27 +228,12 @@ export class PostgresD1Adapter implements D1DB {
       const s = stmt as PostgresPrepared;
       return { sql: translateSQLiteToPostgres(s.sql), args: s.args };
     });
-    if (exec.batch) {
-      const results = await exec.batch(mapped);
-      return results.map((res) => ({
-        success: true,
-        results: (res.rows || []).map(normalizeRow),
-        meta: { changes: res.rowCount ?? 0, last_row_id: 0 },
-      }));
-    }
-    await exec.exec('BEGIN');
-    try {
-      const out: unknown[] = [];
-      for (const s of mapped) {
-        const res = await exec.query(s.sql, s.args);
-        out.push({ success: true, results: res.rows.map(normalizeRow), meta: { changes: res.rowCount ?? 0, last_row_id: 0 } });
-      }
-      await exec.exec('COMMIT');
-      return out;
-    } catch (err) {
-      try { await exec.exec('ROLLBACK'); } catch { /* ignore */ }
-      throw err;
-    }
+    const results = await exec.batch(mapped);
+    return results.map((res) => ({
+      success: true,
+      results: (res.rows || []).map(normalizeRow),
+      meta: { changes: res.rowCount ?? 0, last_row_id: 0 },
+    }));
   }
 }
 

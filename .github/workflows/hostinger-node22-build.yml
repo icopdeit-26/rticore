@@ -45,6 +45,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run test:runtime-compat
       - run: node --experimental-strip-types --test tests/native-oidc.test.mjs tests/native-session.test.mjs tests/hostinger-config.test.mjs
+      - run: node --test tests/finance-p0-action-authorization.test.cjs
       - run: npm run test:finance-520
       - run: node --experimental-strip-types --test tests/rticore-postgres-atomic-live.test.cjs
         env:

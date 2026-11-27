@@ -1,3 +1,4 @@
+import { operationEvent } from '@/lib/operations';
 import { verifyFinancePayload } from '@/lib/finance-docking-bridge';
 import { authorizeBoQ, type BoQIdentity } from '@/lib/boq-auth';
 import { readBoundedJSON } from '@/lib/bounded-json';
@@ -33,6 +34,53 @@ import {
 } from '@/lib/rti-finance-core';
 
 export const dynamic = 'force-dynamic';
+
+// Every POST action must pass a server-owned menu and operation permission.
+const FINANCE_ACTION_POLICY: Record<string, readonly [FinanceMenuId, string]> = {
+  request_finance_role: ['F25', 'admin'],
+  approve_finance_role: ['F25', 'approveRole'],
+  create_profit_center: ['F02', 'makeOrAdmin'],
+  register_coa_hierarchy: ['F02', 'make'],
+  register_exchange_rate: ['F02', 'make'],
+  create_posting_rule: ['F03', 'make'],
+  approve_posting_rule: ['F03', 'approve'],
+  create_dimensional_journal: ['F03', 'make'],
+  approve_and_post_journal: ['F03', 'approve'],
+  configure_docking: ['F25', 'globalAdmin'],
+  register_integration_mapping: ['F25', 'docking'],
+  ingest_docking_event: ['F25', 'docking'],
+  retry_docking_event: ['F25', 'approve'],
+  create_ar_adjustment: ['F04', 'make'],
+  allocate_ar_payment: ['F04', 'make'],
+  request_vendor_bank_change: ['F05', 'make'],
+  approve_vendor_bank_change: ['F05', 'approve'],
+  import_bank_statement: ['F08', 'make'],
+  generate_cash_forecast: ['F07', 'make'],
+  allocate_psak115_contract: ['F09', 'make'],
+  approve_psak115_obligation: ['F09', 'approve'],
+  recognize_psak115_revenue: ['F09', 'approve'],
+  record_project_cost_entry: ['F10', 'make'],
+  compute_project_snapshot: ['F10', 'make'],
+  value_flexguard_event: ['F19', 'make'],
+  create_enterprise_budget: ['F12', 'make'],
+  consume_or_reserve_budget: ['F12', 'make'],
+  submit_expense_claim: ['F14', 'make'],
+  review_expense_claim: ['F14', 'approve'],
+  create_payroll_batch: ['F15', 'make'],
+  create_tax_rule: ['F16', 'make'],
+  approve_tax_rule: ['F16', 'approve'],
+  record_tax_transaction: ['F16', 'make'],
+  register_fixed_asset: ['F17', 'make'],
+  register_license_inventory: ['F18', 'make'],
+  update_closing_cockpit: ['F20', 'approve'],
+  reopen_closed_period: ['F20', 'approve'],
+  record_intercompany_elimination: ['F22', 'make'],
+  register_icofr_control: ['F23', 'make'],
+  log_financial_exception: ['F23', 'make'],
+  record_reconciliation: ['F08', 'make'],
+  ai_financial_query: ['F24', 'read'],
+};
+
 
 async function sha256Hex(input: string): Promise<string> {
   const bytes = new TextEncoder().encode(input);
@@ -446,11 +494,25 @@ export async function POST(req: Request) {
       update_closing_cockpit: [['period_id','SELECT legal_entity_id FROM rticore_gl_periods WHERE tenant_id=? AND id=?']],
       reopen_closed_period: [['period_id','SELECT legal_entity_id FROM rticore_gl_periods WHERE tenant_id=? AND id=?']],
       import_bank_statement: [['bank_account_id','SELECT legal_entity_id FROM rticore_treasury_accounts WHERE tenant_id=? AND id=?']],
+      allocate_ar_payment: [
+        ['payment_id',"SELECT sc.legal_entity_id FROM rticore_billing_payments b JOIN rticore_billing_invoices i ON i.id=b.invoice_id AND i.tenant_id=b.tenant_id JOIN rticore_erp_project_scopes sc ON sc.project_id=i.project_id AND sc.tenant_id=i.tenant_id WHERE b.tenant_id=? AND b.id=? AND sc.status='approved'"],
+        ['invoice_id',"SELECT sc.legal_entity_id FROM rticore_billing_invoices i JOIN rticore_erp_project_scopes sc ON sc.project_id=i.project_id AND sc.tenant_id=i.tenant_id WHERE i.tenant_id=? AND i.id=? AND sc.status='approved'"],
+      ],
+      allocate_psak115_contract: [
+        ['project_id',"SELECT legal_entity_id FROM rticore_erp_project_scopes WHERE tenant_id=? AND project_id=? AND status='approved'"],
+        ['contract_id',"SELECT sc.legal_entity_id FROM rticore_service_contracts c JOIN rticore_erp_project_scopes sc ON sc.project_id=c.project_id AND sc.tenant_id=c.tenant_id WHERE c.tenant_id=? AND c.id=? AND sc.status='approved'"],
+      ],
+      record_project_cost_entry: [['project_id',"SELECT legal_entity_id FROM rticore_erp_project_scopes WHERE tenant_id=? AND project_id=? AND status='approved'"]],
+      compute_project_snapshot: [['project_id',"SELECT legal_entity_id FROM rticore_erp_project_scopes WHERE tenant_id=? AND project_id=? AND status='approved'"]],
+      value_flexguard_event: [['wallet_id',"SELECT sc.legal_entity_id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.id=w.contract_id AND c.tenant_id=w.tenant_id JOIN rticore_erp_project_scopes sc ON sc.project_id=c.project_id AND sc.tenant_id=c.tenant_id WHERE w.tenant_id=? AND w.id=? AND sc.status='approved'"]],
+      create_enterprise_budget: [['account_id','SELECT legal_entity_id FROM rticore_gl_accounts WHERE tenant_id=? AND id=?']],
+      create_tax_rule: [['tax_account_id','SELECT legal_entity_id FROM rticore_gl_accounts WHERE tenant_id=? AND id=?']],
+      create_ar_adjustment: [['invoice_id',"SELECT sc.legal_entity_id FROM rticore_billing_invoices i JOIN rticore_erp_project_scopes sc ON sc.project_id=i.project_id AND sc.tenant_id=i.tenant_id WHERE i.tenant_id=? AND i.id=? AND sc.status='approved'"]],
     };
     for (const [field, sql] of Object.hasOwn(references, action) ? references[action] : []) {
       if (!erpId(v[field])) continue; // existing action validation handles malformed inputs
       const target = await db.prepare(sql).bind(TENANT, v[field] as string).first<{legal_entity_id:string}>();
-      if (!target) continue; // existing action handles nonexistent records and FK checks
+      erpAssert(target, 'Referensi Finance tidak ditemukan atau belum memiliki scope yang disetujui', 409);
       await requireFinanceEntity(a.identity, target.legal_entity_id);
       erpAssert(legalEntityId === null || legalEntityId === target.legal_entity_id, 'Referensi transaksi berasal dari legal entity berbeda', 403);
       legalEntityId = target.legal_entity_id;
@@ -459,14 +521,44 @@ export async function POST(req: Request) {
       for (const entity of [v.source_entity_id, v.counterparty_entity_id]) {
         await requireFinanceEntity(a.identity, entity);
         const effective = await resolveEffectiveFinanceRole(a.identity, entity);
-        erpAssert(canFinanceRoleAccessMenu(effective.financeRole, 'F22'), 'Akses konsolidasi untuk kedua legal entity diperlukan', 403);
+        erpAssert(canFinanceRoleAccessMenu(effective.financeRole, 'F22') && getFinanceRoleDefinition(effective.financeRole).canMake, 'Akses maker konsolidasi untuk kedua legal entity diperlukan', 403);
       }
+    }
+    if (action === 'record_intercompany_elimination' && erpId(v.source_entity_id)) {
+      erpAssert(legalEntityId === null || legalEntityId === v.source_entity_id, 'Legal entity sumber tidak sesuai', 403);
+      legalEntityId = v.source_entity_id;
+    }
+    // Tenant-wide actions still require an approved entity and an authenticated role.
+    if (legalEntityId === null && ['register_exchange_rate','configure_docking','ai_financial_query'].includes(action)) {
+      const entities = await financeEntities(a.identity);
+      if (entities.length === 1) legalEntityId = entities[0].id;
     }
     const { financeRole, customLimitCents } = await resolveEffectiveFinanceRole(
       a.identity,
       legalEntityId,
     );
     const roleDef = getFinanceRoleDefinition(financeRole);
+    const actionPolicy = Object.hasOwn(FINANCE_ACTION_POLICY, action) ? FINANCE_ACTION_POLICY[action] : undefined;
+    erpAssert(actionPolicy, 'Action Finance tidak dikenal', 422);
+    const [requiredMenu, operation] = actionPolicy;
+    erpAssert(legalEntityId, 'Legal entity Finance wajib dipilih atau diturunkan dari referensi transaksi', 403);
+    await requireFinanceEntity(a.identity, legalEntityId);
+    erpAssert(canFinanceRoleAccessMenu(financeRole, requiredMenu) ||
+      (operation === 'approveRole' && financeRole === 'financial_controller') ||
+      (operation === 'admin' && financeRole === 'financial_controller'),
+      'Akses action Finance ditolak', 403);
+    const permitted = operation === 'read' ||
+      (operation === 'make' && roleDef.canMake) ||
+      (operation === 'approve' && roleDef.canApprove && roleDef.canCheck) ||
+      (operation === 'makeOrAdmin' && (roleDef.canMake || financeRole === 'super_admin')) ||
+      (operation === 'admin' && ['super_admin','cfo','financial_controller'].includes(financeRole)) ||
+      (operation === 'approveRole' && ['cfo','financial_controller'].includes(financeRole)) ||
+      (operation === 'docking' && ['super_admin','cfo'].includes(financeRole)) ||
+      (operation === 'globalAdmin' && a.identity.role === 'admin' && financeRole === 'super_admin');
+    erpAssert(permitted, 'Kewenangan action Finance ditolak', 403);
+    // These legacy records have tenant-wide ownership, not a certified legal entity.
+    erpAssert(!['request_vendor_bank_change','approve_vendor_bank_change'].includes(action),
+      'Perubahan rekening vendor memerlukan model kepemilikan legal entity yang terverifikasi', 503);
 
     // =========================================================================
     // WP01: RBAC ROLE ASSIGNMENT & MASTER DATA (F02, F25)
@@ -916,51 +1008,23 @@ export async function POST(req: Request) {
         throw new ERPError(`${authCheck.code}: ${authCheck.message}`, 403);
       }
 
-      await erpAtom(
-        a.identity,
-        "EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND id=? AND status='draft' AND version=?)",
-        [TENANT, j.id, j.version],
-        [
-          db
-            .prepare(
-              "UPDATE rticore_gl_journals SET status='approved', version=version+1, reviewed_by=?, review_notes=?, reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?",
-            )
-            .bind(email, v.review_notes as string, TENANT, j.id),
-          db
-            .prepare(
-              "UPDATE rticore_finance_journal_workflows SET lifecycle_stage='approved', checked_by=?, checked_at=CURRENT_TIMESTAMP, approved_by=?, approved_at=CURRENT_TIMESTAMP, version=version+1 WHERE tenant_id=? AND journal_id=?",
-            )
-            .bind(email, email, TENANT, j.id),
-        ],
-        'rti_finance',
-        j.id,
-        'JOURNAL_APPROVED',
-        { amount_cents: j.debit_cents },
+      const post = v.post_immediately === true;
+      erpAssert(!post || roleDef.canPost, 'Role tidak memiliki kewenangan posting', 403);
+      const writes = [
+        db.prepare("UPDATE rticore_gl_journals SET status='approved', version=version+1, reviewed_by=?, review_notes=?, reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND legal_entity_id=? AND id=?")
+          .bind(email, v.review_notes as string, TENANT, legalEntityId, j.id),
+        db.prepare("UPDATE rticore_finance_journal_workflows SET lifecycle_stage='approved', checked_by=?, checked_at=CURRENT_TIMESTAMP, approved_by=?, approved_at=CURRENT_TIMESTAMP, version=version+1 WHERE tenant_id=? AND journal_id=?")
+          .bind(email, email, TENANT, j.id),
+      ];
+      if (post) writes.push(
+        operationEvent(db, 'rti_finance', j.id, 'JOURNAL_APPROVED', email, { amount_cents: j.debit_cents }),
+        db.prepare("UPDATE rticore_gl_journals SET status='posted', version=version+1, posted_by=?, posted_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND legal_entity_id=? AND id=?").bind(email,TENANT,legalEntityId,j.id),
+        db.prepare("UPDATE rticore_finance_journal_workflows SET lifecycle_stage='posted', posted_by=?, posted_at=CURRENT_TIMESTAMP, version=version+1 WHERE tenant_id=? AND journal_id=?").bind(email,TENANT,j.id),
       );
-
-      if (v.post_immediately === true && roleDef.canPost) {
-        await erpAtom(
-          a.identity,
-          "EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND id=? AND status='approved')",
-          [TENANT, j.id],
-          [
-            db
-              .prepare(
-                "UPDATE rticore_gl_journals SET status='posted', version=version+1, posted_by=?, posted_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?",
-              )
-              .bind(email, TENANT, j.id),
-            db
-              .prepare(
-                "UPDATE rticore_finance_journal_workflows SET lifecycle_stage='posted', posted_by=?, posted_at=CURRENT_TIMESTAMP, version=version+1 WHERE tenant_id=? AND journal_id=?",
-              )
-              .bind(email, TENANT, j.id),
-          ],
-          'rti_finance',
-          j.id,
-          'JOURNAL_POSTED',
-          {},
-        );
-      }
+      await erpAtom(a.identity,
+        "EXISTS(SELECT 1 FROM rticore_gl_journals WHERE tenant_id=? AND legal_entity_id=? AND id=? AND status='draft' AND version=?)",
+        [TENANT, legalEntityId, j.id, j.version], writes, 'rti_finance', j.id,
+        post ? 'JOURNAL_POSTED' : 'JOURNAL_APPROVED', { amount_cents: j.debit_cents });
       return erpReply({ success: true });
     }
 
@@ -980,7 +1044,8 @@ export async function POST(req: Request) {
         'Konfigurasi Docking tidak valid',
       );
       const id = erpId(v.id) ? (v.id as string) : crypto.randomUUID();
-      const secretHash = await sha256Hex(String(v.webhook_secret || 'rticore-default-docking-secret'));
+      erpAssert(erpText(v.webhook_secret, 32, 512), 'Webhook secret wajib minimal 32 karakter', 422);
+      const secretHash = await sha256Hex(v.webhook_secret as string);
       const eventsJson = JSON.stringify(
         Array.isArray(v.subscribed_events) ? v.subscribed_events : RTICORE_DOCKING_EVENT_TYPES,
       );
@@ -1052,12 +1117,12 @@ export async function POST(req: Request) {
     }
 
     if (action === 'ingest_docking_event') {
-      const checked = validateDockingEventEnvelope(v, Date.now(), Number(v.max_drift_seconds ?? 300));
+      const checked = validateDockingEventEnvelope(v, Date.now(), 300);
       if (!checked.ok) {
         throw new ERPError(`${checked.code}: ${checked.message}`, 422);
       }
       const env = checked.envelope;
-      erpAssert(env.tenant_id === TENANT, 'Cross-tenant event injection ditolak', 403);
+      erpAssert(env.tenant_id === TENANT && env.legal_entity_id === legalEntityId, 'Cross-tenant atau cross-entity event injection ditolak', 403);
 
       // Deduplication check on idempotency_key
       const existing = await db
@@ -1217,8 +1282,8 @@ export async function POST(req: Request) {
       const id = crypto.randomUUID();
       await erpAtom(
         a.identity,
-        '1=1',
-        [],
+        "EXISTS(SELECT 1 FROM rticore_billing_payments WHERE tenant_id=? AND id=? AND status='approved' AND amount_cents=?) AND (SELECT coalesce(sum(allocated_cents),0) FROM rticore_finance_ar_payment_allocations WHERE tenant_id=? AND payment_id=?)=?",
+        [TENANT, pay.id, Number(pay.amount_cents), TENANT, pay.id, Number(prevAlloc?.s || 0)],
         [
           db
             .prepare(
@@ -1551,6 +1616,8 @@ export async function POST(req: Request) {
         }>();
       erpAssert(ob && ob.status === 'approved', 'Performance Obligation harus berstatus approved sebelum pengakuan pendapatan', 409);
 
+      const recognitionAuth = validateFinanceApprovalAuthority({ makerEmail: ob.created_by, approverEmail: email, approverRole: financeRole, customApprovalLimitCents: customLimitCents, transactionAmountCents: Number(v.recognized_cents) });
+      erpAssert(recognitionAuth.ok, 'Pengakuan pendapatan memerlukan approval independen dalam limit', 403);
       const newRecognizedTotal = Number(ob.recognized_to_date_cents) + Number(v.recognized_cents);
       erpAssert(
         newRecognizedTotal <= Number(ob.allocated_transaction_price_cents),
@@ -1568,8 +1635,8 @@ export async function POST(req: Request) {
       const schedId = crypto.randomUUID();
       await erpAtom(
         a.identity,
-        '1=1',
-        [],
+        "EXISTS(SELECT 1 FROM rticore_finance_performance_obligations WHERE tenant_id=? AND legal_entity_id=? AND id=? AND status='approved' AND recognized_to_date_cents=? AND billed_to_date_cents=? AND allocated_transaction_price_cents=?)",
+        [TENANT, legalEntityId, ob.id, Number(ob.recognized_to_date_cents), Number(ob.billed_to_date_cents), Number(ob.allocated_transaction_price_cents)],
         [
           db
             .prepare(
@@ -1861,8 +1928,8 @@ export async function POST(req: Request) {
       const col = kind === 'commit' ? 'committed_cents' : kind === 'actual' ? 'actual_realized_cents' : 'reserved_cents';
       await erpAtom(
         a.identity,
-        '1=1',
-        [],
+        "EXISTS(SELECT 1 FROM rticore_finance_budgets WHERE tenant_id=? AND legal_entity_id=? AND id=? AND reserved_cents=? AND committed_cents=? AND actual_realized_cents=? AND current_approved_cents=? AND control_mode=? AND coalesce(overrun_approved_by,'')=?)",
+        [TENANT, legalEntityId, b.id, Number(b.reserved_cents), Number(b.committed_cents), Number(b.actual_realized_cents), Number(b.current_approved_cents), b.control_mode, b.overrun_approved_by || ''],
         [
           db
             .prepare(`UPDATE rticore_finance_budgets SET ${col} = ${col} + ? WHERE tenant_id=? AND id=?`)
@@ -1933,7 +2000,8 @@ export async function POST(req: Request) {
         .bind(TENANT, v.id as string)
         .first<{ id: string; employee_email: string; status: string; amount_cents: number }>();
       erpAssert(claim && claim.status === 'submitted', 'Klaim tidak ditemukan atau sudah direview', 409);
-      erpAssert(claim.employee_email.toLowerCase() !== email.toLowerCase(), 'Karyawan dilarang menyetujui klaim biaya sendiri', 403);
+      const claimAuth = validateFinanceApprovalAuthority({makerEmail: claim.employee_email, approverEmail: email, approverRole: financeRole, customApprovalLimitCents: customLimitCents, transactionAmountCents: Number(claim.amount_cents)});
+      erpAssert(claimAuth.ok, 'Approval klaim harus independen dan dalam limit', 403);
       await erpAtom(
         a.identity,
         "EXISTS(SELECT 1 FROM rticore_finance_expense_claims WHERE tenant_id=? AND id=? AND status='submitted')",

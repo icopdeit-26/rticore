@@ -15,5 +15,9 @@ test('real PostgreSQL atomic commit and rollback under concurrent batches',async
   assert.deepEqual((await pool.query('SELECT * FROM atomic_probe ORDER BY id')).rows,[{id:1,amount:100},{id:2,amount:200}]);
   const results=await executeAtomicBatch(pool,[{sql:'SELECT pg_backend_pid() AS pid',args:[]},{sql:'SELECT pg_backend_pid() AS pid',args:[]}]);
   assert.equal(results[0].rows[0].pid,results[1].rows[0].pid);
+  const changeResults=await executeAtomicBatch(pool,[{sql:'UPDATE atomic_probe SET amount=amount+1 WHERE id=1',args:[]},{sql:'SELECT changes() AS n',args:[]}]);
+  assert.equal(changeResults[1].rows[0].n,1);
+  await assert.rejects(executeAtomicBatch(pool,[insert(5,100),insert(1,999)]));
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM atomic_probe WHERE id=5')).rows[0].n,0);
  }finally{await pool.end();}
 });
