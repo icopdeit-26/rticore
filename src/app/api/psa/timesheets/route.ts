@@ -63,7 +63,7 @@ export async function POST(req:Request){
    if(isGovernanceRole(role)&&!await governanceOnProjectId(db,email,projectId))return fail('Governance Team hanya mencatat jam pada engagement GRC yang dialokasikan',403);
    if(isITDevRole(role)&&!await itdevOnProjectId(db,email,projectId))return fail('IT Developer Team hanya mencatat jam pada proyek Technology & Implementation yang dialokasikan',403);
    const id=crypto.randomUUID();
-   await atomicSales(db,`EXISTS(SELECT 1 FROM rticore_delivery_projects p JOIN rticore_resource_allocations x ON x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.id=? JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE p.tenant_id=? AND p.id=? AND p.status='active' AND x.status='active' AND r.active=1 AND lower(r.email)=? AND substr(?,1,7)=x.allocation_month AND ? BETWEEN p.start_date AND p.end_date)`,[allocationId,TENANT,projectId,email,workDate,workDate],[
+   await atomicSales(db,`EXISTS(SELECT 1 FROM rticore_delivery_projects p JOIN rticore_resource_allocations x ON x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id AND x.id=? JOIN rticore_resource_people r ON r.id=x.person_id AND r.tenant_id=x.tenant_id WHERE p.tenant_id=? AND p.id=? AND p.status='active' AND x.status='active' AND r.active=1 AND x.daily_cost_snapshot>=0 AND x.daily_cost_snapshot<=90071992547409 AND lower(r.email)=? AND substr(?,1,7)=x.allocation_month AND ? BETWEEN p.start_date AND p.end_date)`,[allocationId,TENANT,projectId,email,workDate,workDate],[
     db.prepare('INSERT INTO rticore_project_timesheets(id,tenant_id,project_id,person_id,allocation_id,work_date,minutes,billable,description,cost_snapshot_cents,created_by) SELECT ?,p.tenant_id,p.id,x.person_id,x.id,?,?,?,?,CAST(round(x.daily_cost_snapshot*100*?/480) AS INTEGER),? FROM rticore_delivery_projects p JOIN rticore_resource_allocations x ON x.tenant_id=p.tenant_id AND x.opportunity_id=p.opportunity_id WHERE p.tenant_id=? AND p.id=? AND x.id=?').bind(id,workDate,minutes,v.billable?1:0,description,minutes,email,TENANT,projectId,allocationId),
     operationEvent(db,'timesheet',id,'SUBMIT',email,{project_id:projectId,work_date:workDate,minutes})
    ]);return reply({success:true,id},201);
@@ -83,6 +83,7 @@ export async function POST(req:Request){
     return fail('IT Developer Leader hanya mereview timesheet tim pada proyek Technology & Implementation yang dialokasikan kepadanya',403);
    if(row.created_by.toLowerCase()===email)return fail('Maker tidak boleh menyetujui sendiri',403);
    if(row.status!=='submitted'||row.version!==v.version)return fail('Versi/status timesheet berubah',409);
+   if(v.approve&&(!Number.isSafeInteger(Number(row.cost_snapshot_cents))||Number(row.cost_snapshot_cents)<0||row.cost_snapshot_cents===null))return fail('Snapshot biaya timesheet tidak valid; rekonsiliasi wajib',409);
    const scopeByRole={
     project_manager:{sql:PM_SCOPE,args:[email]},
     offense_lead:{sql:OFFENSE_PROJECT_SCOPE(),args:offenseScopeArgs(email)},

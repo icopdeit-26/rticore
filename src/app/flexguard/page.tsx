@@ -30,6 +30,7 @@ export default function FlexGuardPage(){
  return <main className="mx-auto max-w-6xl space-y-5 pb-24">
   <header className="rounded-xl border bg-white p-5"><h1 className="text-xl font-bold">FlexGuard · Immutable Token Ledger</h1>
    <p className="mt-2 text-sm text-slate-600">Kuota dan saldo dihitung dari event ledger immutable. Reservasi, konsumsi dan refund memerlukan saldo serta referensi sah. Semua transaksi ditolak bila migrasi 0030 belum diterapkan.</p>
+   <Link href="/erp/flexguard-enterprise" className="mt-3 mr-4 inline-block text-sm font-semibold text-indigo-700 underline">FlexGuard Enterprise →</Link>
    <Link href="/flexguard" className="mt-3 mr-4 inline-block text-sm font-semibold text-indigo-700 underline">Semua wallet →</Link>
    {role!=='project_manager'&&<Link href="/sales/renewals" className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">Kontrak & Renewal →</Link>}</header>
   {error&&<p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">BLOCKED — {error}</p>}

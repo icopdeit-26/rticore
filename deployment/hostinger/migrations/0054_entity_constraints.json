@@ -1,0 +1,98 @@
+[
+  {
+    "table": "rticore_gl_journals",
+    "column": "period_id",
+    "parent": "rticore_gl_periods",
+    "name": "p0_journal_period_entity_fk"
+  },
+  {
+    "table": "rticore_finance_period_controls",
+    "column": "period_id",
+    "parent": "rticore_gl_periods",
+    "name": "p0_period_control_entity_fk"
+  },
+  {
+    "table": "rticore_finance_coa_hierarchy",
+    "column": "account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_coa_account_entity_fk"
+  },
+  {
+    "table": "rticore_finance_coa_hierarchy",
+    "column": "parent_account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_coa_parent_entity_fk"
+  },
+  {
+    "table": "rticore_finance_posting_rules",
+    "column": "debit_account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_postrule_debit_entity_fk"
+  },
+  {
+    "table": "rticore_finance_posting_rules",
+    "column": "credit_account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_postrule_credit_entity_fk"
+  },
+  {
+    "table": "rticore_finance_journal_workflows",
+    "column": "journal_id",
+    "parent": "rticore_gl_journals",
+    "name": "p0_workflow_journal_entity_fk"
+  },
+  {
+    "table": "rticore_finance_journal_dimensions",
+    "column": "journal_id",
+    "parent": "rticore_gl_journals",
+    "name": "p0_dimension_journal_entity_fk"
+  },
+  {
+    "table": "rticore_finance_revenue_schedules",
+    "column": "obligation_id",
+    "parent": "rticore_finance_performance_obligations",
+    "name": "p0_schedule_obligation_entity_fk"
+  },
+  {
+    "table": "rticore_finance_revenue_schedules",
+    "column": "journal_id",
+    "parent": "rticore_gl_journals",
+    "name": "p0_schedule_journal_entity_fk"
+  },
+  {
+    "table": "rticore_finance_budgets",
+    "column": "account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_budget_account_entity_fk"
+  },
+  {
+    "table": "rticore_finance_tax_rules",
+    "column": "tax_account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_tax_rule_account_entity_fk"
+  },
+  {
+    "table": "rticore_finance_tax_transactions",
+    "column": "tax_rule_id",
+    "parent": "rticore_finance_tax_rules",
+    "name": "p0_tax_transaction_rule_entity_fk"
+  },
+  {
+    "table": "rticore_finance_tax_transactions",
+    "column": "journal_id",
+    "parent": "rticore_gl_journals",
+    "name": "p0_tax_transaction_journal_entity_fk"
+  },
+  {
+    "table": "rticore_finance_bank_statements",
+    "column": "bank_account_id",
+    "parent": "rticore_treasury_accounts",
+    "name": "p0_statement_bank_entity_fk"
+  },
+  {
+    "table": "rticore_treasury_accounts",
+    "column": "gl_account_id",
+    "parent": "rticore_gl_accounts",
+    "name": "p0_treasury_gl_entity_fk"
+  }
+]

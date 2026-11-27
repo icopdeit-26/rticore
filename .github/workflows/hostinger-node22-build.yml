@@ -4,7 +4,7 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches: [main]
+    branches: [main, 'fix/p0-native-hostinger-consolidation']
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: Verify runner and lockfile without PostgreSQL or project secrets
@@ -39,10 +39,10 @@ jobs:
           POSTGRES_DB: rticore_atomic_ci
         ports:
           - 5432:5432
-        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 15
+        options: --health-cmd "pg_isready -U rticore_ci -d rticore_atomic_ci" --health-interval 5s --health-timeout 5s --health-retries 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -54,7 +54,7 @@ jobs:
       - run: node --test tests/finance-p0-action-authorization.test.cjs
       - run: node --experimental-strip-types --test tests/finance-close-policy.test.mjs
       - run: npm run test:finance-520
-      - run: node --experimental-strip-types --test tests/rticore-postgres-atomic-live.test.cjs
+      - run: node --experimental-strip-types --test tests/rticore-postgres-atomic-live.test.cjs tests/finance-entity-constraints-live.test.cjs tests/postgres-canonical-triggers-live.test.cjs
         env:
           RTICORE_ATOMIC_TEST_URL: postgresql://rticore_ci:rticore_ci_only@127.0.0.1:5432/rticore_atomic_ci
       - run: npm run typecheck

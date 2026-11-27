@@ -53,6 +53,7 @@ export async function POST(req:Request){
  let p:Record<string,unknown>;
  try{p=await readBoundedJSON(req,8000);}catch(e){return fail(e instanceof Error?e.message:'Payload gagal',e instanceof RequestBodyError?e.status:400);}
  const action=txt(p.action,30);
+ if(process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_FLEXGUARD_ENTERPRISE_ENABLED==='1')return fail('Native FlexGuard enterprise menggunakan /api/erp/flexguard-enterprise; legacy write ditutup untuk mencegah dual ledger.',503);
  try{
   if(action==='create_wallet'){
    if(!['admin','finance'].includes(role)||!safeID(p.contract_id)||!bound(p.entitlement_units))return fail('Kontrak, kuota dan role Finance wajib',403);

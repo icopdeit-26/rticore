@@ -37,3 +37,9 @@ test('FlexGuard endpoint uses verified Access, original Vault and no memory ledg
  assert.match(page,/\/api\/sales\/flexguard/);
  assert.doesNotMatch(page,/appStore|\/api\/wallets/);
 });
+
+
+test('ledger rejects invalid persisted event kinds and aggregate overflow',()=>{
+ assert.throws(()=>walletTotals([{kind:'UNKNOWN',units:1}]),/INVALID_EVENT_KIND/);
+ assert.throws(()=>walletTotals([{kind:'ISSUE',units:Number.MAX_SAFE_INTEGER},{kind:'TOPUP',units:1}]),/OVERFLOW/);
+});
