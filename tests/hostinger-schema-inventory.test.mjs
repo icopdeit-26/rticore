@@ -9,7 +9,11 @@ test('migration numbering collision is rejected, separate streams allowed',()=>{
  assert.deepEqual(duplicateMigrationVersions(['0053_finance.sql','0054_flexguard.sql']),[]);
 });
 test('actual repository inventory is parseable and migration stream is unique',()=>{
- const inv=schemaInventory(fs.readFileSync('rticore_postgresql_schema.sql','utf8'),fs.readFileSync('rticore_postgresql_triggers.sql','utf8'));
+ const native=['deployment/hostinger/migrations','sql/native-postgres'].filter(d=>fs.existsSync(d)).flatMap(d=>fs.readdirSync(d).filter(f=>/^\d{4}_.+\.sql$/.test(f)).sort().map(f=>fs.readFileSync(d+'/'+f,'utf8'))).join('\n');
+ const inv=schemaInventory(fs.readFileSync('rticore_postgresql_schema.sql','utf8'),fs.readFileSync('rticore_postgresql_triggers.sql','utf8'),native);
+ assert.ok(inv.rules.some(r=>r.name==='cams_finance_inbox_immutable'));
+ assert.ok(inv.rules.some(r=>r.name==='rticore_fg_journal_control'));
+ assert.ok(inv.rules.some(r=>r.name==='rticore_fg_retry_attempt_immutable'));
  assert.ok(inv.tables.includes('rticore_finance_vendor_bank_scopes'));
  assert.ok(inv.rules.length>200);
  for(const dir of ['migrations','deployment/hostinger/migrations','sql/native-postgres']){
@@ -48,4 +52,13 @@ test('reject conflicting native and legacy FlexGuard ledger schemas',()=>{
  const native='CREATE TABLE IF NOT EXISTS rticore_flexguard_credit_lots (id text); CREATE TABLE IF NOT EXISTS rticore_flexguard_enterprise_ledger (id text);';
  assert.equal(nativeLedgerCollisions(legacy,native).length,2);
  assert.deepEqual(nativeLedgerCollisions('',native),[]);
+});
+
+test('migration trigger inventory cannot be omitted or disabled',()=>{
+ const migration='CREATE TRIGGER migration_guard BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION guard();';
+ const full=schemaInventory('CREATE TABLE IF NOT EXISTS t (id TEXT);','CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION fn();',migration);
+ assert.equal(full.rules.length,2);
+ assert.deepEqual(checkSchemaInventory(full,good).missingTriggers,[{name:'migration_guard',table:'t',function:'guard'}]);
+ assert.equal(checkSchemaInventory(full,{...good,triggers:[...good.triggers,{name:'migration_guard',table:'t',function:'guard',function_schema:'public',enabled:'D'}]}).missingTriggers.length,1);
+ assert.throws(()=>schemaInventory('CREATE TABLE IF NOT EXISTS t (id TEXT);','CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION fn();','CREATE TRIGGER unsupported;'));
 });

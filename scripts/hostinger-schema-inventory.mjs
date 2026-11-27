@@ -18,9 +18,10 @@ export function duplicateMigrationVersions(files, stream = '') {
 }
 export function schemaInventory(schema, triggers, migrationSQL = '') {
   const tables = [...new Set([...(schema+'\n'+triggers+'\n'+migrationSQL).matchAll(/CREATE TABLE IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/gi)].map(m=>m[1]))];
-  const rules = [...triggers.matchAll(/CREATE TRIGGER\s+(\w+)\s+[\s\S]*?\bON\s+(\w+)\s+FOR EACH ROW EXECUTE FUNCTION\s+(\w+)\(\)/gi)]
+  const allTriggerSQL = triggers+'\n'+migrationSQL;
+  const rules = [...allTriggerSQL.matchAll(/CREATE TRIGGER\s+(\w+)\s+[\s\S]*?\bON\s+(\w+)\s+FOR EACH ROW EXECUTE FUNCTION\s+(\w+)\(\)/gi)]
     .map(m=>({name:m[1],table:m[2],function:m[3]}));
-  const triggerCount = [...triggers.matchAll(/CREATE TRIGGER\s+/gi)].length;
+  const triggerCount = [...allTriggerSQL.matchAll(/CREATE TRIGGER\s+/gi)].length;
   if (!tables.length || !rules.length || rules.length !== triggerCount)
     throw new Error('Missing or unparseable schema inventory');
   return {tables,rules};

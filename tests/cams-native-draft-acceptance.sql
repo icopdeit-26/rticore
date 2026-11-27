@@ -38,5 +38,14 @@ INSERT INTO rticore_erp_org_units(id,tenant_id,code,label,kind,parent_id,created
 DO $$ BEGIN
  IF NOT EXISTS(WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id='defendit360' AND id='cams-ci-entity' UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON u.parent_id=s.id WHERE u.tenant_id='defendit360' AND u.active=1) SELECT 1 FROM scope WHERE id='cams-ci-entity' AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id='cams-ci-cost' AND kind='cost_center' AND active=1)) THEN RAISE EXCEPTION 'VALID_COST_CENTER_REJECTED'; END IF;
  IF EXISTS(WITH RECURSIVE scope AS (SELECT id,parent_id,kind,active FROM rticore_erp_org_units WHERE tenant_id='defendit360' AND id='cams-ci-entity' UNION SELECT u.id,u.parent_id,u.kind,u.active FROM rticore_erp_org_units u JOIN scope s ON u.parent_id=s.id WHERE u.tenant_id='defendit360' AND u.active=1) SELECT 1 FROM scope WHERE id='cams-ci-entity' AND kind='legal_entity' AND active=1 AND EXISTS(SELECT 1 FROM scope WHERE id='cams-ci-other-cost' AND kind='cost_center' AND active=1)) THEN RAISE EXCEPTION 'CROSS_ENTITY_COST_CENTER_ACCEPTED'; END IF;
-END $$;
+END $;
+-- Exercise the actual receiver function, not only its hierarchy query.
+INSERT INTO rticore_cams_finance_inbox(id,source_tenant_id,source_journal_id,idempotency_key,payload_hash,legal_entity_id,period_code,payload_json,mapped_lines_json) VALUES('cams-ci-cross','tenant-test','journal-cross','OUTBOX-JRN-cross','cross-hash','cams-ci-entity','2026-11','{}','[{"accountId":"cams-ci-debit","debit":"10000","credit":"0","costCenterId":"cams-ci-other-cost"},{"accountId":"cams-ci-credit","debit":"0","credit":"10000"}]');
+DO $ BEGIN
+ BEGIN
+  PERFORM cams_create_finance_draft('cams-ci-cross');
+  RAISE EXCEPTION 'CROSS_ENTITY_RECEIPT_ACCEPTED';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CAMS_COST_CENTER_INVALID' THEN RAISE; END IF; END;
+ IF EXISTS(SELECT 1 FROM rticore_gl_journals WHERE source_key='OUTBOX-JRN-cross') THEN RAISE EXCEPTION 'CROSS_ENTITY_PARTIAL_DRAFT'; END IF;
+END $;
 ROLLBACK;
