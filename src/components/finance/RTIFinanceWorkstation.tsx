@@ -498,7 +498,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">Working Capital & Liquidity</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(kpis.glAssetCents == null ? '—' : Number(kpis.glAssetCents) - kpis.glLiabilityCents == null ? '—' : Number(kpis.glLiabilityCents))}
+                      {kpis.glAssetCents == null || kpis.glLiabilityCents == null ? '—' : formatIDRFromCents(Number(kpis.glAssetCents) - Number(kpis.glLiabilityCents))}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       13-Week Forecast Buckets: {(data.cashForecasts || []).length}
@@ -507,7 +507,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold text-slate-500">AR vs AP Aging Balance</p>
                     <p className="mt-1 text-xl font-extrabold text-slate-900">
-                      {formatIDRFromCents(kpis.arOutstandingCents == null ? '—' : Number(kpis.arOutstandingCents) - kpis.apOutstandingCents == null ? '—' : Number(kpis.apOutstandingCents))}
+                      {kpis.arOutstandingCents == null || kpis.apOutstandingCents == null ? '—' : formatIDRFromCents(Number(kpis.arOutstandingCents) - Number(kpis.apOutstandingCents))}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       Reconciliations: {(data.reconciliations || []).length} records
@@ -673,7 +673,7 @@ export function RTIFinanceWorkstation({ initialMenu = 'F01' }: RTIFinanceWorksta
                     type="button"
                     disabled={busy || dockingSecret.length < 32 || dockingEndpoint.length < 5 || !['super_admin','cfo'].includes(String(identity.financeRole))}
                     onClick={() => {
-                      const nextStatus = 'connected';
+                      const nextStatus = 'disconnected';
                       void executeFinanceAction(
                         {
                           action: 'configure_docking',
