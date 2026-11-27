@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: '24'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Seven-role UAT domain and document simulations
         run: npm run test:sales && npm run test:marketing && npm run test:rticore-negative
       - name: Consolidated Marketing Sales schema and PR18 preservation tests
@@ -51,7 +51,7 @@ jobs:
         run: npm run test:all
         env:
           NEXT_TELEMETRY_DISABLED: '1'
-      - name: Cloudflare adapter bundle
+      - name: Native enterprise build and regression gate
         run: npm run build:enterprise
         env:
           NEXT_TELEMETRY_DISABLED: '1'
