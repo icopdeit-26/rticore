@@ -32,13 +32,30 @@ export async function POST(req:Request){
   const scope=await db.prepare('SELECT rticore_fg_actor_role(?,?,?) AS role').bind(TENANT,v.legal_entity_id,email).first<{role:string|null}>();
   erpAssert(scope?.role===role&&['finance','approver'].includes(role),'Akses legal entity ditolak',403);
   if(v.action==='preview_contract_credits'){
-   erpAssert(erpId(v.contract_id)&&erpId(v.terms_id)&&tiers.includes(String(v.service_tier))&&integer(v.approved_mandays_tenths,1,1000000),'Data estimasi tidak valid');
+   erpAssert(erpId(v.contract_id)&&erpId(v.terms_id)&&tiers.includes(String(v.service_tier))&&integer(v.estimated_mandays_tenths,1,1000000),'Data estimasi tidak valid');
    const p=await db.prepare("SELECT t.unit_credit_price_cents,t.credits_included,c.multiplier_bps FROM rticore_fg_product_terms t JOIN rticore_fg_product_conversions c ON c.tenant_id=t.tenant_id AND c.legal_entity_id=t.legal_entity_id AND c.terms_id=t.id JOIN rticore_service_contracts x ON x.tenant_id=t.tenant_id JOIN rticore_erp_project_scopes s ON s.tenant_id=x.tenant_id AND s.project_id=x.project_id AND s.legal_entity_id=t.legal_entity_id AND s.status='approved' WHERE t.tenant_id=? AND t.legal_entity_id=? AND t.id=? AND c.service_tier=? AND x.id=? AND x.model='FlexGuard' AND x.status='active' AND t.status='approved' AND t.effective_from<=CURRENT_DATE AND x.start_date<=CURRENT_DATE::text AND x.end_date>=CURRENT_DATE::text").bind(TENANT,v.legal_entity_id,v.terms_id,v.service_tier,v.contract_id).first<{unit_credit_price_cents:number;credits_included:number;multiplier_bps:number}>();
    erpAssert(p,'Kontrak atau product terms tidak disetujui',409);
-   const credits=Number((BigInt(Number(v.approved_mandays_tenths))*BigInt(p.multiplier_bps)+99999n)/100000n);
+   const credits=Number((BigInt(Number(v.estimated_mandays_tenths))*BigInt(p.multiplier_bps)+99999n)/100000n);
    const value=BigInt(credits)*BigInt(p.unit_credit_price_cents);
    erpAssert(credits<=Number(p.credits_included)&&value<900000000000000n,'Estimasi melebihi batas produk',422);
    return erpReply({success:true,preview_only:true,credits,estimated_value_cents:Number(value),contract_id:v.contract_id,terms_id:v.terms_id,psa_verified:false,finance_posted:false});
+  }
+  if(v.action==='preview_psa_credits'){
+   erpAssert(erpId(v.contract_id)&&erpId(v.terms_id)&&tiers.includes(String(v.service_tier))&&Array.isArray(v.timesheet_ids)&&v.timesheet_ids.length>=1&&v.timesheet_ids.length<=100,'Kontrak, tier dan timesheet wajib');
+   const ids=v.timesheet_ids as unknown[];erpAssert(ids.every(erpId)&&new Set(ids).size===ids.length,'Timesheet ID tidak valid atau duplikat');
+   const rows=await db.prepare(`SELECT ts.id,ts.minutes,ts.cost_snapshot_cents,t.unit_credit_price_cents,t.credits_included,c.multiplier_bps,
+    EXISTS(SELECT 1 FROM rticore_finance_integration_events e WHERE e.tenant_id=ts.tenant_id AND e.legal_entity_id=t.legal_entity_id AND e.event_type='timesheet.approved' AND e.source_document_id=ts.id) AS finance_source_exists
+    FROM rticore_fg_product_terms t JOIN rticore_fg_product_conversions c ON c.tenant_id=t.tenant_id AND c.legal_entity_id=t.legal_entity_id AND c.terms_id=t.id
+    JOIN rticore_service_contracts x ON x.tenant_id=t.tenant_id JOIN rticore_erp_project_scopes s ON s.tenant_id=x.tenant_id AND s.project_id=x.project_id AND s.legal_entity_id=t.legal_entity_id AND s.status='approved'
+    JOIN rticore_project_timesheets ts ON ts.tenant_id=x.tenant_id AND ts.project_id=x.project_id AND ts.status='approved' AND ts.billable=1 AND ts.work_date BETWEEN x.start_date AND x.end_date
+    WHERE t.tenant_id=? AND t.legal_entity_id=? AND t.id=? AND c.service_tier=? AND x.id=? AND x.model='FlexGuard' AND x.status='active' AND t.status='approved' AND t.effective_from<=CURRENT_DATE AND ts.id IN (${ids.map(()=>'?').join(',')})`).bind(TENANT,v.legal_entity_id,v.terms_id,v.service_tier,v.contract_id,...ids).all<{id:string;minutes:number;cost_snapshot_cents:number;unit_credit_price_cents:number;credits_included:number;multiplier_bps:number;finance_source_exists:boolean}>();
+   erpAssert(rows.results.length===ids.length&&new Set(rows.results.map(r=>r.id)).size===ids.length,'Timesheet tidak lengkap, lintas scope atau belum disetujui',409);
+   const first=rows.results[0];const minutes=rows.results.reduce((sum,r)=>sum+BigInt(r.minutes),0n);
+   const credits=(minutes*BigInt(first.multiplier_bps)+4799999n)/4800000n;
+   const value=credits*BigInt(first.unit_credit_price_cents);
+   const cost=rows.results.reduce((sum,r)=>sum+BigInt(r.cost_snapshot_cents),0n);
+   erpAssert(credits>0n&&credits<=BigInt(first.credits_included)&&value<900000000000000n&&cost<900000000000000n,'Nilai estimasi melebihi batas',422);
+   return erpReply({success:true,preview_only:true,approved_billable_minutes:Number(minutes),credits:Number(credits),estimated_value_cents:Number(value),approved_cost_cents:Number(cost),timesheet_count:ids.length,finance_source_count:rows.results.filter(r=>r.finance_source_exists===true).length,contract_terms_binding_verified:false,finance_posted:false});
   }
   if(v.action==='preview_target_margin'){
    erpAssert(role==='finance','Finance maker wajib',403);
