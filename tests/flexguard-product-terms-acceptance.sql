@@ -119,6 +119,69 @@ BEGIN
  r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
  IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
 END $fg$;
+-- Continue the SAME positive PSA consumption fixture through actual GL docking.
+-- The AR journal represents the already approved and paid invoice, not a second invoice.
+INSERT INTO rticore_members(email,role,active,created_by)
+ VALUES('fg-terms-poster@example.invalid','finance',1,'ci');
+INSERT INTO rticore_finance_role_assignments(id,tenant_id,email,finance_role,legal_entity_id,approval_limit_cents,can_post,status,requested_by,reviewed_by,review_notes)
+ VALUES('fg-terms-poster-role','defendit360','fg-terms-poster@example.invalid','accounting_officer','fg-terms-a',0,1,'approved','ci-maker','ci-reviewer','Independent synthetic poster assignment');
+INSERT INTO rticore_gl_periods(id,tenant_id,legal_entity_id,period,created_by)
+ VALUES('fg-ci-fin-period','defendit360','fg-terms-a',to_char(CURRENT_DATE,'YYYY-MM'),'ci');
+INSERT INTO rticore_gl_accounts(id,tenant_id,legal_entity_id,code,name,category,created_by) VALUES
+ ('fg-ci-ar','defendit360','fg-terms-a','FG-CI-AR','Synthetic receivable','asset','ci'),
+ ('fg-ci-liability','defendit360','fg-terms-a','FG-CI-LIAB','Synthetic contract liability','liability','ci'),
+ ('fg-ci-revenue','defendit360','fg-terms-a','FG-CI-REV','Synthetic service revenue','revenue','ci');
+INSERT INTO rticore_finance_posting_rules(id,tenant_id,legal_entity_id,rule_code,business_event,journal_type,service_category,tax_treatment,debit_account_id,credit_account_id,policy_reference,effective_from,status,created_by,approved_by,review_notes) VALUES
+ ('fg-ci-purchase-rule','defendit360','fg-terms-a','FG-CI-PURCHASE','flexguard.credit_purchased','sales','FlexGuard','IDR','fg-ci-ar','fg-ci-liability','Synthetic policy',(CURRENT_DATE-1)::text,'approved','ci-maker','ci-checker','Synthetic independent review'),
+ ('fg-ci-consume-rule','defendit360','fg-terms-a','FG-CI-CONSUME','flexguard.credit_consumed','revenue_recognition','FlexGuard','IDR','fg-ci-liability','fg-ci-revenue','Synthetic policy',(CURRENT_DATE-1)::text,'approved','ci-maker','ci-checker','Synthetic independent review');
+INSERT INTO rticore_gl_journals(id,tenant_id,legal_entity_id,period_id,source_type,source_key,memo,created_by)
+ VALUES('fg-ci-invoice-gl','defendit360','fg-terms-a','fg-ci-fin-period','ar','fg-ci-invoice','Synthetic original invoice GL','fg-terms-maker@example.invalid');
+INSERT INTO rticore_gl_lines(id,tenant_id,journal_id,account_id,debit_cents,credit_cents,description) VALUES
+ ('fg-ci-invoice-dr','defendit360','fg-ci-invoice-gl','fg-ci-ar',200000,0,'Original invoice'),
+ ('fg-ci-invoice-cr','defendit360','fg-ci-invoice-gl','fg-ci-liability',0,200000,'Original invoice');
+UPDATE rticore_gl_journals SET status='approved',version=version+1,reviewed_by='fg-terms-checker@example.invalid',review_notes='Independent invoice approval',reviewed_at=CURRENT_TIMESTAMP::text WHERE id='fg-ci-invoice-gl';
+UPDATE rticore_gl_journals SET status='posted',version=version+1,posted_by='fg-terms-poster@example.invalid',posted_at=CURRENT_TIMESTAMP::text WHERE id='fg-ci-invoice-gl';
+DO $journey$
+DECLARE purchase_event text; consume_event text; jid text; r jsonb; n bigint;
+ maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid'; poster constant text:='fg-terms-poster@example.invalid';
+BEGIN
+ SELECT id INTO STRICT purchase_event FROM rticore_finance_integration_events WHERE legal_entity_id='fg-terms-a' AND event_type='flexguard.credit_purchased';
+ SELECT id INTO STRICT consume_event FROM rticore_finance_integration_events WHERE legal_entity_id='fg-terms-a' AND event_type='flexguard.credit_consumed';
+ -- Consumption cannot recognize revenue before the original purchase is reconciled.
+ BEGIN
+  PERFORM rticore_fg_dock('defendit360','fg-terms-a',maker,consume_event,'draft','fg-ci-consume-rule','fg-ci-fin-period',NULL);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PURCHASE_RECONCILIATION_REQUIRED' THEN RAISE; END IF; END;
+ r:=rticore_fg_dock('defendit360','fg-terms-a',maker,purchase_event,'link_purchase','fg-ci-purchase-rule',NULL,'fg-ci-invoice-gl');
+ IF r->>'journal_id'<>'fg-ci-invoice-gl' OR r->>'status'<>'validated' THEN RAISE EXCEPTION 'PURCHASE_LINK_FAILED'; END IF;
+ r:=rticore_fg_dock('defendit360','fg-terms-a',checker,purchase_event,'ack',NULL,NULL,NULL);
+ IF r->>'status'<>'processed' THEN RAISE EXCEPTION 'PURCHASE_ACK_FAILED'; END IF;
+ IF (SELECT count(*) FROM rticore_gl_journals WHERE legal_entity_id='fg-terms-a' AND source_type='ar' AND source_key='fg-ci-invoice')<>1 THEN RAISE EXCEPTION 'DUPLICATE_AR_JOURNAL'; END IF;
+ r:=rticore_fg_dock('defendit360','fg-terms-a',maker,consume_event,'draft','fg-ci-consume-rule','fg-ci-fin-period',NULL);jid:=r->>'journal_id';
+ IF jid IS NULL OR r->>'status'<>'validated' OR NOT EXISTS(SELECT 1 FROM rticore_gl_journals WHERE id=jid AND status='draft') THEN RAISE EXCEPTION 'CONSUMPTION_DRAFT_FAILED'; END IF;
+ r:=rticore_fg_dock('defendit360','fg-terms-a',maker,consume_event,'draft','fg-ci-consume-rule','fg-ci-fin-period',NULL);
+ IF r->>'journal_id'<>jid OR r->>'replayed'<>'true' THEN RAISE EXCEPTION 'DOCK_REPLAY_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_fg_dock('defendit360','fg-terms-a',checker,consume_event,'ack',NULL,NULL,NULL);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_POSTED_JOURNAL_REQUIRED' THEN RAISE; END IF; END;
+ r:=rticore_fg_journal_command('defendit360','fg-terms-a',checker,jid,'approve','Independent synthetic GL approval');
+ IF r->>'status'<>'approved' THEN RAISE EXCEPTION 'CONSUMPTION_APPROVAL_FAILED'; END IF;
+ BEGIN
+  PERFORM rticore_fg_journal_command('defendit360','fg-terms-a',maker,jid,'post','Unauthorized maker posting');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_INDEPENDENT_POSTER_REQUIRED' THEN RAISE; END IF; END;
+ r:=rticore_fg_journal_command('defendit360','fg-terms-a',poster,jid,'post','Independent synthetic GL posting');
+ IF r->>'status'<>'posted' THEN RAISE EXCEPTION 'CONSUMPTION_POST_FAILED'; END IF;
+ r:=rticore_fg_dock('defendit360','fg-terms-a',checker,consume_event,'ack',NULL,NULL,NULL);
+ IF r->>'status'<>'processed' OR r->>'journal_id'<>jid THEN RAISE EXCEPTION 'CONSUMPTION_ACK_FAILED'; END IF;
+ r:=rticore_fg_dock('defendit360','fg-terms-a',checker,consume_event,'ack',NULL,NULL,NULL);
+ IF r->>'replayed'<>'true' OR r->>'journal_id'<>jid THEN RAISE EXCEPTION 'ACK_REPLAY_FAILED'; END IF;
+ SELECT sum(l.credit_cents-l.debit_cents) INTO n FROM rticore_gl_lines l JOIN rticore_gl_journals j ON j.tenant_id=l.tenant_id AND j.id=l.journal_id WHERE j.legal_entity_id='fg-terms-a' AND j.status='posted' AND l.account_id='fg-ci-liability';
+ IF n IS DISTINCT FROM 190000::bigint THEN RAISE EXCEPTION 'LIABILITY_RECONCILIATION_FAILED'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM rticore_finance_journal_workflows w JOIN rticore_gl_journals j ON j.id=w.journal_id AND j.tenant_id=w.tenant_id WHERE j.id=jid AND w.lifecycle_stage='posted' AND j.created_by=maker AND j.reviewed_by=checker AND j.posted_by=poster AND w.approved_by=checker AND w.posted_by=poster) THEN RAISE EXCEPTION 'INDEPENDENT_LIFECYCLE_MISSING'; END IF;
+ IF (SELECT count(*) FROM rticore_fg_finance_links WHERE legal_entity_id='fg-terms-a')<>2 THEN RAISE EXCEPTION 'DUPLICATE_FINANCE_LINK'; END IF;
+END $journey$;
 DO $cat$
 DECLARE r jsonb; sid text; rate text; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid'; payload jsonb:='{"service_code":"FG-CI-SVC","service_name":"CI service","service_category":"web_app_pentest","description":"Synthetic service description","scope_summary":"Synthetic service scope","complexity_level":"standard","min_mandays_tenths":10,"standard_mandays_tenths":20,"max_mandays_tenths":50,"effective_date":"2026-11-27","service_version":1}';
 BEGIN
