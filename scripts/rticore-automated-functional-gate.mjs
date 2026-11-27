@@ -23,7 +23,7 @@ const groups=[
  {name:'11 Administration',checks:['test:admin','test:modules-13-15','test:ai']},
  {name:'Cross-module Transaction & SoD',checks:['test:p1-p2','test:rticore-negative','test:scoping-upload']},
  {name:'Postal Reference & Import',checks:['test:postal']},
- {name:'Server Runtime & Layout',checks:['test:runtime-compat','test:layout','test:native-entry-regression']},
+ {name:'Server Runtime & Layout',checks:['test:runtime-compat','test:layout','test:native-entry-regression','test:foundation-inventory']},
  {name:'Release evidence & abuse prevention',checks:['test:release-controls']},
  {name:'Integrated Commercial Operations',checks:['test:consolidation','test:sales-transactions','test:service-operations']},
 ];
