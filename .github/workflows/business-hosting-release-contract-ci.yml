@@ -6,6 +6,10 @@ on:
     branches: ['integration/v6-erp-finance-20261127', main]
     paths:
       - 'scripts/business-iam-cleanup.mjs'
+      - 'scripts/business-iam-operator.mjs'
+      - 'scripts/business-iam-invite.mjs'
+      - 'scripts/business-iam-revoke.mjs'
+      - 'tests/business-iam-postgres.test.cjs'
       - 'deployment/hostinger/business-cron.env.example'
       - 'tests/business-iam-cleanup-contract.test.mjs'
       - 'scripts/hostinger-preflight.mjs'
@@ -21,6 +25,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'

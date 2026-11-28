@@ -5,6 +5,7 @@ import { AI_PROVIDERS, type ProviderId, type AIProviderRow, type AIProviderPubli
   publicProvider, isProviderId } from './ai-provider-registry';
 
 import {providerAllowed} from './ai-runtime-policy';
+import {assertAIDataAllowed} from './ai-data-policy';
 
 type AIEnv = { RTICORE_AI_ENCRYPTION_KEY?: string };
 const utf8=new TextEncoder();
@@ -88,7 +89,7 @@ export async function probeProvider(id:ProviderId,model:string,apiKey:string):Pr
   body={model,messages:[{role:'user',content:'Respond PONG'}],...(id==='openai'?{max_completion_tokens:256}:{max_tokens:12})};
  }
  try {
-  const res=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(15000),cache:'no-store'});
+  const res=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(15000),cache:'no-store',redirect:'error'});
   return {ok:res.ok,message:res.ok?'Koneksi berhasil; model menerima permintaan.':
    'Provider menolak permintaan (HTTP '+res.status+'). Periksa API key, model, kuota dan billing.',latencyMs:Date.now()-started};
  }catch{
@@ -104,6 +105,7 @@ export async function invokeAI(id:ProviderId,model:string,apiKey:string,prompt:s
  const messages:AIConversationTurn[] = typeof prompt === 'string'
   ? [{role:'user',content:prompt}]
   : prompt.messages;
+ assertAIDataAllowed([...(system?[system]:[]),...messages.map(m=>m.content)]);
  let body:unknown;
  if(id==='gemini'){
   url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
@@ -125,12 +127,13 @@ export async function invokeAI(id:ProviderId,model:string,apiKey:string,prompt:s
   url=endpoints[id];headers.Authorization='Bearer '+apiKey;
   body={model,messages:[...(system?[{role:'system',content:system}]:[]),...messages],...(id==='openai'?{max_completion_tokens:1500}:{max_tokens:750})};
  }
- const res=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(25000),cache:'no-store'});
+ const res=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(25000),cache:'no-store',redirect:'error'});
  if(!res.ok)throw new Error('Provider '+id+' gagal (HTTP '+res.status+').');
  const result=await res.json();
  const output=id==='gemini'?result?.candidates?.[0]?.content?.parts?.map((x:{text?:string})=>x.text||'').join(''):
    id==='anthropic'?result?.content?.map((x:{text?:string})=>x.text||'').join(''):result?.choices?.[0]?.message?.content;
  if(typeof output!=='string'||!output.trim())throw new Error('Provider '+id+' mengembalikan respons kosong.');
+ assertAIDataAllowed([output]);
  return output.slice(0,16000);
 }
 

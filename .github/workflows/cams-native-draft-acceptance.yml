@@ -28,7 +28,25 @@ jobs:
       PGDATABASE: cams_docking_ci
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install locked dependencies for real native preflight
+        run: npm ci --no-audit --no-fund
       - name: Apply real native PostgreSQL schema
         run: psql -v ON_ERROR_STOP=1 -f rticore_postgresql_schema.sql
       - name: Rehearse historical migration rejection, replay, native IAM and CAMS, then backup and restore
         run: bash scripts/ci-native-migration-rehearsal.sh
+
+      - name: Retain synthetic restore evidence (never the dump)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wave09-native-restore-evidence
+          path: |
+            artifacts/wave09/restore-evidence.json
+            artifacts/wave09/restore-table-digests.tsv
+          retention-days: 14

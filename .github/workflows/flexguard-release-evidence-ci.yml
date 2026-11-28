@@ -14,11 +14,23 @@ permissions:
 jobs:
   read-only-evidence:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rticore_ci
+          POSTGRES_PASSWORD: rticore_ci_only
+          POSTGRES_DB: rticore_recon_ci
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - run: node --check scripts/hostinger-preflight.mjs
+      - run: npm ci --no-audit --no-fund
       - run: node --test tests/finance-historical-reconciliation.test.mjs tests/hostinger-schema-inventory.test.mjs
+        env:
+          RTICORE_RECON_CI_URL: postgresql://rticore_ci:rticore_ci_only@127.0.0.1:5432/rticore_recon_ci

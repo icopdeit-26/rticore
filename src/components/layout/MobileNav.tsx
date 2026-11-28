@@ -1,6 +1,6 @@
 'use client';
 
-import React,{useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {LayoutGrid, Menu, X} from 'lucide-react';
@@ -12,15 +12,23 @@ interface MobileNavProps {role:string;}
 export const MobileNav:React.FC<MobileNavProps> = ({role}) => {
   const pathname=usePathname();
   const [open,setOpen]=useState(false);
+  const trigger=useRef<HTMLButtonElement>(null);
+  const panel=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!open)return;
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'){setOpen(false);trigger.current?.focus();}};
+    window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+  },[open]);
   const groups=navigationForRole(role);
   const shortcuts=groups.filter(x=>x.items.length>0).slice(0,3);
   return (
     <>
       {open && (
-        <div className="no-print fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-40 max-h-[min(70dvh,650px)] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-4 shadow-2xl lg:hidden" role="dialog" aria-modal="false" aria-label="Seluruh menu RTICORE">
+        <div id="rticore-mobile-all-menu" ref={panel} className="no-print fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-40 max-h-[min(70dvh,650px)] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-4 shadow-2xl lg:hidden" role="dialog" aria-modal="false" aria-label="Seluruh menu RTICORE">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-slate-900">Menu RTICORE sesuai role</h2>
-            <button type="button" onClick={()=>setOpen(false)} aria-label="Tutup menu" className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200"><X className="h-5 w-5"/></button>
+            <button type="button" onClick={()=>{setOpen(false);trigger.current?.focus();}} aria-label="Tutup menu" className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200"><X className="h-5 w-5"/></button>
           </div>
           {groups.map(group=>(
             <section key={group.id} className="mb-3 border-b border-slate-100 pb-2">
@@ -48,7 +56,7 @@ export const MobileNav:React.FC<MobileNavProps> = ({role}) => {
             <span className="max-w-full truncate">{group.label.replace(/^\d+ · /,'')}</span>
           </Link>;
         })}
-        <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-label="Buka seluruh menu RTICORE"
+        <button ref={trigger} type="button" onClick={()=>setOpen(v=>!v)} aria-controls="rticore-mobile-all-menu" aria-expanded={open} aria-label="Buka seluruh menu RTICORE"
           className="flex min-h-14 min-w-16 flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-indigo-700 focus-visible:outline-2 focus-visible:outline-indigo-500">
           {open?<X className="h-5 w-5"/>:<Menu className="h-5 w-5"/>}
           Semua menu

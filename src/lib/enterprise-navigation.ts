@@ -92,6 +92,7 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
   {id:'enterprise_erp',label:'12 · ERP Finance, Procurement & Cybersecurity',items:[
     item('Organization & ERP Access','/erp/organization',['admin','approver']),
     item('General Ledger & Journal','/erp/general-ledger',['finance','approver']),
+    item('Operations Center','/erp/operations-center',FINANCE),
     item('Treasury & Payments','/erp/treasury',['admin','finance','approver']),
     item('Human Resources & Workforce','/erp/hr',['admin','approver']),
     item('SIEM / EDR Integrations','/erp/security-integrations',['admin','presales','approver',...DEFENSE]),

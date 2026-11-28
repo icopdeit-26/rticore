@@ -147,6 +147,7 @@ DECLARE purchase_event text; consume_event text; jid text; r jsonb; n bigint;
 BEGIN
  SELECT id INTO STRICT purchase_event FROM rticore_finance_integration_events WHERE legal_entity_id='fg-terms-a' AND event_type='flexguard.credit_purchased';
  SELECT id INTO STRICT consume_event FROM rticore_finance_integration_events WHERE legal_entity_id='fg-terms-a' AND event_type='flexguard.credit_consumed';
+ IF NOT rticore_fg_independent_posting(maker,checker,poster,'2026-11-28') OR rticore_fg_independent_posting(maker,checker,upper(maker),'2026-11-28') OR rticore_fg_independent_posting(maker,checker,' ','2026-11-28') OR rticore_fg_independent_posting(maker,checker,poster,NULL) THEN RAISE EXCEPTION 'INDEPENDENT_POSTING_GUARD_FAILED'; END IF;
  -- Consumption cannot recognize revenue before the original purchase is reconciled.
  BEGIN
   PERFORM rticore_fg_dock('defendit360','fg-terms-a',maker,consume_event,'draft','fg-ci-consume-rule','fg-ci-fin-period',NULL);
@@ -156,6 +157,14 @@ BEGIN
  IF r->>'journal_id'<>'fg-ci-invoice-gl' OR r->>'status'<>'validated' THEN RAISE EXCEPTION 'PURCHASE_LINK_FAILED'; END IF;
  r:=rticore_fg_dock('defendit360','fg-terms-a',checker,purchase_event,'ack',NULL,NULL,NULL);
  IF r->>'status'<>'processed' THEN RAISE EXCEPTION 'PURCHASE_ACK_FAILED'; END IF;
+ BEGIN
+  UPDATE rticore_finance_integration_events SET processed_by=maker WHERE id=purchase_event;
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_OUTBOX_IMMUTABLE' THEN RAISE; END IF; END;
+ BEGIN
+  UPDATE rticore_finance_integration_events SET status='received' WHERE id=purchase_event;
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_OUTBOX_IMMUTABLE' THEN RAISE; END IF; END;
  IF (SELECT count(*) FROM rticore_gl_journals WHERE legal_entity_id='fg-terms-a' AND source_type='ar' AND source_key='fg-ci-invoice')<>1 THEN RAISE EXCEPTION 'DUPLICATE_AR_JOURNAL'; END IF;
  r:=rticore_fg_dock('defendit360','fg-terms-a',maker,consume_event,'draft','fg-ci-consume-rule','fg-ci-fin-period',NULL);jid:=r->>'journal_id';
  IF jid IS NULL OR r->>'status'<>'validated' OR NOT EXISTS(SELECT 1 FROM rticore_gl_journals WHERE id=jid AND status='draft') THEN RAISE EXCEPTION 'CONSUMPTION_DRAFT_FAILED'; END IF;
@@ -275,4 +284,54 @@ BEGIN
   RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_HISTORICAL_SOURCE_REVIEW_REQUIRED' THEN RAISE; END IF; END;
 END $fg$;
+-- Disposable rehearsal only: simulate a pre-0060 historical lot by removing its
+-- synthetic allocation in this transaction; restore guard immediately. Never
+-- run this fixture against an actual business database. The final ROLLBACK
+-- removes all synthetic rows and changes.
+ALTER TABLE rticore_fg_invoice_allocations DISABLE TRIGGER rticore_fg_allocation_immutable;
+DELETE FROM rticore_fg_invoice_allocations WHERE tenant_id='defendit360' AND invoice_id='fg-ci-invoice';
+ALTER TABLE rticore_fg_invoice_allocations ENABLE TRIGGER rticore_fg_allocation_immutable;
+DO $historical$
+DECLARE lid text; wid text; r jsonb; n bigint; ledger_before jsonb; journals_before jsonb; events_before jsonb;
+ maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid';
+ notes constant text:='Synthetic original invoice and payment reviewed';
+BEGIN
+ SELECT id,wallet_id INTO STRICT lid,wid FROM rticore_flexguard_credit_lots WHERE invoice_id='fg-ci-invoice';
+ SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id) INTO ledger_before FROM rticore_flexguard_enterprise_ledger l WHERE l.wallet_id=wid;
+ SELECT jsonb_agg(to_jsonb(j) ORDER BY j.id) INTO journals_before FROM rticore_gl_journals j WHERE j.legal_entity_id='fg-terms-a';
+ SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) INTO events_before FROM rticore_finance_integration_events e WHERE e.legal_entity_id='fg-terms-a';
+ BEGIN
+  PERFORM rticore_fg_dock('defendit360','fg-terms-a',checker,(SELECT e.id FROM rticore_finance_integration_events e WHERE e.legal_entity_id='fg-terms-a' AND e.event_type='flexguard.credit_purchased'),'ack',NULL,NULL,NULL);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_APPROVED_INVOICE_ALLOCATION_REQUIRED' THEN RAISE; END IF; END;
+ IF NOT EXISTS(SELECT 1 FROM rticore_fg_historical_allocation_candidates('defendit360','fg-terms-a',maker) c WHERE c.lot_id=lid AND c.allocation_status='missing' AND c.source_metadata_complete) THEN RAISE EXCEPTION 'HISTORICAL_CANDIDATE_MISSING'; END IF;
+ BEGIN
+  PERFORM rticore_fg_historical_allocation_review('defendit360','fg-terms-a',maker,'submit',lid,repeat('a',64),notes);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_HISTORICAL_SOURCE_REVIEW_REQUIRED' THEN RAISE; END IF; END;
+ -- A valid ordinary pending allocation with the wrong credit count cannot be
+ -- approved as historical remediation. Roll this deliberate fixture back.
+ BEGIN
+  PERFORM rticore_fg_allocate_invoice('defendit360','fg-terms-a',maker,'submit',wid,'fg-ci-invoice',10,'Synthetic conflicting allocation');
+  BEGIN
+   PERFORM rticore_fg_historical_allocation_review('defendit360','fg-terms-a',checker,'approve',lid,repeat('b',64),notes);
+   RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_HISTORICAL_SOURCE_REVIEW_REQUIRED' THEN RAISE; END IF; END;
+  RAISE EXCEPTION 'ROLLBACK_SYNTHETIC_CONFLICT';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'ROLLBACK_SYNTHETIC_CONFLICT' THEN RAISE; END IF; END;
+ r:=rticore_fg_historical_allocation_review('defendit360','fg-terms-a',maker,'submit',lid,repeat('b',64),notes);
+ IF r->>'status' IS DISTINCT FROM 'pending' THEN RAISE EXCEPTION 'HISTORICAL_SUBMIT_FAILED'; END IF;
+ r:=rticore_fg_historical_allocation_review('defendit360','fg-terms-a',maker,'submit',lid,repeat('b',64),notes);
+ IF r->>'replayed' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'HISTORICAL_REPLAY_FAILED'; END IF;
+ SELECT count(*) INTO n FROM rticore_operations_events WHERE entity_id=lid AND action='HISTORICAL_ALLOCATION_SUBMIT';
+ IF n<>1 THEN RAISE EXCEPTION 'HISTORICAL_DUPLICATE_AUDIT'; END IF;
+ r:=rticore_fg_historical_allocation_review('defendit360','fg-terms-a',checker,'approve',lid,repeat('b',64),notes);
+ IF r->>'status' IS DISTINCT FROM 'approved' OR r->>'ledger_changed' IS DISTINCT FROM 'false' OR r->>'journal_posted' IS DISTINCT FROM 'false' THEN RAISE EXCEPTION 'HISTORICAL_APPROVAL_FAILED'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM rticore_fg_invoice_allocations a WHERE a.invoice_id='fg-ci-invoice' AND a.status='approved' AND a.credits=20 AND a.net_cents=200000 AND a.maker='fg-terms-maker@example.invalid' AND a.checker='fg-terms-checker@example.invalid') THEN RAISE EXCEPTION 'HISTORICAL_EVIDENCE_MISSING'; END IF;
+ IF EXISTS(SELECT 1 FROM rticore_fg_historical_allocation_candidates('defendit360','fg-terms-a',maker) c WHERE c.lot_id=lid) THEN RAISE EXCEPTION 'HISTORICAL_CANDIDATE_NOT_CLOSED'; END IF;
+ IF ledger_before IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id) FROM rticore_flexguard_enterprise_ledger l WHERE l.wallet_id=wid)
+ OR journals_before IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(j) ORDER BY j.id) FROM rticore_gl_journals j WHERE j.legal_entity_id='fg-terms-a')
+ OR events_before IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM rticore_finance_integration_events e WHERE e.legal_entity_id='fg-terms-a') THEN RAISE EXCEPTION 'HISTORICAL_UNEXPECTED_FINANCIAL_MUTATION'; END IF;
+END $historical$;
+
 ROLLBACK;

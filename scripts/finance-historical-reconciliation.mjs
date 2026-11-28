@@ -112,10 +112,10 @@ export async function scanFlexGuardSources(client){
 // A linked journal is not evidence of settlement unless posted and correctly scoped.
 export async function scanSettlementEvidence(client){
  const {rows}=await client.query(`SELECT
- (SELECT count(*) FROM public.rticore_finance_integration_events e JOIN public.rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.resulting_journal_id AND j.legal_entity_id=e.legal_entity_id WHERE e.status='processed' AND j.status<>'posted')::text AS processed_unposted_journal,
+ (SELECT count(*) FROM public.rticore_finance_integration_events e JOIN public.rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.resulting_journal_id AND j.legal_entity_id=e.legal_entity_id WHERE e.status='processed' AND j.status IS DISTINCT FROM 'posted')::text AS processed_unposted_journal,
  (SELECT count(*) FROM public.rticore_gl_journals j LEFT JOIN public.rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id AND p.legal_entity_id=j.legal_entity_id WHERE p.id IS NULL)::text AS invalid_period_scope,
- (SELECT count(*) FROM public.rticore_gl_journals WHERE status='posted' AND (posted_by IS NULL OR posted_at IS NULL OR reviewed_by IS NULL OR lower(created_by)=lower(reviewed_by)))::text AS missing_posting_evidence,
- (SELECT count(*) FROM public.rticore_finance_integration_events WHERE status='processed' AND (processed_at IS NULL OR processed_by IS NULL))::text AS missing_processing_evidence`);
+ (SELECT count(*) FROM public.rticore_gl_journals WHERE status='posted' AND (nullif(btrim(created_by),'') IS NULL OR nullif(btrim(reviewed_by),'') IS NULL OR nullif(btrim(posted_by),'') IS NULL OR nullif(btrim(posted_at::text),'') IS NULL OR lower(btrim(created_by))=lower(btrim(reviewed_by)) OR lower(btrim(created_by))=lower(btrim(posted_by)) OR lower(btrim(reviewed_by))=lower(btrim(posted_by))))::text AS missing_posting_evidence,
+ (SELECT count(*) FROM public.rticore_finance_integration_events WHERE status='processed' AND (nullif(btrim(processed_at::text),'') IS NULL OR nullif(btrim(processed_by),'') IS NULL))::text AS missing_processing_evidence`);
  return rows[0];
 }
 
@@ -185,8 +185,8 @@ export async function scanFlexGuardAllocationControls(client){
  if(!ready)return {schema_status:'MIGRATION_0060_REQUIRED'};
  const {rows}=await client.query(`SELECT
  (SELECT count(*) FROM public.rticore_flexguard_credit_lots l LEFT JOIN public.rticore_fg_invoice_allocations a ON a.tenant_id=l.tenant_id AND a.invoice_id=l.invoice_id AND a.legal_entity_id=l.legal_entity_id AND a.wallet_id=l.wallet_id AND a.credits=l.credits_total AND a.net_cents=l.financial_value_cents AND a.status='approved' WHERE a.invoice_id IS NULL)::text AS unverified_lot_allocations,
- (SELECT count(*) FROM public.rticore_fg_finance_links f JOIN public.rticore_finance_integration_events e ON e.tenant_id=f.tenant_id AND e.id=f.event_id JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.id=f.journal_id WHERE e.status='processed' AND j.source_type='flexguard' AND NOT EXISTS(SELECT 1 FROM public.rticore_finance_journal_workflows w WHERE w.tenant_id=j.tenant_id AND w.journal_id=j.id AND w.legal_entity_id=j.legal_entity_id AND w.lifecycle_stage='posted' AND w.approved_by=j.reviewed_by AND w.posted_by=j.posted_by AND lower(j.created_by)<>lower(j.posted_by) AND lower(j.reviewed_by)<>lower(j.posted_by)))::text AS legacy_journal_workflow_review,
- (SELECT count(*) FROM public.rticore_flexguard_enterprise_ledger l JOIN public.rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.id=l.finance_outbox_event_id WHERE e.status='processed' AND NOT EXISTS(SELECT 1 FROM public.rticore_fg_finance_links f WHERE f.tenant_id=e.tenant_id AND f.event_id=e.id AND f.legal_entity_id=l.legal_entity_id AND f.net_amount_cents=l.financial_value_cents AND f.journal_id=e.resulting_journal_id))::text AS acknowledged_amount_mismatch`);
+ (SELECT count(*) FROM public.rticore_fg_finance_links f JOIN public.rticore_finance_integration_events e ON e.tenant_id=f.tenant_id AND e.legal_entity_id=f.legal_entity_id AND e.id=f.event_id JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.legal_entity_id=f.legal_entity_id AND j.id=f.journal_id WHERE e.status='processed' AND j.source_type='flexguard' AND NOT EXISTS(SELECT 1 FROM public.rticore_finance_journal_workflows w WHERE w.tenant_id=j.tenant_id AND w.journal_id=j.id AND w.legal_entity_id=j.legal_entity_id AND w.lifecycle_stage='posted' AND w.approved_by=j.reviewed_by AND w.posted_by=j.posted_by AND nullif(btrim(j.created_by),'') IS NOT NULL AND nullif(btrim(j.reviewed_by),'') IS NOT NULL AND nullif(btrim(j.posted_by),'') IS NOT NULL AND lower(btrim(j.created_by))<>lower(btrim(j.reviewed_by)) AND lower(btrim(j.created_by))<>lower(btrim(j.posted_by)) AND lower(btrim(j.reviewed_by))<>lower(btrim(j.posted_by))))::text AS legacy_journal_workflow_review,
+ (SELECT count(*) FROM public.rticore_flexguard_enterprise_ledger l JOIN public.rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.legal_entity_id=l.legal_entity_id AND e.id=l.finance_outbox_event_id WHERE e.status='processed' AND NOT EXISTS(SELECT 1 FROM public.rticore_fg_finance_links f WHERE f.tenant_id=e.tenant_id AND f.event_id=e.id AND f.legal_entity_id=l.legal_entity_id AND f.net_amount_cents=l.financial_value_cents AND f.journal_id=e.resulting_journal_id))::text AS acknowledged_amount_mismatch`);
  return {schema_status:'AVAILABLE',...rows[0]};
 }
 
@@ -257,14 +257,14 @@ export async function scanFlexGuardLegacyBoundary(client){
 export async function scanFlexGuardExceptionRegister(client){
  const {rows}=await client.query(`SELECT l.transaction_type,
  CASE WHEN e.id IS NULL THEN 'MISSING_OUTBOX_SOURCE_REVIEW'
-      WHEN e.status<>'processed' THEN 'PENDING_ACKNOWLEDGEMENT'
+      WHEN e.status IS DISTINCT FROM 'processed' THEN 'PENDING_ACKNOWLEDGEMENT'
       ELSE 'POSTED_LINK_REVIEW' END AS reason_code,
  count(*)::text AS entries,coalesce(sum(l.financial_value_cents),0)::text AS evidence_value_cents
  FROM public.rticore_flexguard_enterprise_ledger l
  LEFT JOIN public.rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.legal_entity_id=l.legal_entity_id AND e.id=l.finance_outbox_event_id
  LEFT JOIN public.rticore_fg_finance_links f ON f.tenant_id=e.tenant_id AND f.legal_entity_id=e.legal_entity_id AND f.event_id=e.id AND f.journal_id=e.resulting_journal_id
  LEFT JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.legal_entity_id=f.legal_entity_id AND j.id=f.journal_id
- WHERE l.transaction_type IN ('purchase','top_up','consumption','expiry','adjustment') AND (e.id IS NULL OR e.status<>'processed' OR j.status IS DISTINCT FROM 'posted')
+ WHERE l.transaction_type IN ('purchase','top_up','consumption','expiry','adjustment') AND (e.id IS NULL OR e.status IS DISTINCT FROM 'processed' OR j.status IS DISTINCT FROM 'posted')
  GROUP BY 1,2 ORDER BY 1,2`);
  return rows;
 }
@@ -282,7 +282,7 @@ export async function scanFlexGuardHistoricalEvidence(client){
  WHERE l.transaction_type IN ('purchase','top_up','consumption','expiry','adjustment') AND (e.id IS NULL OR e.status<>'processed')
  ), journal_gaps AS (
  SELECT j.* FROM public.rticore_fg_finance_links f JOIN public.rticore_finance_integration_events e ON e.tenant_id=f.tenant_id AND e.legal_entity_id=f.legal_entity_id AND e.id=f.event_id JOIN public.rticore_gl_journals j ON j.tenant_id=f.tenant_id AND j.legal_entity_id=f.legal_entity_id AND j.id=f.journal_id
- WHERE e.status='processed' AND j.source_type='flexguard' AND NOT EXISTS(SELECT 1 FROM public.rticore_finance_journal_workflows w WHERE w.tenant_id=j.tenant_id AND w.legal_entity_id=j.legal_entity_id AND w.journal_id=j.id AND w.lifecycle_stage='posted' AND w.approved_by=j.reviewed_by AND w.posted_by=j.posted_by AND lower(j.created_by)<>lower(j.posted_by) AND lower(j.reviewed_by)<>lower(j.posted_by))
+ WHERE e.status='processed' AND j.source_type='flexguard' AND NOT EXISTS(SELECT 1 FROM public.rticore_finance_journal_workflows w WHERE w.tenant_id=j.tenant_id AND w.legal_entity_id=j.legal_entity_id AND w.journal_id=j.id AND w.lifecycle_stage='posted' AND w.approved_by=j.reviewed_by AND w.posted_by=j.posted_by AND nullif(btrim(j.created_by),'') IS NOT NULL AND nullif(btrim(j.reviewed_by),'') IS NOT NULL AND nullif(btrim(j.posted_by),'') IS NOT NULL AND lower(btrim(j.created_by))<>lower(btrim(j.reviewed_by)) AND lower(btrim(j.created_by))<>lower(btrim(j.posted_by)) AND lower(btrim(j.reviewed_by))<>lower(btrim(j.posted_by)))
  )
  SELECT
  (SELECT count(*) FROM exceptions)::text AS allocation_exceptions,

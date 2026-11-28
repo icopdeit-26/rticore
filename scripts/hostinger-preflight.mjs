@@ -1,5 +1,6 @@
 import { validateHostingerConfig } from '../src/lib/hostinger-config.ts';
 import pg from 'pg';
+import {checkNativeCompletion,assertNativeMfaEnrollment} from './hostinger-native-completion.mjs';
 import {assertRuntimeLeastPrivilege} from './hostinger-runtime-privileges.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -77,12 +78,12 @@ try {
   if(!product.rows.length||!Object.values(product.rows[0]).every(Boolean))throw new Error('FlexGuard 0063–0066 contract and PSA migration incomplete');
   const catalog=await client.query("SELECT to_regprocedure('public.rticore_catalog_command(text,text,text,text,text,jsonb)') IS NOT NULL AS master,to_regprocedure('public.rticore_catalog_workflow_command(text,text,text,text,text,jsonb)') IS NOT NULL AS workflow,to_regclass('public.rticore_catalog_pricing_snapshots') IS NOT NULL AS snapshots");
   if(!catalog.rows.length||!Object.values(catalog.rows[0]).every(Boolean))throw Error('Service Catalog migrations 0067–0068 incomplete');
+  await checkNativeCompletion(client);
   await assertRuntimeLeastPrivilege(client);
   const active = await client.query("SELECT 1 FROM rticore_members WHERE active=1 LIMIT 1");
   if (!active.rowCount) throw new Error('No active membership provisioned');
   if(process.env.RTICORE_AUTH_MODE==='business'){
-    const enrolled=await client.query("SELECT count(*)::int n FROM rticore_iam_credentials c JOIN rticore_members m ON m.email=c.email WHERE c.enrolled_at IS NOT NULL AND m.active=1 AND m.role='admin'");
-    if(enrolled.rows[0]?.n<2)throw Error('Two independently enrolled administrators required before cutover');
+    await assertNativeMfaEnrollment(client);
   }
   await client.query('ROLLBACK');
   console.log('Hostinger core preflight passed; Finance release certification remains separate.');

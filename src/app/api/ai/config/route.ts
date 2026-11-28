@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import {readBoundedJSON,RequestBodyError} from '@/lib/bounded-json';
 import { authorizeBoQ, privateHeaders } from '@/lib/boq-auth';
+import { aiOriginAllowed } from '@/lib/ai-data-policy';
+import {providerAllowed} from '@/lib/ai-runtime-policy';
 import { AI_PROVIDERS, isProviderId, safeModel } from '@/lib/ai-provider-registry';
 import { encryptionKey, encryptProviderKey, decryptProviderKey, readProvider, listProviders, auditConfig,
   probeProvider } from '@/lib/ai-credential-vault';
@@ -8,24 +10,24 @@ import { encryptionKey, encryptProviderKey, decryptProviderKey, readProvider, li
 const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:privateHeaders});
 function isSameOrigin(req:Request):boolean{
  const origin=req.headers.get('origin');
- return (!origin||origin===new URL(req.url).origin) && req.headers.get('x-rticore-ai-admin')==='1';
+ return aiOriginAllowed(origin,new URL(req.url).origin,req.headers.get('sec-fetch-site'),process.env.RTICORE_RUNTIME==='hostinger') && req.headers.get('x-rticore-ai-admin')==='1';
 }
 export async function GET(req:Request){
  const auth=await authorizeBoQ(req);
  if(!auth.ok)return auth.response;
- if(auth.identity.role!=='admin')return json({success:false,message:'Hanya Admin dapat mengelola AI API Keys.'},403);
+ if(auth.identity.role!=='admin'||auth.identity.rolePreview)return json({success:false,message:'Hanya Admin dapat mengelola AI API Keys.'},403);
  try {
   const configs=await listProviders(auth.identity.db);
   // Report readiness only to an authenticated RTICORE Admin; never return secret material.
   const encryptionReady=await encryptionKey().then(()=>true,()=>false);
-  return json({success:true,configs,encryptionReady});
+  return json({success:true,configs,encryptionReady,openAIOnly:process.env.RTICORE_RUNTIME==='hostinger'});
  }
  catch{return json({success:false,message:'Skema AI PostgreSQL belum tersedia. Jalankan migrasi AI Connections.'},503);}
 }
 export async function POST(req:Request){
  const auth=await authorizeBoQ(req);
  if(!auth.ok)return auth.response;
- if(auth.identity.role!=='admin')return json({success:false,message:'Hanya Admin dapat mengubah koneksi AI.'},403);
+ if(auth.identity.role!=='admin'||auth.identity.rolePreview)return json({success:false,message:'Hanya Admin dapat mengubah koneksi AI.'},403);
  if(!isSameOrigin(req))return json({success:false,message:'Origin/permintaan administrator tidak valid.'},403);
  const size=Number(req.headers.get('content-length')||0);
  if(size>12000)return json({success:false,message:'Data konfigurasi terlalu besar.'},413);
@@ -34,6 +36,7 @@ export async function POST(req:Request){
  if(!body||typeof body!=='object'||Array.isArray(body))return json({success:false,message:'Permintaan tidak valid.'},400);
  const db=auth.identity.db,email=auth.identity.email,action=body.action;
  if(action==='reorder'){
+  if(process.env.RTICORE_RUNTIME==='hostinger')return json({success:false,message:'Prioritas tidak dapat diubah pada runtime OpenAI-only.'},403);
   const ids=body.orderedIds;
   if(!Array.isArray(ids)||ids.length!==AI_PROVIDERS.length||new Set(ids).size!==ids.length||
     !ids.every(isProviderId))return json({success:false,message:'Urutan provider harus lengkap dan unik.'},400);
@@ -50,6 +53,7 @@ export async function POST(req:Request){
  }
  if(!isProviderId(body.id))return json({success:false,message:'Provider tidak dikenal.'},400);
  const id=body.id;
+ if(action!=='deleteKey'&&!providerAllowed(id,process.env.RTICORE_RUNTIME))return json({success:false,message:'Runtime hanya mengizinkan OpenAI.'},403);
  try{
   const existing=await readProvider(db,id);
   if(action==='test'){

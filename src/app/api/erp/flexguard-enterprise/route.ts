@@ -52,7 +52,7 @@ export async function POST(req:Request){
   }
   if(v.action==='submit'){
    erpAssert(process.env.RTICORE_FLEXGUARD_PRODUCT_ENABLED!=='1'||v.transaction_type!=='consumption','Gunakan PSA consumption bridge',409);
-   erpAssert(erpId(v.wallet_id)&&typeof v.transaction_type==='string'&&Number.isSafeInteger(v.credit_amount)&&erpText(v.idempotency_key,16,128)&&erpText(v.reason,12,1000),'Parameter transaksi tidak valid');
+   erpAssert(erpId(v.wallet_id)&&typeof v.transaction_type==='string'&&['purchase','top_up','reservation','reservation_release','consumption','expiry','adjustment'].includes(v.transaction_type)&&Number.isSafeInteger(v.credit_amount)&&Number(v.credit_amount)!==0&&Math.abs(Number(v.credit_amount))<900000000000000&&(v.transaction_type==='adjustment'||Number(v.credit_amount)>0)&&erpText(v.idempotency_key,16,128)&&erpText(v.reason,12,1000),'Parameter transaksi tidak valid');
    const refs=[v.invoice_id,v.lot_id,v.source_tx_id,v.milestone_id].map(nullableId);erpAssert(refs.every(x=>x!==undefined),'Referensi tidak valid');
    const row=await db.prepare("SELECT rticore_fg_submit(?,?,?,?,?,CAST(? AS bigint),?,?,?,?,?,?) AS result").bind(TENANT,v.legal_entity_id,email,v.wallet_id,v.transaction_type,Number(v.credit_amount),refs[0]??null,refs[1]??null,refs[2]??null,refs[3]??null,v.idempotency_key,v.reason).first<{result:unknown}>();
    erpAssert(row,'Transaksi tidak tersedia',503);return erpReply({success:true,result:row.result},201);
@@ -64,7 +64,7 @@ export async function POST(req:Request){
   }
   if(v.action==='allocate_invoice'){
    erpAssert(erpId(v.wallet_id)&&erpId(v.invoice_id)&&['submit','approve','reject'].includes(String(v.allocation_action))&&erpText(v.notes,12,500),'Data alokasi invoice tidak valid');
-   const submit=v.allocation_action==='submit';erpAssert(!submit||Number.isSafeInteger(v.credit_amount),'Jumlah kredit wajib');
+   const submit=v.allocation_action==='submit';erpAssert(!submit||(Number.isSafeInteger(v.credit_amount)&&Number(v.credit_amount)>0&&Number(v.credit_amount)<900000000000000),'Jumlah kredit wajib');
    const row=await db.prepare("SELECT rticore_fg_allocate_invoice(?,?,?,?,?,?,CAST(? AS bigint),?) AS result").bind(TENANT,v.legal_entity_id,email,String(v.allocation_action),v.wallet_id,v.invoice_id,submit?Number(v.credit_amount):null,v.notes).first<{result:unknown}>();
    erpAssert(row,'Alokasi tidak tersedia',503);return erpReply({success:true,result:row.result});
   }

@@ -1,0 +1,847 @@
+{
+  "source": "57b0c3230623b8f122359df13eabe305d60a4e55",
+  "baseline": "c22cd4176824570669a6b49390c1105fedf5632d",
+  "scope": "PR1 compare file inventory; not functional certification",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "source": "6992534871d833d8bb4b51fc6df70b5698d9d1cc",
+      "target": "ab4f9f0deab5fcfb31ee5c448cd9206a5c06a40b",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/campaign-browser-uat.yml",
+      "source": "b9baabdac9a7efcc27e4cdd42a7cab60a6bf2554",
+      "target": "c65c4072558fc05648a8f545d47068f86b72884e",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/hostinger-candidate-ci.yml",
+      "source": "33b8adaa66e010640996ecbaade1e423dac2e5e2",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": ".github/workflows/hostinger-node22-build.yml",
+      "source": "96668dd7c3e362b83c66364c9a7ee5cae4b2eba1",
+      "target": "b1021283427a13546d419b66260a036495c9bb56",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-ai-chat-browser-uat.yml",
+      "source": "7b549e98b5be32d07b130eb4f79e57dbd27a39f4",
+      "target": "5b39d91bf818cf17dff85a0d96a56a784292dca1",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-branding-ci.yml",
+      "source": "1dec185305b22a9b779b24758d9f9aed294af280",
+      "target": "f01615c06e8c59debd9ce86f9b30c88aa53c90c4",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-erp-uat-catalog-ci.yml",
+      "source": "106db3afa3c6fa4d6b07ddd1f73c22bc5f4ec6b9",
+      "target": "2230c677cff38dc336fad72a4e5b79d2e060c39b",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "deployment/hostinger/IDENTITY-SETUP.md",
+      "source": "02b5bbba82c85ef5d2b14c82fdbf0b6b662faebf",
+      "target": "2089784a9adb69fe38c9ec069421f332879ee126",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "deployment/hostinger/keycloak-realm.template.json",
+      "source": "b3b5b9fef05edfdd9315520eef982c609defa03f",
+      "target": "f171dcee0410caeaadade763b659b19aa7dbd2ee",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "deployment/hostinger/nginx-rticore.conf.example",
+      "source": "810bbf708d09998d4d84d44900613c026ad7f98c",
+      "target": "bcea4d0b202364565b57700878960139dcb02c40",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "deployment/hostinger/oauth2-proxy.cfg.example",
+      "source": "dbfdee865f1d5984c6d0fd3b6f2fa2cab5760fd0",
+      "target": "6708e4f2c832f43af707c3a85b5f22f190ae13b2",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "deployment/hostinger/rticore-worker.service",
+      "source": "3c29beaa9dbb9e0c1da0275d083290876cb14b1e",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "deployment/hostinger/rticore.service",
+      "source": "8228ac2a8c35618ea5a25c4c7f421be5399d37f2",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "docs/HOSTINGER_DEPLOYMENT_CANDIDATE.md",
+      "source": "ce2120c6890ed17d397fce5e101d6bf0813efb82",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/api/API_DOCUMENTATION_V4.md",
+      "source": "c9cd3bb92610a00d34e995e0c614f4e1091a12f8",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/architecture/ENTERPRISE_ARCHITECTURE_V4.md",
+      "source": "2aafadaf27a2fa3c50a5340559103646d005dd66",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/database/DATABASE_ERD_V4.md",
+      "source": "d17a959e25fb8bd131be4a55df5282c946ea3bc4",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/deployment/HOSTINGER_DEPLOYMENT_RUNBOOK.md",
+      "source": "395180f60796968e09addaff1c8608022f5c83a1",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/deployment/HOSTINGER_STAGING_ACCESS_HANDOFF.md",
+      "source": "5177e85ea26de02bd7927d5d3206d6eeecbcb26f",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/erp/BUSINESS_PROCESS_DESIGN.md",
+      "source": "410186f5d2547c2d72d58303ef71c15cbf269f3e",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/erp/FUNCTIONAL_REQUIREMENT_SPECIFICATION.md",
+      "source": "e2b4d152edb4c74017420db346cb8ff986f319fc",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/finance/ACCOUNTING_EVENT_MAPPING.md",
+      "source": "13364c24b9cb1d6586d033aa6463124800307f87",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/flexguard/FLEXGUARD_PRODUCT_AND_WORKFLOW_SPEC.md",
+      "source": "1b02e6ff0642d0b1aac804cd532425630aa68d4c",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/operations/ADMINISTRATOR_GUIDE.md",
+      "source": "12511b2731a6be50fd296e432a95c31e05c60460",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/operations/USER_GUIDE.md",
+      "source": "cc413151584a5204b433a37f4dd4089d54814b71",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/pricing/PRICING_ENGINE_SPECIFICATION.md",
+      "source": "93c28b6ce181da10d0ab079dbb91f3056c8658e1",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/recovery/BACKUP_AND_RESTORE_RUNBOOK.md",
+      "source": "76448ad39071211617a52a1e8e1b681c5908cafc",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/BATCH_01_04_RECONCILIATION_20261126.md",
+      "source": "b0158ac32373462950a5730c01520dc6a11341df",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/EXISTING_SYSTEM_AUDIT_REPORT.md",
+      "source": "d0d0e66cdb9c364edd3371acdca12fdf274f703a",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/FINANCE_HISTORICAL_RECONCILIATION.md",
+      "source": "57666971ccf832f1add0d05b9a5f706a74ee0bba",
+      "target": "57666971ccf832f1add0d05b9a5f706a74ee0bba",
+      "disposition": "identical"
+    },
+    {
+      "path": "docs/release/FOUNDATION_CERTIFICATION_V5.md",
+      "source": "419c6f32bcedf6159d5d7668d7a901119b2c52d7",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/GAP_REGISTER_V4.md",
+      "source": "ba57c1447d0a28f7ad52c4355b8ef1d26b10d126",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/KNOWN_ISSUES_REGISTER.md",
+      "source": "9147bb5bf2b6851a5331b39388242253e868aded",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/POST_DEPLOYMENT_R01_R08_REGISTER.md",
+      "source": "c4423a8adf4eca56a4f10cd86cf6c2e3e5ff7799",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/RELEASE_GATE_MATRIX.md",
+      "source": "93f7932bf4477aee7f1a7d414928727e5a689389",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/REMEDIATION_TRACKER.md",
+      "source": "eae903d9579f5f1ed5a6caa587c3e9c08661970a",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT.md",
+      "source": "b126645f36b8d66617881ac09f425e625d5ee545",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_02.md",
+      "source": "8be82177d2af04c108b1ed1135c9490d091c8f2f",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_03.md",
+      "source": "1a4cb31af8599e318b254941c483991a9100ae2e",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_04.md",
+      "source": "c38ab99d7700e97ccf7c2c88c34eb6038007f8af",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_05.md",
+      "source": "9e94e3baf5d290eacb66f7243bc0393f8a49e523",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_06.md",
+      "source": "a181261eaf901eb539d06b6a3cf48658c6f08501",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_07.md",
+      "source": "a55419f1105da3773074907ee35ed6ceaff9d5a7",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_08.md",
+      "source": "9d115ddc3c75dfcbd84e71b17e7902afd19abd7d",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_09.md",
+      "source": "dc1b140ae2d9e7358bc8728e3b611b79a1c4f5c8",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_10.md",
+      "source": "d9e7ccda3791dda80a188591b557521b2d6f945b",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_11.md",
+      "source": "619a324f075beaa46558bd4cb847efa148b88514",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_12.md",
+      "source": "271359c7531efe88b305bc9ccd918dfaf9602284",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/release/V51_B01_INCREMENT_13.md",
+      "source": "98ab04a4d51c5dfe707c596867f0d7b83c309fbf",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/security/RBAC_MATRIX.md",
+      "source": "37005d23ed065c1ad7b0c4fce6e4f27c681f35d5",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/security/SECURITY_ASSESSMENT_V4.md",
+      "source": "222c188b682d4b5ac73c5791fd0706cf6e590478",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/security/SEGREGATION_OF_DUTIES_MATRIX.md",
+      "source": "ef66e1314db080468f097400aeb432f6af681a01",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/service-catalog/MANDAYS_MODELING_METHODOLOGY.md",
+      "source": "3f6488bf40e3b415578b3f235e4d9e5541534bbe",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/service-catalog/SERVICE_CATALOG_DATA_DICTIONARY.md",
+      "source": "51089cb9d7a061f6ddd9aa87f594fed3a97cab19",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/testing/TESTING_STRATEGY_AND_RESULTS.md",
+      "source": "8aff8f26598beed42d075e892061bae5ceeea3b1",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "docs/uat/UAT_TRACEABILITY_MATRIX_1200.md",
+      "source": "0eb19a7afee8ded92736381c274a9677db9b9701",
+      "target": null,
+      "disposition": "historical-reference"
+    },
+    {
+      "path": "migrations/0053_enterprise_service_catalog_pricing.sql",
+      "source": "6a55a4a0ac835caa279ab1ea085bcf9c9aa582c5",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "migrations/0054_flexguard_enterprise_suite.sql",
+      "source": "f841b9a62d894d18eae4e52a0385c120beff5b62",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "migrations/0055_enterprise_cyber_grc_cti_bi_ops.sql",
+      "source": "32ecb668580c555afc93265b1f8bebf15cd31fe0",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "migrations/0056_vapt_dfir_soc_sla_enterprise.sql",
+      "source": "aa237b5159b108709a05c2a65a1292187a230d1f",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "next.config.mjs",
+      "source": "a9b174816fed57864599d16736a24db907398389",
+      "target": "5f5603284d0d12723e30ba02f28aa240f03f0da0",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "package.json",
+      "source": "0e4c4c1610bc3b71adff4e684de39aafc984aa0e",
+      "target": "489e0fb7211f86c7fc79469a9d674fd945e34d5e",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "rticore_postgresql_schema.sql",
+      "source": "ffe97c56f6b0b61dd56b5766132790899097b878",
+      "target": "83e821ea8dfe5cb18917bda33d0d78884a4fcaec",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "rticore_postgresql_triggers.sql",
+      "source": "98abfe411159f9632a7e43e1e25c9586f1d7847e",
+      "target": "73c1053fe30def7c4c95b5d3e4a20da2a0208b61",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "scripts/finance-historical-reconciliation.mjs",
+      "source": "e07502bddce9d6513a8666a9ffb7c1ed9aa31272",
+      "target": "1f536c66cc575f08f1c86f20f8dca9222151f742",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "scripts/foundation-inventory.mjs",
+      "source": "1042229a3d295edd1e05dd8d5d1ddb47c045d67d",
+      "target": "a981453786792022bacec627e3e1a7e438770de2",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "scripts/hostinger-backup-restore-drill.mjs",
+      "source": "b5e08470946e6ee678c3656b7a3d54693f005b3d",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "scripts/hostinger-job-engine.mjs",
+      "source": "da94b832e265de71a75a1a83954dece725a179ba",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "scripts/hostinger-preflight.mjs",
+      "source": "5f7bc1090d5ab7e0d8045fe0534c5ac6ff2ca3a6",
+      "target": "9a2a8b3424e774c2156ba79a1e68dba3d8b4ec4e",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "scripts/hostinger-sales-alerts.mjs",
+      "source": "e0f8315510990429bbcb3bedb2648f1d4438f3d6",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "scripts/hostinger-worker-telemetry.mjs",
+      "source": "53d66129f2b746ec6827ba12b6c5582b1695b3b7",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "scripts/hostinger-worker.mjs",
+      "source": "ca84fa03ce113e0c5c81a711bdb61b43834f03d1",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "scripts/postgres-worker.mjs",
+      "source": "02a287b1fae6f7d43a399d2f928eb0cc21ab5946",
+      "target": "88163d5ac64ee9cf0a659cbf4e5982df966dc77b",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "scripts/rticore-local-setup.mjs",
+      "source": "f2d6c89b3d25da0100942e21ada1eea6f85937d8",
+      "target": "411a411a6d2c504c8bb162cb59eb8bd0de1840a4",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "scripts/start-hostinger.mjs",
+      "source": "5b3458f313e3a1ef218abe2a98b47bac20612cc8",
+      "target": "89fc4b96123feab7a9b4ed4363f6d05b29520da3",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/admin/feature-flags/route.ts",
+      "source": "7e17a0bf6bfb022c1b2879a415aac6f61e6e3140",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/cyber-delivery/route.ts",
+      "source": "b8998d82c89e791f5d189727b8d947b2b6272dcb",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/cyber-grc-cti/route.ts",
+      "source": "b74dc162ac8ac22b9935377f4a8b7fc78f4aacd6",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/enterprise-approvals/route.ts",
+      "source": "d31329262e14b1925ab24cfb0e0aaacfa23f737f",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/executive-command/route.ts",
+      "source": "55bba3801b75e9bacb3cbc56ca88abe735775a17",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/finance-docking-bridge/route.ts",
+      "source": "9bab6749d56e3ecf85b8285125e4c4cc9a594cd3",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/flexguard-enterprise/route.ts",
+      "source": "370b351921efd7ce594060be55d24d0c7f2ab0e0",
+      "target": "4de71a8701b84068e7d2de8ce9d59554907df100",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/erp/operations-jobs/route.ts",
+      "source": "5894f391ae87845bcd583169f6346920482bad67",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/pricing-engine/route.ts",
+      "source": "ef6870d0abda75cfafabe80ef98bcdb85c1b71df",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/erp/procurement/route.ts",
+      "source": "e2e7c9067ec00d0239253da45fd31c712f0284c2",
+      "target": "4312e2a86ac7ad8ec800431897df5c4799ab6de2",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/erp/service-catalog/route.ts",
+      "source": "19b60ec6e026449a5a379dfdf5751251f77ef4c6",
+      "target": "98fb3e9fc0810aef1b36f67becc232ed1c95744f",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/finance/route.ts",
+      "source": "dc928a0de62119e965eac870372b3abd0bddfa51",
+      "target": "419b705e8b7f7d725a30d6c85f3b6f796fa6d5c7",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/health/live/route.ts",
+      "source": "2dacf0e2e594131d7e67e87cc0ca1a2978c221e5",
+      "target": "a34153eeb9737b8ac39c29588ba2c4642604a834",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/health/ready/route.ts",
+      "source": "d69ac1f5fdd51af639237fa5148b793c35478de1",
+      "target": "6f30cfef6b48e50241def84ae2ef5250efc0d08c",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/local-auth/route.ts",
+      "source": "9cd1954d93b86139687cc2a1d36e83bdda0e4b52",
+      "target": "aac9ca5d6bd12b1dc87d5a29045f9df0c826d29c",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/portal/flexguard/route.ts",
+      "source": "0676a4f28b2190a77a67b1268ff52de0139f444d",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/api/psa/timesheets/route.ts",
+      "source": "cabde80e64a44b27ddde260f304947ec27af0bf0",
+      "target": "2fdf76778c9d901dc811629f6c02340defc31bc4",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/api/sales/service-operations/route.ts",
+      "source": "d5e221686e51d5c6ab0a280b1fa13cc33e7fa594",
+      "target": "c788a7a7c7ecfc297a13a22c2f67c6e90db00785",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/erp/cyber-delivery/page.tsx",
+      "source": "042fcc07cb3fd910fe2b8996b38b258dc2c98b49",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/erp/cyber-grc-cti/page.tsx",
+      "source": "a4e21db56e251950e1680718707e6a38d6409e2f",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/erp/executive-command/page.tsx",
+      "source": "c9e96a6130b86728f6fa0c2b9a1e07241e6c7398",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/erp/flexguard-enterprise/page.tsx",
+      "source": "0cc8bb89ec690d6fc7fc834c690af09569d0d085",
+      "target": "77105a594084fdee0491be6f38a19d426e202aa9",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/erp/operations-center/page.tsx",
+      "source": "70ba2076db8c1fd349777bf886d155a38afc02c6",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/erp/pricing-simulator/page.tsx",
+      "source": "5f5f55f3bfef8ad34393a6f18632859ed67ce6f8",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/app/erp/service-catalog/page.tsx",
+      "source": "3981d135f69002097f4909d48233ecd659c5d6e6",
+      "target": "a2f7951971c5dda6a1d225fbd7be5faa02395d28",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/login/page.tsx",
+      "source": "a83d2058ec4dfca45f64b26d16f261616cf8d85b",
+      "target": "208fa4ffc12dad716a6971a58aa2be8717086f36",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/app/portal/flexguard/page.tsx",
+      "source": "8ebb97cf87b03992276f0884f9fce54064e05e7f",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/components/auth/LogoutButton.tsx",
+      "source": "28502b8143600ec0093ee434763e6c6a308fae94",
+      "target": "10c6906b791a59f7f28206673b9614ddd4314a38",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/components/finance/RTIFinanceWorkstation.tsx",
+      "source": "738a5db4c2f705be3a01f016f1f868a0fd8f1a34",
+      "target": "3c99502ea7bab9fa5a572a35ae3d406c7cc971d2",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/components/layout/EnterpriseCommandPalette.tsx",
+      "source": "0d4df74f040aea364c4c775572aa92de7ed3a969",
+      "target": "7145361bfd8112953cdb02a39f44e6878a2480b1",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/components/layout/Navbar.tsx",
+      "source": "6b5b1bbc7b2b7aac400052a72b1fd33780b58556",
+      "target": "c2a707de8789a55877dba09b6b12fd6b99eca7ad",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/boq-auth.ts",
+      "source": "0d04fcb8a8b7c4efca14b4e703f47852781cadd9",
+      "target": "144fe0c2401eced5490b112609f1245ea1de2754",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/defense-routes.ts",
+      "source": "ab801c388211281aa71af7cd2f65ccaacbb9ab9e",
+      "target": "5f4ed50137e7416334b7303f86e3c7bb4fe95e5d",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/enterprise-pricing-engine.ts",
+      "source": "e0dfedead197d957eec4355272283adabb405693",
+      "target": "18d26566475a4536ea2d7173fa6a065a3ca4061b",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/finance-docking-bridge.ts",
+      "source": "a0b3798c5cc2370571af1a460073cb7dd7a0e272",
+      "target": "eeb99b4762bd3f1c4aae29a4a29716aa8e4bf9c2",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/flexguard-enterprise.ts",
+      "source": "35d8be5dba11b6c69111795b20eebe059ca9ca8d",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "src/lib/governance-team.ts",
+      "source": "c6e7ec9412220b945ecd7ae4ec3bc1bdd97b3046",
+      "target": "b9b7e20ce54d4b09b018ba57bf9c17bde6030be2",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/hostinger-config.ts",
+      "source": "a7ff9b677176e645b4142afaddaeaafb67c5d9ca",
+      "target": "8e6a1bed706150ea114c65ba189fffc069ab0141",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/native-oidc.ts",
+      "source": "101e1c71bc28e7c121c09a6f188eaec13e0bd362",
+      "target": "70d57ac2df26b229a3cb95cbda9d7f3057fba603",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/native-session.ts",
+      "source": "04bef1f4cb5dee328f913a18f4d7851d11e700f2",
+      "target": "e08d85ce01ee291b44aa87439d5497e4486c4b68",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/offense-team.ts",
+      "source": "12325f83fea53412a8bf063aaebbe5c840f4d124",
+      "target": "d141133c32ee2e476f002945f25654e8330e1fc5",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/postgres-db.ts",
+      "source": "dd5d2b102e2c5918aca5b2351bbc62ecb262f5de",
+      "target": "c5478850bba4124c834dca9678257d365de352e9",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/lib/runtime-env.ts",
+      "source": "d29bf389a021087f255f9643ac31f52a04c00b7b",
+      "target": "785b24d4c9cfbf191c16014c37d31577d85e6c95",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "src/middleware.ts",
+      "source": "75d68bd7e6774c5a43f540b8fa1898e0b8f9b7bf",
+      "target": "2fbfab52d3d3db3a50ea4acb1a49ff2589c810be",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/enterprise-command-palette.test.cjs",
+      "source": "cb2f1cc58ce81b6a4d483ded91c8efca3e4b8f21",
+      "target": "7f6a0713e83c122a82cd65faf27c695b3dfcd7f6",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/enterprise-pricing-catalog.test.cjs",
+      "source": "088c5cb8ae4082f78b03db835e7028b4b55e47bc",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "tests/enterprise-v4-batch19-20.test.cjs",
+      "source": "7bd65aefa8d167de28abaf188e8be6e0d7aca5af",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "tests/finance-historical-reconciliation.test.mjs",
+      "source": "5d3a3791caddac0bce203a1daaf20ab914814ea6",
+      "target": "18e34c8a2abe08acaae39f6d4ea0cda200564e95",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/flexguard-enterprise-uat.test.cjs",
+      "source": "596f067e7542fe5a065c494bc610ee27490cd8b5",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "tests/foundation-inventory.test.mjs",
+      "source": "f09beb0366733015962c4628856c17b78b60d7bd",
+      "target": "f9f7dd02c79aae46bc59efe489ef255f75c239eb",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/helpers/sales-flow-harness.cjs",
+      "source": "dfb6cec96ffdb8ddab1c9dc879d4220816afd95b",
+      "target": "99da8106eafbbd9ddf9e476299da9325332a5110",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/hostinger-config.test.mjs",
+      "source": "86e415ee179645d7f2680184c7d86a2a3a9489b2",
+      "target": "86e415ee179645d7f2680184c7d86a2a3a9489b2",
+      "disposition": "identical"
+    },
+    {
+      "path": "tests/hostinger-postgres-server.test.cjs",
+      "source": "0cf617538423489331d8d4d840e5e4bdbb845809",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "tests/hostinger-production-safety.test.cjs",
+      "source": "e1ad34c17d2a95d3e6b63695e954d7f390e0cf6c",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "tests/lead-intelligence.test.cjs",
+      "source": "56cf764cad292614d4da7ea0a0bc0573e4d68d7e",
+      "target": "ba3c341f0a5dddd8ad9bcfebb36372fdcfe1a176",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/middleware-route-gate.test.cjs",
+      "source": "0f65e233f90a6ebfbd5cdd67d1d69e64f78b01a1",
+      "target": "c20f67bfc1c324f96f3df9db16bbaf10b7fa2409",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/native-oidc.test.mjs",
+      "source": "e0a6982366b8368f226ee6361e37e9eab0f2e820",
+      "target": "a5c852a9e4c6816de4d7b6abfd0fd565628a82b6",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/native-session.test.mjs",
+      "source": "e561e1b6c075169004608a781bdbe9e017f53f24",
+      "target": "6e5626b4efb9f6842d94bfbbac3762b1bd888213",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/rti-finance-uat-520.test.cjs",
+      "source": "aee170711fbf9ed22bac4a942a884b17fb66012e",
+      "target": "86e57e73fa58b194c8a189da74cfe40ed3822bd7",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/rticore-access-entrypoints.test.cjs",
+      "source": "6ca83742d8908e19a1c4357cb1c92cbd45511a9c",
+      "target": "6ec90de230d3dd94659cb0db3610361c05e81483",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/rticore-enterprise-uat-v4.test.cjs",
+      "source": "47ff0e8e8491c7c98b83aae2c726ebc9c58823ed",
+      "target": null,
+      "disposition": "native-port-review"
+    },
+    {
+      "path": "tests/rticore-login-experience.test.cjs",
+      "source": "a1e9c952da940153aa60984905c1eab480c1e944",
+      "target": "901218c578951927f09fb35d9dff724020741537",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/run-browser-http-uat.cjs",
+      "source": "ed04fb3f82b8b1a3fc5034a0e7415189eb1b64bf",
+      "target": "dbeea01414a89fe795edfe18284c694866b52881",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/sales-lifecycle-transactions.test.cjs",
+      "source": "4950a7117b33dcebc1abd6a2c9699b9b74586b6c",
+      "target": "2173417cb7704d9e2dff77d915c79ddb7eeb414a",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": "tests/service-operations.test.cjs",
+      "source": "80c0535455d5de9f7d09dd7f62411b8f0db81fd3",
+      "target": "e264f006ec712d095375ec4162463a15fc03746e",
+      "disposition": "semantic-review"
+    }
+  ]
+}

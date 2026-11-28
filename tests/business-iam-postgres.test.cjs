@@ -34,6 +34,33 @@ test('isolated PostgreSQL enrollment, concurrent TOTP replay, session revocation
  await pool.query("UPDATE rticore_iam_sessions SET last_seen=now()-interval '31 minutes'");assert.equal(await iam.verifyBusinessSession(db,req),null);
  await iam.logoutBusiness(db,req);assert.equal((await pool.query('SELECT count(*)::int n FROM rticore_iam_sessions')).rows[0].n,0);
  assert.deepEqual((await pool.query('SELECT action FROM rticore_iam_audit ORDER BY id')).rows.map(x=>x.action),['enrolled','login','logout']);
+ // Exercise the exact operator SQL used by private interactive CLI, not a parallel imitation.
+ const {revokeBusinessCredential,issueBusinessInvitation}=await import('../scripts/business-iam-operator.mjs');
+ const staleTokens=[crypto.newToken(),crypto.newToken()];
+ for(const t of staleTokens)await pool.query("INSERT INTO rticore_iam_sessions(token_hash,email,expires_at) VALUES($1,$2,now()+interval '8 hours')",[crypto.tokenHash(t),email]);
+ const oldRequest=t=>new Request('https://qa.invalid/api/sales/identity',{headers:{cookie:crypto.SESSION_COOKIE+'='+t}});
+ assert.equal(await iam.verifyBusinessSession(db,oldRequest(staleTokens[0])),email);
+ // Absolute expiry must deny access independently of last_seen.
+ await pool.query("UPDATE rticore_iam_sessions SET created_at=now()-interval '9 hours',expires_at=now()-interval '1 hour' WHERE token_hash=$1",[crypto.tokenHash(staleTokens[1])]);
+ assert.equal(await iam.verifyBusinessSession(db,oldRequest(staleTokens[1])),null);
+ assert.equal((await revokeBusinessCredential(pool,email)).rowCount,1);
+ assert.equal((await revokeBusinessCredential(pool,email)).rowCount,0);
+ assert.equal((await pool.query('SELECT count(*)::int n FROM rticore_iam_credentials')).rows[0].n,0);
+ assert.equal((await pool.query('SELECT count(*)::int n FROM rticore_iam_sessions')).rows[0].n,0);
+ for(const t of staleTokens)assert.equal(await iam.verifyBusinessSession(db,oldRequest(t)),null);
+ const nextSeed=randomBytes(20),nextInvite=crypto.newToken(),replacement=crypto.newToken(),nextPassword='new synthetic password 456';
+ assert.equal((await issueBusinessInvitation(pool,email,crypto.encryptSeed(nextSeed,email),crypto.tokenHash(nextInvite))).rowCount,1);
+ assert.equal((await issueBusinessInvitation(pool,email,crypto.encryptSeed(nextSeed,email),crypto.tokenHash(replacement))).rowCount,1);
+ assert.equal(await iam.enrollmentDetails(db,nextInvite),null);
+ assert.equal((await iam.enrollmentDetails(db,replacement)).seed,crypto.base32(nextSeed));
+ const newStep=Math.floor(Date.now()/30000);
+ assert.equal(await iam.enroll(db,replacement,nextPassword,crypto.totpCode(nextSeed,newStep-1)),true);
+ assert.equal((await issueBusinessInvitation(pool,email,crypto.encryptSeed(seed,email),crypto.tokenHash(invite))).rowCount,0);
+ for(const t of staleTokens)assert.equal(await iam.verifyBusinessSession(db,oldRequest(t)),null);
+ const newToken=await iam.loginBusiness(db,email,nextPassword,crypto.totpCode(nextSeed,newStep));
+ assert.ok(newToken);
+ assert.equal(await iam.verifyBusinessSession(db,oldRequest(newToken)),email);
+ assert.deepEqual((await pool.query('SELECT action FROM rticore_iam_audit ORDER BY id')).rows.map(x=>x.action),['enrolled','login','logout','revoke','invite','invite','enrolled','login']);
  for(let i=0;i<5;i++)assert.equal(await iam.rateAllowed(db,'test','identity'),true);
  assert.equal(await iam.rateAllowed(db,'test','identity'),false);
  }finally{delete process.env.RTICORE_IAM_ENCRYPTION_KEY;await pool?.end();await root.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');await root.end();fs.rmSync(dir,{recursive:true,force:true});}
