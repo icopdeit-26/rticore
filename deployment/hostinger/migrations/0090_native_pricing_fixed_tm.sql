@@ -23,7 +23,11 @@ BEGIN
    q:=(p_data->>'quantity')::bigint;method:=p_data->>'pricing_method';overhead:=(p_data->>'overhead_bps')::bigint;risk:=(p_data->>'risk_bps')::bigint;target:=(p_data->>'target_bps')::bigint;minimum:=(p_data->>'minimum_margin_bps')::bigint;
    IF q IS NULL OR q NOT BETWEEN 1 AND 1000 OR method IS NULL OR method NOT IN ('target_margin','cost_plus','mandays_based','emergency_service','fixed_price','time_and_material') OR overhead IS NULL OR overhead NOT BETWEEN 0 AND 6000 OR risk IS NULL OR risk NOT BETWEEN 0 AND 5000 OR target IS NULL OR target NOT BETWEEN 0 AND 8500 OR minimum IS NULL OR minimum NOT BETWEEN 0 AND 8500 THEN RAISE EXCEPTION 'CATALOG_PRICING_INVALID'; END IF;
    IF method='fixed_price' THEN
-    IF jsonb_typeof(p_data->'fixed_price_cents') IS DISTINCT FROM 'number' OR (p_data->>'fixed_price_cents') !~ '^[0-9]+
+    IF jsonb_typeof(p_data->'fixed_price_cents') IS DISTINCT FROM 'number' OR (p_data->>'fixed_price_cents') !~ '^[0-9]+$' THEN RAISE EXCEPTION 'CATALOG_FIXED_PRICE_INVALID'; END IF;
+    fixed_price:=(p_data->>'fixed_price_cents')::numeric;
+    IF fixed_price NOT BETWEEN 1 AND 899999999999999 THEN RAISE EXCEPTION 'CATALOG_FIXED_PRICE_INVALID'; END IF;
+   ELSIF p_data ? 'fixed_price_cents' AND p_data->'fixed_price_cents'<>'null'::jsonb THEN RAISE EXCEPTION 'CATALOG_FIXED_PRICE_INVALID'; END IF;
+   FOR a IN SELECT value FROM jsonb_array_elements(profile.activities) LOOP
     SELECT id,version,internal_cost_rate_cents,min_selling_rate_cents,standard_selling_rate_cents,effective_date INTO rate FROM rticore_enterprise_rate_cards WHERE tenant_id=p_tenant AND legal_entity_id=p_entity AND role_code=a->>'resource_role' AND status='approved' AND effective_date<=CURRENT_DATE ORDER BY effective_date DESC,version DESC LIMIT 1;
     IF NOT FOUND THEN RAISE EXCEPTION 'CATALOG_RATE_REQUIRED'; END IF;
     md:=ceil(round(q*(a->>'resource_count')::numeric*(a->>'hours_hundredths')::numeric*matrix.factor_bps/10000)*10/800);
@@ -38,41 +42,6 @@ BEGIN
    price:=greatest(price,ceil(loaded*10000/(10000-minimum)),(SELECT sum(ceil((x->>'mandays_tenths')::numeric*(x->>'minimum_rate_cents')::numeric/10)) FROM jsonb_array_elements(evidence) x));
    IF price>=900000000000000 THEN RAISE EXCEPTION 'CATALOG_PRICING_INVALID'; END IF;
    calc:=jsonb_build_object('formula_version','0090-v1','fixed_price_cents',fixed_price,'service_id',service.id,'service_version',service.service_version,'profile_id',profile.id,'profile_version',profile.version,'complexity_id',matrix.id,'complexity_version',matrix.version,'factor_bps',matrix.factor_bps,'quantity',q,'method',method,'overhead_bps',overhead,'risk_bps',risk,'target_bps',target,'minimum_margin_bps',minimum,'activities',evidence,'direct_cost_cents',direct,'loaded_cost_cents',loaded,'net_price_cents',price);
-   INSERT INTO rticore_catalog_pricing_snapshots(id,tenant_id,legal_entity_id,service_id,profile_id,complexity_id,opportunity_id,opportunity_scope_version,quantity,pricing_method,overhead_bps,risk_bps,target_bps,minimum_margin_bps,billable_mandays_tenths,nonbillable_mandays_tenths,direct_cost_cents,loaded_cost_cents,net_price_cents,calculation,calculation_sha256,created_by)
-   VALUES(rid,p_tenant,p_entity,service.id,profile.id,matrix.id,p_data->>'opportunity_id',scope_version,q,method,overhead,risk,target,minimum,bmd,nmd,direct,loaded,price,calc,encode(sha256(convert_to(calc::text,'UTF8')),'hex'),lower(p_actor));
-  END IF;
- ELSE
-  IF NOT rticore_catalog_finance_access(p_tenant,p_entity,p_actor,'approve') THEN RAISE EXCEPTION 'CATALOG_APPROVAL_DENIED'; END IF;
-  rid:=p_id;
-  IF p_action='approve_activity_profile' THEN UPDATE rticore_catalog_activity_profiles SET status='approved',approved_by=lower(p_actor),approved_at=now(),approval_notes=p_data->>'notes' WHERE tenant_id=p_tenant AND legal_entity_id=p_entity AND id=rid AND status='draft';
-  ELSIF p_action='approve_complexity' THEN UPDATE rticore_catalog_complexity SET status='approved',approved_by=lower(p_actor),approved_at=now(),approval_notes=p_data->>'notes' WHERE tenant_id=p_tenant AND legal_entity_id=p_entity AND id=rid AND status='draft';
-  ELSIF p_action='approve_pricing_snapshot' THEN UPDATE rticore_catalog_pricing_snapshots SET status='approved',approved_by=lower(p_actor),approved_at=now(),approval_notes=p_data->>'notes' WHERE tenant_id=p_tenant AND legal_entity_id=p_entity AND id=rid AND status='draft';
-  ELSE RAISE EXCEPTION 'CATALOG_ACTION_INVALID'; END IF;
-  GET DIAGNOSTICS n=ROW_COUNT;IF n<>1 THEN RAISE EXCEPTION 'CATALOG_SCOPE_INVALID'; END IF;
- END IF;
- INSERT INTO rticore_operations_events(id,tenant_id,area,entity_id,action,actor_email,snapshot_json) VALUES(gen_random_uuid()::text,p_tenant,'service_catalog',rid,p_action,lower(p_actor),jsonb_build_object('legal_entity_id',p_entity)::text);
- RETURN jsonb_build_object('id',rid,'status',CASE WHEN p_action LIKE 'create_%' THEN 'draft' ELSE 'approved' END);
-END $cat$;
-
-COMMIT;
- THEN RAISE EXCEPTION 'CATALOG_FIXED_PRICE_INVALID'; END IF;
-    fixed_price:=(p_data->>'fixed_price_cents')::numeric;
-    IF fixed_price NOT BETWEEN 1 AND 899999999999999 THEN RAISE EXCEPTION 'CATALOG_FIXED_PRICE_INVALID'; END IF;
-   ELSIF p_data ? 'fixed_price_cents' AND p_data->'fixed_price_cents'<>'null'::jsonb THEN RAISE EXCEPTION 'CATALOG_FIXED_PRICE_INVALID'; END IF;
-   FOR a IN SELECT value FROM jsonb_array_elements(profile.activities) LOOP
-    SELECT id,version,internal_cost_rate_cents,min_selling_rate_cents,standard_selling_rate_cents,effective_date INTO rate FROM rticore_enterprise_rate_cards WHERE tenant_id=p_tenant AND legal_entity_id=p_entity AND role_code=a->>'resource_role' AND status='approved' AND effective_date<=CURRENT_DATE ORDER BY effective_date DESC,version DESC LIMIT 1;
-    IF NOT FOUND THEN RAISE EXCEPTION 'CATALOG_RATE_REQUIRED'; END IF;
-    md:=ceil(round(q*(a->>'resource_count')::numeric*(a->>'hours_hundredths')::numeric*matrix.factor_bps/10000)*10/800);
-    IF a->>'billable'='true' THEN bmd:=bmd+md; ELSE nmd:=nmd+md; END IF;
-    direct:=direct+round(md*rate.internal_cost_rate_cents::numeric/10);
-    evidence:=evidence||jsonb_build_array(jsonb_build_object('activity',a,'rate_id',rate.id,'rate_version',rate.version,'rate_effective_date',rate.effective_date,'internal_rate_cents',rate.internal_cost_rate_cents,'minimum_rate_cents',rate.min_selling_rate_cents,'standard_rate_cents',rate.standard_selling_rate_cents,'mandays_tenths',md));
-   END LOOP;
-   IF bmd<=0 OR bmd+nmd NOT BETWEEN service.min_mandays_tenths AND service.max_mandays_tenths OR direct<=0 THEN RAISE EXCEPTION 'CATALOG_EFFORT_INVALID'; END IF;
-   loaded:=direct+round(direct*overhead/10000)+round(direct*risk/10000);
-   price:=CASE WHEN method='cost_plus' THEN ceil(loaded*(10000+target)/10000) WHEN method='mandays_based' THEN (SELECT sum(ceil((x->>'mandays_tenths')::numeric*(x->>'standard_rate_cents')::numeric/10)) FROM jsonb_array_elements(evidence) x WHERE x->'activity'->>'billable'='true') WHEN method='emergency_service' THEN ceil(ceil(loaded*10000/(10000-target))*12500/10000) ELSE ceil(loaded*10000/(10000-target)) END;
-   price:=greatest(price,ceil(loaded*10000/(10000-minimum)),(SELECT sum(ceil((x->>'mandays_tenths')::numeric*(x->>'minimum_rate_cents')::numeric/10)) FROM jsonb_array_elements(evidence) x));
-   IF price>=900000000000000 THEN RAISE EXCEPTION 'CATALOG_PRICING_INVALID'; END IF;
-   calc:=jsonb_build_object('formula_version','0089-v1','service_id',service.id,'service_version',service.service_version,'profile_id',profile.id,'profile_version',profile.version,'complexity_id',matrix.id,'complexity_version',matrix.version,'factor_bps',matrix.factor_bps,'quantity',q,'method',method,'overhead_bps',overhead,'risk_bps',risk,'target_bps',target,'minimum_margin_bps',minimum,'activities',evidence,'direct_cost_cents',direct,'loaded_cost_cents',loaded,'net_price_cents',price);
    INSERT INTO rticore_catalog_pricing_snapshots(id,tenant_id,legal_entity_id,service_id,profile_id,complexity_id,opportunity_id,opportunity_scope_version,quantity,pricing_method,overhead_bps,risk_bps,target_bps,minimum_margin_bps,billable_mandays_tenths,nonbillable_mandays_tenths,direct_cost_cents,loaded_cost_cents,net_price_cents,calculation,calculation_sha256,created_by)
    VALUES(rid,p_tenant,p_entity,service.id,profile.id,matrix.id,p_data->>'opportunity_id',scope_version,q,method,overhead,risk,target,minimum,bmd,nmd,direct,loaded,price,calc,encode(sha256(convert_to(calc::text,'UTF8')),'hex'),lower(p_actor));
   END IF;
