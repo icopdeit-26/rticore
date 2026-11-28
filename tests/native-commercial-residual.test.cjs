@@ -71,7 +71,7 @@ test('native scheduler rejects privileged connection before mutation and rolls b
  const errors=(compiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error);
  assert.equal(errors.length,0,errors.map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')).join('\n'));
  const code='(async()=>{\n'+compiled.outputText+'\n})()';
- async function run({privileged=false,expired=false,failedFinish=false}={}){
+ async function run({privileged=false,expired=false,failedFinish=false,idle=false}={}){
   const queries=[],logs=[];let claim=0,closed=false,privilegeChecked=false;
   const process={env:{RTICORE_FG_MAINTENANCE_ENABLED:'1',RTICORE_FG_MAINTENANCE_DATABASE_URL:'postgresql://test:fixture@example.invalid/rticore?sslmode=verify-full',RTICORE_FG_MAINTENANCE_EXPECTED_DATABASE:'rticore',RTICORE_FG_MAINTENANCE_TENANT:'tenant-a',RTICORE_FG_MAINTENANCE_ENTITY:'entity-a',RTICORE_FG_MAINTENANCE_ACTOR:'worker@example.invalid',RTICORE_NATIVE_JOB_QUEUE_ENABLED:'1'}};
   class Client{
@@ -81,7 +81,7 @@ test('native scheduler rejects privileged connection before mutation and rolls b
     if(sql.includes('current_database()'))return {rows:[{db:'rticore',rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolbypassrls:false}]};
     if(sql.includes('rticore_fg_maintenance_actor'))return {rows:[{allowed:true}]};
     if(sql.includes('AS bucket'))return {rows:[{bucket:'123456'}]};
-    if(sql.includes('rticore_native_job_claim'))return {rows:claim++?[]:[{job_id:'job-a',job_kind:'flexguard_expiry'}]};
+    if(sql.includes('rticore_native_job_claim'))return {rows:idle||claim++?[]:[{job_id:'job-a',job_kind:'flexguard_expiry'}]};
     if(sql.includes('FOR UPDATE'))return {rows:[{id:'job-a'}]};
     if(sql.includes('rticore_native_job_finish')&&sql.includes('true)'))return {rows:expired?[]:[{ok:true}]};
     if(sql.includes('rticore_native_job_finish')&&sql.includes('false)'))return {rows:[{ok:!failedFinish}]};
@@ -92,6 +92,7 @@ test('native scheduler rejects privileged connection before mutation and rolls b
   return {queries,logs,closed,privilegeChecked,error,exitCode:process.exitCode};
  }
  const denied=await run({privileged:true});assert.match(String(denied.error),/privilege certification failed/);assert.equal(denied.privilegeChecked,true);assert.equal(denied.closed,true);assert.ok(!denied.queries.some(x=>x.sql.includes('INSERT')));
+ const empty=await run({idle:true});assert.equal(empty.error,undefined);assert.equal(empty.exitCode,undefined);assert.equal(empty.closed,true);assert.equal(empty.logs[0].idle,true);assert.equal(empty.logs[0].claimed,0);assert.equal(empty.logs[0].counts.succeeded,0);assert.ok(!empty.queries.some(x=>x.sql==='BEGIN'||x.sql==='COMMIT'));
  const valid=await run();assert.equal(valid.error,undefined);assert.equal(valid.exitCode,undefined);assert.equal(valid.logs[0].outcomes[0],'succeeded');assert.equal(valid.logs[0].event,'native_operations_cycle');assert.equal(valid.logs[0].claimed,1);assert.equal(valid.logs[0].counts.succeeded,1);assert.equal(valid.logs[0].idle,false);assert.equal(valid.logs[0].automatic_posting,false);assert.ok(valid.queries.some(x=>x.sql==='COMMIT'));
  for(const failedFinish of [false,true]){
   const result=await run({expired:true,failedFinish});assert.equal(result.error,undefined);assert.equal(result.exitCode,1);assert.equal(result.closed,true);assert.ok(result.queries.some(x=>x.sql==='ROLLBACK'));assert.ok(!result.queries.some(x=>x.sql==='COMMIT'));assert.equal(result.logs[0].outcomes[0],failedFinish?'lease_lost':'retry_or_dead_letter');assert.equal(result.logs[0].counts[failedFinish?'lease_lost':'retry_or_dead_letter'],1);assert.equal(result.logs[0].counts.succeeded,0);
