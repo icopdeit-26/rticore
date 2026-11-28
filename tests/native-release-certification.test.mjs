@@ -73,7 +73,7 @@ test('individual native UAT evidence rejects generic, replayed and mismatched re
  assert.throws(()=>run({definition:{...definition,approved_by:'tester'}}),/UAT_DEFINITION_APPROVAL_REQUIRED/);
 });
 
-test('native review register preserves 420 original cases and 520 Finance planning slots without fake approval',()=>{
+test('native review register preserves 420 original cases and 520 proposed Finance individual cases without fake approval',()=>{
  const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
  const legacy=JSON.parse(read('docs/RTICORE_UAT_210_CATALOG.json')).cases,erp=JSON.parse(read('docs/RTICORE_ERP_UAT_210_CATALOG.json')).cases;
  const groups=financeGroups(read('tests/rti-finance-uat-520.test.cjs'));
@@ -83,7 +83,11 @@ test('native review register preserves 420 original cases and 520 Finance planni
  assert.equal(r.release,'HOLD');
  assert.equal(r.erp_individual_pass+r.finance_individual_pass,0);
  assert.ok(r.erp_definitions.every(d=>d.approved_by===null&&d.actor_role===null&&d.status==='REVIEW_REQUIRED'&&d.source_sha256===createHash('sha256').update(JSON.stringify(d.original)).digest('hex')));
- assert.ok(r.finance_definitions.every(d=>d.approved_by===null&&d.scenario===null&&d.status==='UNMAPPED_NOT_RUN'));
+ assert.ok(r.finance_definitions.every(d=>d.approved_by===null&&d.actor_role===null&&d.status==='REVIEW_REQUIRED_NOT_RUN'&&d.scenario&&d.expected&&d.steps.length>0));
+ assert.equal(new Set(r.finance_definitions.map(d=>d.id)).size,520);
+ assert.equal(new Set(r.finance_definitions.map(d=>d.group+'|'+d.family+'|'+d.variant)).size,520);
+ assert.equal(new Set(r.finance_definitions.map(d=>d.group+'|'+d.family)).size,104);
+ for(const g of groups)assert.equal(r.finance_definitions.filter(d=>d.group===g.title).length,g.target);
  assert.match(r.erp_definitions.find(d=>d.id==='P00-003').expected,/RPO\/RTO/);
  assert.throws(()=>buildNativeReviewRegister(legacy.slice(1),erp,groups,'a'.repeat(40)),/ERP_CATALOG_DRIFT/);
  assert.throws(()=>buildNativeReviewRegister(legacy,erp,groups.slice(1),'a'.repeat(40)),/FINANCE_CATALOG_DRIFT/);
