@@ -19,6 +19,22 @@ jobs:
         with:
           node-version: '22'
       - run: node --test tests/native-release-certification.test.mjs tests/hostinger-schema-inventory.test.mjs
-      - name: Missing real evidence must fail closed
+      - name: Generate unsigned exact-SHA UAT review inventory
         run: |
-          if npm run verify:native-release; then echo 'Release verifier accepted missing evidence'; exit 1; fi
+          mkdir -p artifacts/batch-e
+          node scripts/native-uat-review-register.mjs artifacts/batch-e/native-uat-review.json
+      - name: Missing real evidence must fail closed for the expected reason
+        run: |
+          set +e
+          output=$(node scripts/native-release-certification.mjs 2>&1)
+          status=$?
+          set -e
+          test "$status" -eq 1
+          printf '%s\n' "$output" | grep -Fx 'NATIVE_RELEASE_HOLD: NATIVE_SIGNED_RECEIPT_REQUIRED'
+      - name: Publish unsigned review inventory (not UAT acceptance)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: batch-e-native-uat-review
+          path: artifacts/batch-e/native-uat-review.json
+          retention-days: 14
+          if-no-files-found: error
