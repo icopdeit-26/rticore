@@ -46,8 +46,10 @@ export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='be
  }
  const read=f=>JSON.parse(readFileSync(resolve(root,f),'utf8'));
  const erp=[...read('docs/RTICORE_UAT_210_CATALOG.json').cases,...read('docs/RTICORE_ERP_UAT_210_CATALOG.json').cases];
+ fail(unique(erp,'id',420),'ERP_CATALOG_INCOMPLETE');
  const groups=financeGroups(readFileSync(resolve(root,'tests/rti-finance-uat-520.test.cjs'),'utf8'));
  const finIds=groups.flatMap(g=>Array.from({length:g.target},(_,i)=>'FIN-'+g.domains.replace(' & ','-')+'-'+String(i+1).padStart(3,'0')));
+ fail(finIds.length===520&&new Set(finIds).size===520,'FINANCE_CATALOG_INCOMPLETE');
  fail(unique(p.finance_definitions,'id',520)&&finIds.every(id=>p.finance_definitions.some(d=>d.id===id&&nonempty(d.scenario)&&nonempty(d.expected)&&nonempty(d.actor)&&nonempty(d.approved_by))),'APPROVED_FINANCE_520_DEFINITIONS_REQUIRED');
  for(const [name,cases,results] of [['ERP',erp,p.erp_uat],['FINANCE',p.finance_definitions,p.finance_uat]]){
   fail(unique(results,'id',cases.length),name+'_INDIVIDUAL_UAT_REQUIRED');
