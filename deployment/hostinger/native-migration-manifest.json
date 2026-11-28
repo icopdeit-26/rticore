@@ -41,7 +41,8 @@
         "0089_native_pricing_mandays_emergency.sql",
         "0090_native_pricing_fixed_tm.sql",
         "0091_native_pricing_recurring.sql",
-        "0092_native_pricing_tier_volume.sql"
+        "0092_native_pricing_tier_volume.sql",
+        "0093_native_pricing_bundle_value.sql"
       ]
     },
     {
