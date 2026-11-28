@@ -143,3 +143,30 @@ test('Defense roles: Vault supporting only, deal list scoped, BoQ/CRM/reports bl
   await expect(h.call('erp/security-integrations','POST','defense_member',{action:'queue',connector_id:'00000000-0000-4000-8000-000000000001',case_id:'00000000-0000-4000-8000-000000000002'}),403);
  }finally{h.close();}
 });
+
+test('SOC assignment loses race to independent case review without creating an assignment',async()=>{
+ const {h,p}=await soc();try{
+  const id=(await expect(cyber(h,'defense_member',{action:'open',project_id:p.id,kind:'soc_incident',external_ref:'SIEM-RACE-01',title:'Concurrent case review and assignment',severity:'high',classification:'restricted'}),201)).body.id;
+  const doc=(await expect(upload(h,'supporting','defense_member'),201)).body.id;
+  // Simulate another transaction committing after the API pre-read but before its atomic write.
+  h.beforeBatch=()=>h.sql.prepare("UPDATE rticore_cyber_cases SET status='reviewed',version=version+1,reviewer_email=?,review_notes=?,evidence_document_id=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?").run(users.approver,'Independent concurrent technical QA accepted',doc,id);
+  await expect(cyber(h,'defense_leader',{action:'assign',id,assignee_email:users.defense_member}),409);
+  assert.equal(caseRow(h,id).status,'reviewed');
+  assert.equal(assignment(h,id),undefined);
+ }finally{h.close();}
+});
+
+test('SOC return loses race to independent review and leaves submitted evidence intact',async()=>{
+ const {h,p}=await soc();try{
+  const id=(await expect(cyber(h,'admin',{action:'open',project_id:p.id,kind:'soc_incident',external_ref:'SIEM-RACE-02',title:'Concurrent QA review and return',severity:'high',classification:'restricted'}),201)).body.id;
+  await expect(cyber(h,'defense_leader',{action:'assign',id,assignee_email:users.defense_member}),201);
+  const doc=(await expect(upload(h,'supporting','defense_member'),201)).body.id;
+  await expect(cyber(h,'defense_member',{action:'submit',id,assignment_version:1,notes:'Investigation completed with original evidence',document_id:doc}),200);
+  h.beforeBatch=()=>h.sql.prepare("UPDATE rticore_cyber_cases SET status='reviewed',version=version+1,reviewer_email=?,review_notes=?,evidence_document_id=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?").run(users.approver,'Independent concurrent technical QA accepted',doc,id);
+  await expect(cyber(h,'defense_leader',{action:'return',id,assignment_version:2,notes:'Request additional investigation details'}),409);
+  assert.equal(caseRow(h,id).status,'reviewed');
+  assert.equal(assignment(h,id).status,'submitted');
+  assert.equal(assignment(h,id).version,2);
+  assert.equal(assignment(h,id).evidence_document_id,doc);
+ }finally{h.close();}
+});
