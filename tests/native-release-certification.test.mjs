@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {checkNativeCompletion,REQUIRED_NATIVE_COMMANDS,assertNativeMfaEnrollment,expectedReviewDefinitions} from '../scripts/hostinger-native-completion.mjs';
-import {verifyNativeReceipt,NATIVE_GATES} from '../scripts/native-release-certification.mjs';
-import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {generateKeyPairSync,sign} from 'node:crypto';
+import {verifyNativeReceipt,NATIVE_GATES,assertIndividualEvidence} from '../scripts/native-release-certification.mjs';
+import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {generateKeyPairSync,sign,createHash} from 'node:crypto';
 test('latest native command preflight is read-only and fails closed on missing inventory',async()=>{
  const commands=REQUIRED_NATIVE_COMMANDS.map(signature=>({signature,present:true}));
  const objects={boq:true,budget_index:true,feature_requests:true,feature_pending_index:true,jobs:true,jobs_due_index:true,job_recovery:true,recovery_pending_index:true,recovery_once_index:true,recovery_guard:true,feature_guard:true,journal_guard:true,workflow_guard:true};
@@ -40,4 +40,29 @@ test('native MFA preflight accepts only distinct active enrolled administrators 
  const run=rows=>assertNativeMfaEnrollment({query:async sql=>{assert.match(sql,/^SELECT/);assert.match(sql,/count\(DISTINCT lower\(trim\(m.email\)\)\)/);assert.match(sql,/c.password_hash IS NOT NULL/);assert.match(sql,/c.invite_hash IS NULL/);assert.match(sql,/m.active=1 AND m.role='admin'/);return {rows};}});
  assert.equal(await run([{n:2}]),true);
  for(const rows of [[],[{}],[{n:null}],[{n:1}],[{n:'2'}],[{n:NaN}],[{n:2.5}],[{n:2},{n:2}]]) await assert.rejects(run(rows),/Two independently enrolled administrators/);
+});
+
+test('individual native UAT evidence rejects generic, replayed and mismatched records',()=>{
+ const sha='a'.repeat(40),definition={id:'ERP-GL-001',scenario:'Post journal',expected:'Balanced',actor_role:'finance',approved_by:'reviewer'};
+ const t={tester_subject:'tester',release_sha:sha,executed_at:'2026-11-28T00:00:00Z',actual_result:'Balanced journal',execution_kind:'authenticated_native_hostinger_staging'};
+ const roster=[{subject:'tester',role:'finance'}],signoffs=[{subject:'reviewer',decision:'APPROVED',release_sha:sha}];
+ const hash=b=>createHash('sha256').update(b).digest('hex');
+ const entry=(path,bytes)=>({ref:{path,sha256:hash(bytes)},bytes});
+ const trace=entry('trace.json',Buffer.from('{"audit_event":"test-only"}'));
+ const record={schema:'rticore-native-uat-case-v1',case_id:definition.id,definition_sha256:hash(Buffer.from(JSON.stringify(definition))),...t,actor_role:'finance',status:'PASS',scope_verified:true,sod_checked:true,artifacts:[trace.ref]};
+ const caseEntry=(v=record)=>entry('case.json',Buffer.from(JSON.stringify(v)));
+ const run=(overrides={})=>assertIndividualEvidence({test:t,definition,roster,signoffs,verified:[trace,caseEntry()],...overrides});
+ assert.doesNotThrow(()=>run());
+ assert.throws(()=>run({verified:[trace]}),/UAT_CASE_RECORD_REQUIRED/);
+ assert.throws(()=>run({verified:[trace,caseEntry(),caseEntry()]}),/UAT_CASE_RECORD_REQUIRED/);
+ assert.throws(()=>run({definition:{...definition,id:'ERP-GL-002'}}),/UAT_CASE_RECORD_REQUIRED/);
+ for(const [field,value] of Object.entries({definition_sha256:'0'.repeat(64),release_sha:'b'.repeat(40),tester_subject:'other',actor_role:'admin',executed_at:'2026-11-27T00:00:00Z',actual_result:'different',execution_kind:'synthetic',status:'FAIL',scope_verified:false,sod_checked:false})){
+  assert.throws(()=>run({verified:[trace,caseEntry({...record,[field]:value})]}),/UAT_CASE_RECORD_MISMATCH/);
+ }
+ assert.throws(()=>run({verified:[caseEntry()]}),/UAT_CASE_TRACE_REQUIRED/);
+ assert.throws(()=>run({verified:[trace,caseEntry({...record,artifacts:[]})]}),/UAT_CASE_TRACE_REQUIRED/);
+ assert.throws(()=>run({verified:[trace,caseEntry({...record,artifacts:[{...trace.ref,sha256:'0'.repeat(64)}]})]}),/UAT_CASE_TRACE_REQUIRED/);
+ assert.throws(()=>run({roster:[{subject:'tester',role:'admin'}]}),/UAT_ACTOR_ROLE_MISMATCH/);
+ assert.throws(()=>run({signoffs:[]}),/UAT_DEFINITION_APPROVAL_REQUIRED/);
+ assert.throws(()=>run({definition:{...definition,approved_by:'tester'}}),/UAT_DEFINITION_APPROVAL_REQUIRED/);
 });
