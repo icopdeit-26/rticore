@@ -25,7 +25,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - name: High-confidence tracked-text secret scan
         if: always()
-        run: node --test tests/security-secret-scan.test.mjs && node scripts/security-secret-scan.mjs tests/native-operations-center.test.mjs
+        run: node --test tests/security-secret-scan.test.mjs tests/native-operations-center.test.mjs && node scripts/security-secret-scan.mjs
       - name: Native security and negative API regression
         if: always()
         run: npm run test:security-native && npm run test:rticore-negative && npm run test:ai && node --experimental-strip-types --test tests/cams-journal-contract.test.cjs tests/cams-runtime-boundary.test.cjs tests/cams-review-actions.test.cjs
