@@ -150,8 +150,17 @@ BEGIN
  UPDATE rticore_native_fg_portal_grant SET status='approved',reviewed_by=checker,reviewed_at=now(),review_notes='Synthetic independent customer approval' WHERE id='portal-grant-ci';
  IF NOT rticore_native_fg_portal_allowed('defendit360','fg-terms-a',wid,customer) OR rticore_native_fg_portal_allowed('defendit360','fg-terms-b',wid,customer) THEN RAISE EXCEPTION 'PORTAL_SCOPE_INVALID'; END IF;
  INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,notes,idempotency_key) VALUES('portal-sub-ci','defendit360','fg-terms-a',wid,customer,'service_request','Synthetic customer request','portal-submission-0001');
+ INSERT INTO rticore_document_library(id,tenant_id,opportunity_id,kind,version,file_name,media_type,byte_length,sha256,iv,chunk_count,created_by) VALUES('fg-ci-quote-accept-doc','defendit360','fg-ci-opportunity','supporting',2,'synthetic-quote.pdf','application/pdf',1,repeat('d',64),repeat('a',16),1,'ci');
+ BEGIN
+ UPDATE rticore_native_fg_service_request SET status='scope_approved',version=3,last_actor=checker,last_notes='Synthetic missing portal acceptance',last_document_id='fg-ci-quote-accept-doc',last_document_sha256=repeat('d',64) WHERE id='service-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_ACCEPTANCE_REQUIRED' THEN RAISE; END IF; END;
  INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,request_id,request_version,notes,idempotency_key) VALUES('portal-quote-ci','defendit360','fg-terms-a',wid,customer,'quote_acceptance','service-ci',2,'Synthetic customer scope acceptance','portal-submission-0002');
  IF (SELECT status FROM rticore_native_fg_service_request WHERE id='service-ci')<>'scope_quoted' OR (SELECT count(*) FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid)<>ledger_before THEN RAISE EXCEPTION 'PORTAL_UNEXPECTED_MUTATION'; END IF;
+ UPDATE rticore_native_fg_service_request SET status='scope_approved',version=3,last_actor=checker,last_notes='Synthetic independent portal quote review',last_document_id='fg-ci-quote-accept-doc',last_document_sha256=repeat('d',64) WHERE id='service-ci';
+ IF NOT EXISTS(SELECT 1 FROM rticore_native_fg_portal_binding WHERE submission_id='portal-quote-ci' AND request_id='service-ci' AND target_version=3 AND reviewer_email=checker) OR (SELECT count(*) FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid)<>ledger_before THEN RAISE EXCEPTION 'PORTAL_BINDING_FAILED'; END IF;
+ BEGIN
+ DELETE FROM rticore_native_fg_portal_binding WHERE submission_id='portal-quote-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_BINDING_IMMUTABLE' THEN RAISE; END IF; END;
  INSERT INTO rticore_native_fg_portal_credential(email,password_hash,totp_cipher,enrolled_at) VALUES(customer,'synthetic-not-a-usable-password-hash','synthetic-not-a-usable-totp',now());
  INSERT INTO rticore_native_fg_portal_session(token_hash,email,expires_at) VALUES(repeat('e',64),customer,now()+interval '1 hour');
  UPDATE rticore_native_fg_portal_grant SET status='revoked',revoked_by=checker,revoked_at=now(),revocation_notes='Synthetic access revocation' WHERE id='portal-grant-ci';

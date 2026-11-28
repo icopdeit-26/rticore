@@ -27,6 +27,8 @@ export const REQUIRED_NATIVE_COMMANDS=[
  'rticore_native_fg_portal_submission_guard()',
  'rticore_native_backup_drill_guard()',
  'rticore_native_fg_portal_revoke_sessions()',
+ 'rticore_native_fg_portal_binding_guard()',
+ 'rticore_native_fg_service_acceptance_link()',
  'cams_review_command(text,text,text,text,text,text,bigint,text)'
 ];
 // Same signature can survive a stale migration; compare exact stored function body.
