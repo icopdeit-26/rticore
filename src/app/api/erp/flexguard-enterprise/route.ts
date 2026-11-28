@@ -1,7 +1,8 @@
 import {authorizeBoQ} from '@/lib/boq-auth';
 import {readBoundedJSON} from '@/lib/bounded-json';
+import {supportingOriginal,ServiceError} from '@/lib/service-operations';
 import {TENANT} from '@/lib/sales-workflow';
-import {erpAssert,erpError,erpId,erpOrigin,erpReply,erpText} from '@/lib/erp-core';
+import {erpAssert,erpError,erpId,erpOrigin,erpReply,erpText,erpAtom,ERPError} from '@/lib/erp-core';
 export const dynamic='force-dynamic';
 function enabled(){return process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_FLEXGUARD_ENTERPRISE_ENABLED==='1';}
 const nullableId=(v:unknown)=>v===undefined||v===null||v===''?null:erpId(v)?v:undefined;
@@ -25,6 +26,11 @@ export async function GET(req:Request){
   }
   const scope=await db.prepare("SELECT w.id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes p ON p.tenant_id=c.tenant_id AND p.project_id=c.project_id AND p.status='approved' WHERE w.tenant_id=? AND p.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first();
   erpAssert(scope,'Wallet di luar scope',403);
+  if(u.searchParams.get('service_requests')==='1'){
+   const rows=await db.prepare('SELECT * FROM rticore_native_fg_service_request WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,wallet).all();
+   const events=await db.prepare('SELECT * FROM rticore_native_fg_service_event WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY recorded_at DESC LIMIT 501').bind(TENANT,entity,wallet).all();
+   return erpReply({success:true,role,service_requests:rows.results.slice(0,200),events:events.results.slice(0,500),truncated:rows.results.length>200||events.results.length>500,automatic_posting:false});
+  }
   const [lots,ledger,requests,allocations,retryAttempts]=await Promise.all([
    db.prepare("SELECT l.*,coalesce((SELECT sum(e.available_delta) FROM rticore_flexguard_enterprise_ledger e WHERE e.tenant_id=l.tenant_id AND e.lot_id=l.id),0) AS available,coalesce((SELECT sum(e.reserved_delta) FROM rticore_flexguard_enterprise_ledger e WHERE e.tenant_id=l.tenant_id AND e.lot_id=l.id),0) AS reserved FROM rticore_flexguard_credit_lots l WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY expires_at,id LIMIT 201").bind(TENANT,entity,wallet).all(),
    db.prepare("SELECT l.*,e.status AS docking_status,e.resulting_journal_id,j.status AS journal_status FROM rticore_flexguard_enterprise_ledger l LEFT JOIN rticore_finance_integration_events e ON e.tenant_id=l.tenant_id AND e.id=l.finance_outbox_event_id LEFT JOIN rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.legal_entity_id=e.legal_entity_id AND j.id=e.resulting_journal_id WHERE l.tenant_id=? AND l.legal_entity_id=? AND l.wallet_id=? ORDER BY l.created_at DESC,l.id LIMIT 201").bind(TENANT,entity,wallet).all(),
@@ -43,6 +49,34 @@ export async function POST(req:Request){
   erpAssert(!a.identity.rolePreview,'Role preview ditolak',403);erpOrigin(req);
   const v=await readBoundedJSON(req,8000) as Record<string,unknown>;
   const {db,email}=a.identity;erpAssert(erpId(v.legal_entity_id),'Legal entity wajib');
+  if(v.action==='create_service_request'||v.action==='transition_service_request'){
+   const {role}=a.identity;const entity=v.legal_entity_id;
+   erpAssert(erpId(v.wallet_id)&&erpId(v.document_id)&&erpText(v.notes,12,1000),'Wallet, bukti asli dan catatan wajib');
+   const wallet=v.wallet_id;
+   const grant=await db.prepare('SELECT rticore_fg_actor_role(?,?,?) AS role').bind(TENANT,entity,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role&&['admin','finance','approver'].includes(role),'Akses service request ditolak',403);
+   const scope=await db.prepare("SELECT p.id AS project_id,p.opportunity_id,c.id AS contract_id,c.customer_id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id AND c.customer_id=w.customer_id JOIN rticore_delivery_projects p ON p.tenant_id=c.tenant_id AND p.id=c.project_id AND p.customer_id=c.customer_id JOIN rticore_erp_project_scopes s ON s.tenant_id=p.tenant_id AND s.project_id=p.id AND s.status='approved' WHERE w.tenant_id=? AND s.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first<{project_id:string;opportunity_id:string;contract_id:string;customer_id:string}>();
+   erpAssert(scope,'Wallet di luar scope',403);
+   const doc=await supportingOriginal(db,v.document_id,scope.opportunity_id).catch(e=>{if(e instanceof ServiceError)throw new ERPError(e.message,e.status);throw e;});
+   if(v.action==='create_service_request'){
+    erpAssert(['admin','finance'].includes(role),'Maker service request wajib',403);
+    erpAssert(erpText(v.request_code,4,64)&&erpText(v.title,5,200)&&erpText(v.scope_summary,12,2000),'Kode, judul dan scope wajib');
+    const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_fg_service_request(id,tenant_id,legal_entity_id,wallet_id,project_id,contract_id,customer_id,request_code,title,scope_summary,created_by,last_actor,last_notes,last_document_id,last_document_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,wallet,scope.project_id,scope.contract_id,scope.customer_id,v.request_code.trim(),v.title.trim(),v.scope_summary.trim(),email,email,v.notes.trim(),v.document_id,doc.sha256.toLowerCase())],'flexguard',id,'SERVICE_REQUEST_CREATED',{wallet_id:wallet,document_id:v.document_id});
+    return erpReply({success:true,result:{id,status:'submitted',automatic_posting:false}},201);
+   }
+   erpAssert(erpId(v.id)&&typeof v.version==='number'&&Number.isSafeInteger(v.version)&&v.version>=1&&typeof v.next_status==='string'&&['scope_quoted','scope_approved','in_delivery','qa_passed','accepted','closed','rejected'].includes(v.next_status),'Status atau versi tidak valid');
+   const next=v.next_status;
+   erpAssert(['scope_quoted','in_delivery'].includes(next)?['admin','finance'].includes(role):role==='approver','Maker-checker wajib',403);
+   const row=await db.prepare('SELECT quoted_credits,reservation_id,consumption_id FROM rticore_native_fg_service_request WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=? AND version=?').bind(TENANT,entity,wallet,v.id,v.version).first<{quoted_credits:number|null;reservation_id:string|null;consumption_id:string|null}>();
+   erpAssert(row,'Service request tidak ditemukan atau versi berubah',409);
+   let credits=row.quoted_credits,reservation=row.reservation_id,consumption=row.consumption_id;
+   if(next==='scope_quoted'){erpAssert(typeof v.quoted_credits==='number'&&Number.isSafeInteger(v.quoted_credits)&&v.quoted_credits>=1&&v.quoted_credits<=100000,'Jumlah kredit wajib');credits=v.quoted_credits;}
+   if(next==='in_delivery'){erpAssert(erpId(v.reservation_id),'Posted reservation ID wajib');reservation=v.reservation_id;}
+   if(next==='closed'){erpAssert(erpId(v.consumption_id),'Reconciled consumption ID wajib');consumption=v.consumption_id;}
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_fg_service_request WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=? AND version=?)",[TENANT,entity,wallet,v.id,v.version],[db.prepare('UPDATE rticore_native_fg_service_request SET status=?,version=version+1,quoted_credits=?,reservation_id=?,consumption_id=?,last_actor=?,last_notes=?,last_document_id=?,last_document_sha256=? WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=?').bind(next,credits,reservation,consumption,email,v.notes.trim(),v.document_id,doc.sha256.toLowerCase(),TENANT,entity,wallet,v.id)],'flexguard',v.id,'SERVICE_REQUEST_TRANSITION',{next_status:next,document_id:v.document_id});
+   return erpReply({success:true,result:{id:v.id,status:next,automatic_posting:false}});
+  }
   if(v.action==='create_wallet'||v.action==='approve_wallet'){
    erpAssert(process.env.RTICORE_FLEXGUARD_PRODUCT_ENABLED!=='1','Gunakan contractual bound wallet command',409);
    const create=v.action==='create_wallet';const target=create?v.contract_id:v.wallet_id;
