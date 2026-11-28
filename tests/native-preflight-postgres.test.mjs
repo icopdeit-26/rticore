@@ -41,6 +41,15 @@ test('native preflight requires migrations 0074–0076 guards and two enrolled a
   await assert.rejects(checkNativeCompletion(client),/definition mismatch/);
   await client.query('ROLLBACK TO SAVEPOINT ack_probe');
   assert.equal((await checkNativeCompletion(client)).applied_ledger_verified,false);
+  // A stale pricing function has the same signature; presence alone cannot certify 0093.
+  await client.query('SAVEPOINT pricing_probe');
+  const oldPricing=readFileSync('deployment/hostinger/migrations/0092_native_pricing_tier_volume.sql','utf8');
+  const stalePricing=oldPricing.match(/CREATE OR REPLACE FUNCTION rticore_catalog_workflow_command\([\s\S]*?\$cat\$;/);
+  assert.ok(stalePricing,'superseded pricing definition missing');
+  await client.query(stalePricing[0]);
+  await assert.rejects(checkNativeCompletion(client),/definition mismatch/);
+  await client.query('ROLLBACK TO SAVEPOINT pricing_probe');
+  assert.equal((await checkNativeCompletion(client)).applied_ledger_verified,false);
   // Synthetic enrollment rows test the SQL inventory only, not actual TOTP authentication.
   assert.equal((await client.query('SELECT count(*)::int AS n FROM public.rticore_iam_credentials')).rows[0].n,0);
   await assert.rejects(assertNativeMfaEnrollment(client),/Two independently enrolled administrators/);
