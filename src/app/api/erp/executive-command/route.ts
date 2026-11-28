@@ -14,6 +14,8 @@ export async function GET(req:Request){
   const params=new URL(req.url).searchParams;
   const entity=params.get('legal_entity_id');erpAssert(params.getAll('legal_entity_id').length===1&&erpId(entity),'Legal entity wajib');
   erpAssert(params.getAll('view').length<=1&&[null,'commercial','management'].includes(params.get('view')),'View tidak valid');
+  erpAssert([...params.keys()].every(k=>['legal_entity_id','view','period'].includes(k)),'Parameter tidak dikenal');
+  erpAssert(params.get('view')==='management'||!params.has('period'),'Periode hanya untuk management view');
   if(params.get('view')==='management'){
    const period=params.get('period');
    erpAssert(params.getAll('period').length===1&&typeof period==='string'&&/^20[0-9]{2}-(0[1-9]|1[0-2])$/.test(period),'Periode YYYY-MM wajib');
@@ -30,6 +32,11 @@ export async function GET(req:Request){
     (SELECT count(*)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_projects,
     (SELECT coalesce(sum(f.recognized_revenue_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_revenue_cents,
     (SELECT coalesce(sum(f.gross_profit_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_profit_cents,
+    (SELECT coalesce(sum(f.direct_cost_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_direct_cost_cents,
+    (SELECT coalesce(sum(f.indirect_cost_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_indirect_cost_cents,
+    (SELECT coalesce(sum(f.billed_amount_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_billed_cents,
+    (SELECT coalesce(sum(f.cash_collected_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_cash_collected_cents,
+    (SELECT coalesce(sum(f.committed_cost_cents),0)::text FROM rticore_finance_project_snapshots f WHERE f.tenant_id=s.tenant_id AND f.legal_entity_id=s.id AND f.period_code=p.period AND f.certification_status='certified_closed') AS certified_committed_cost_cents,
     (SELECT coalesce(sum(t.minutes),0)::text FROM rticore_project_timesheets t WHERE t.tenant_id=s.tenant_id AND t.status='approved' AND left(t.work_date,7)=p.period AND EXISTS(SELECT 1 FROM rticore_erp_project_scopes x WHERE x.tenant_id=t.tenant_id AND x.project_id=t.project_id AND x.legal_entity_id=s.id AND x.status='approved')) AS approved_minutes,
     (SELECT coalesce(sum(t.minutes),0)::text FROM rticore_project_timesheets t WHERE t.tenant_id=s.tenant_id AND t.status='approved' AND t.billable=1 AND left(t.work_date,7)=p.period AND EXISTS(SELECT 1 FROM rticore_erp_project_scopes x WHERE x.tenant_id=t.tenant_id AND x.project_id=t.project_id AND x.legal_entity_id=s.id AND x.status='approved')) AS billable_minutes,
     (SELECT coalesce(sum(l.available_delta),0)::text FROM rticore_flexguard_enterprise_ledger l WHERE l.tenant_id=s.tenant_id AND l.legal_entity_id=s.id) AS available_credits,
@@ -43,11 +50,11 @@ export async function GET(req:Request){
    FROM scope s CROSS JOIN reporting p`).bind(TENANT,entity,email,role,email,period).first<Record<string,unknown>>();
    erpAssert(data,'Executive Finance scope denied',403);
    const management_metrics:Record<string,number>={};
-   for(const k of ['opportunities','won','open_pipeline_idr','certified_projects','certified_revenue_cents','certified_profit_cents','approved_minutes','billable_minutes','available_credits','reserved_credits','consumed_credits','expired_credits','opex_budget_records','opex_budget_cents','opex_actual_cents','high_open_grc_risks']){
+   for(const k of ['opportunities','won','open_pipeline_idr','certified_projects','certified_revenue_cents','certified_profit_cents','certified_direct_cost_cents','certified_indirect_cost_cents','certified_billed_cents','certified_cash_collected_cents','certified_committed_cost_cents','approved_minutes','billable_minutes','available_credits','reserved_credits','consumed_credits','expired_credits','opex_budget_records','opex_budget_cents','opex_actual_cents','high_open_grc_risks']){
     const v=data[k];erpAssert((typeof v==='string'&&/^-?\d+$/.test(v))||typeof v==='number','Invalid aggregate',503);
     const n=Number(v);erpAssert(Number.isSafeInteger(n)&&(k==='certified_profit_cents'||n>=0),'Invalid aggregate',503);management_metrics[k]=n;
    }
-   erpAssert(management_metrics.won<=management_metrics.opportunities&&management_metrics.billable_minutes<=management_metrics.approved_minutes,'Invalid aggregate',503);
+   erpAssert(management_metrics.won<=management_metrics.opportunities&&management_metrics.billable_minutes<=management_metrics.approved_minutes&&BigInt(management_metrics.certified_profit_cents)===BigInt(management_metrics.certified_revenue_cents)-BigInt(management_metrics.certified_direct_cost_cents)-BigInt(management_metrics.certified_indirect_cost_cents),'Invalid aggregate',503);
    return erpReply({success:true,legal_entity_id:entity,period,scope:'native_management',management_metrics,read_only:true,automatic_posting:false});
   }
   // Scope and aggregates are evaluated within one PostgreSQL statement.
