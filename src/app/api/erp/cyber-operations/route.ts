@@ -1,4 +1,4 @@
-﻿import {nativeGrcRead,nativeGrcWrite} from '@/lib/native-cti-grc';
+﻿import {nativeGrcRead,nativeGrcWrite,nativeGrcTransition} from '@/lib/native-cti-grc';
 import {authorizeBoQ} from '@/lib/boq-auth';
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal as vaultOriginal,ServiceError} from '@/lib/service-operations';
@@ -110,8 +110,9 @@ export async function POST(req:Request){
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
   const technical=new URL(req.url).pathname==='/api/erp/technical-registers';
   if(technical){
-   erpAssert((['offense_lead','offense_member'].includes(role)&&(v.action==='register_vapt_finding'||(v.action==='transition_vapt_finding'&&v.next_status==='retest_submitted')||(role==='offense_lead'&&v.action==='register_vapt_engagement')))||(['governance_leader','governance_member'].includes(role)&&v.action==='native_cti_grc_register'&&typeof v.record_kind==='string'&&['grc_engagement','grc_risk','grc_control'].includes(v.record_kind)),'Technical mutation denied',403);
+   erpAssert((['offense_lead','offense_member'].includes(role)&&(v.action==='register_vapt_finding'||(v.action==='transition_vapt_finding'&&v.next_status==='retest_submitted')||(role==='offense_lead'&&v.action==='register_vapt_engagement')))||(['governance_leader','governance_member'].includes(role)&&((v.action==='native_cti_grc_register'&&typeof v.record_kind==='string'&&['grc_engagement','grc_risk','grc_control'].includes(v.record_kind))||(v.action==='native_cti_grc_transition'&&['grc_engagement','grc_risk'].includes(String(v.record_kind))&&['in_progress','submitted'].includes(String(v.status))))),'Technical mutation denied',403);
   }else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(role),'Technical endpoint required',403);
+  if(v.action==='native_cti_grc_transition')return await nativeGrcTransition(a.identity,v);
   if(v.action==='native_cti_grc_register')return await nativeGrcWrite(a.identity,v);
   if(v.action==='register_vapt_finding'||v.action==='transition_vapt_finding'){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);

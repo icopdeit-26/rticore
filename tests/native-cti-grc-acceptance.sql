@@ -44,4 +44,15 @@ DO $test$ BEGIN
  UPDATE rticore_resource_allocations SET status='cancelled' WHERE id='governance-ci-allocation';
  IF rticore_native_cti_grc_actor('defendit360','p0-rehearsal-a','grc-ci-project','governance-ci@example.invalid') IS NOT NULL THEN RAISE EXCEPTION 'GOVERNANCE_REVOKE_FAILED'; END IF;
 END $test$;
+-- CTI and GRC records remain immutable; append reviewed lifecycle evidence.
+DO $life$
+DECLARE k text; rid text; project text; doc text; maker constant text:='grc-maker@example.invalid'; checker constant text:='grc-checker@example.invalid';
+BEGIN
+ FOR k,rid,project,doc IN SELECT * FROM (VALUES('cti_case','cti-case-ci','cti-ci-project','cti-ci-doc'),('grc_engagement','grc-eng-ci','grc-ci-project','grc-ci-doc'),('grc_risk','risk-ci','grc-ci-project','grc-ci-doc')) AS v(k,rid,project,doc) LOOP
+  INSERT INTO rticore_native_cti_grc_lifecycle(id,tenant_id,legal_entity_id,project_id,record_kind,record_id,version,status,actor_email,notes,document_id,document_sha256) VALUES(rid||'-1','defendit360','p0-rehearsal-a',project,k,rid,1,'in_progress',maker,'Synthetic lifecycle start',doc,repeat('c',64)),(rid||'-2','defendit360','p0-rehearsal-a',project,k,rid,2,'submitted',maker,'Synthetic lifecycle submission',doc,repeat('c',64));
+  BEGIN INSERT INTO rticore_native_cti_grc_lifecycle(id,tenant_id,legal_entity_id,project_id,record_kind,record_id,version,status,actor_email,notes,document_id,document_sha256) VALUES(rid||'-bad','defendit360','p0-rehearsal-a',project,k,rid,3,'reviewed',maker,'Synthetic self review denied',doc,repeat('c',64));RAISE EXCEPTION 'UNEXPECTED_SUCCESS';EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CTI_GRC_LIFECYCLE_REVIEW_INVALID' THEN RAISE;END IF;END;
+  INSERT INTO rticore_native_cti_grc_lifecycle(id,tenant_id,legal_entity_id,project_id,record_kind,record_id,version,status,actor_email,notes,document_id,document_sha256) VALUES(rid||'-3','defendit360','p0-rehearsal-a',project,k,rid,3,'reviewed',checker,'Synthetic independent review',doc,repeat('c',64)),(rid||'-4','defendit360','p0-rehearsal-a',project,k,rid,4,'closed',checker,'Synthetic closure review',doc,repeat('c',64));
+  BEGIN DELETE FROM rticore_native_cti_grc_lifecycle WHERE id=rid||'-4';RAISE EXCEPTION 'UNEXPECTED_SUCCESS';EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CTI_GRC_LIFECYCLE_IMMUTABLE' THEN RAISE;END IF;END;
+ END LOOP;
+END $life$;
 ROLLBACK;
