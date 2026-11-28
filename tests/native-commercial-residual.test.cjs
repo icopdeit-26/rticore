@@ -65,7 +65,9 @@ test('FlexGuard rejects ambiguous scope before database access and joins portal 
 
 test('native scheduler rejects privileged connection before mutation and rolls back expired lease before commit',async()=>{
  const source=fs.readFileSync('scripts/native-operations-worker.mjs','utf8');
- const code='(async()=>{'+source.replace(/^import .*;\r?\n/gm,'')+'})()';
+ const compiled=ts.transpileModule(source,{fileName:'native-operations-worker.mjs',reportDiagnostics:true,compilerOptions:{allowJs:true,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}});
+ assert.equal((compiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error).length,0);
+ const code='(async()=>{\n'+compiled.outputText+'\n})()';
  async function run({privileged=false,expired=false,failedFinish=false}={}){
   const queries=[],logs=[];let claim=0,closed=false,privilegeChecked=false;
   const process={env:{RTICORE_FG_MAINTENANCE_ENABLED:'1',RTICORE_FG_MAINTENANCE_DATABASE_URL:'postgresql://test:fixture@example.invalid/rticore?sslmode=verify-full',RTICORE_FG_MAINTENANCE_EXPECTED_DATABASE:'rticore',RTICORE_FG_MAINTENANCE_TENANT:'tenant-a',RTICORE_FG_MAINTENANCE_ENTITY:'entity-a',RTICORE_FG_MAINTENANCE_ACTOR:'worker@example.invalid',RTICORE_NATIVE_JOB_QUEUE_ENABLED:'1'}};
@@ -83,7 +85,7 @@ test('native scheduler rejects privileged connection before mutation and rolls b
     return {rows:[]};
    }
   }
-  let error;try{await vm.runInNewContext(code,{pg:{Client},URL,process,randomUUID:()=> '12345678-1234-1234-1234-123456789abc',console:{log:x=>logs.push(JSON.parse(x))},assertRuntimeLeastPrivilege:async()=>{privilegeChecked=true;if(privileged)throw Error('Runtime database privilege certification failed');}});}catch(e){error=e;}
+  let error;try{await vm.runInNewContext(code,{exports:{},URL,process,console:{log:x=>logs.push(JSON.parse(x))},require:n=>{if(n==='pg')return {Client};if(n==='node:crypto')return {randomUUID:()=> '12345678-1234-1234-1234-123456789abc'};if(n==='./hostinger-runtime-privileges.mjs')return {assertRuntimeLeastPrivilege:async()=>{privilegeChecked=true;if(privileged)throw Error('Runtime database privilege certification failed');}};throw Error('Unexpected worker import: '+n);}});}catch(e){error=e;}
   return {queries,logs,closed,privilegeChecked,error,exitCode:process.exitCode};
  }
  const denied=await run({privileged:true});assert.match(String(denied.error),/privilege certification failed/);assert.equal(denied.privilegeChecked,true);assert.equal(denied.closed,true);assert.ok(!denied.queries.some(x=>x.sql.includes('INSERT')));
