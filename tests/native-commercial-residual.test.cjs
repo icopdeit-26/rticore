@@ -26,3 +26,39 @@ test('FlexGuard related reads retain entity and wallet isolation; scheduler uses
  assert.match(fg,/e.legal_entity_id=l.legal_entity_id AND e.wallet_id=l.wallet_id AND e.lot_id=l.id/);assert.match(fg,/e.legal_entity_id=l.legal_entity_id AND e.id=l.finance_outbox_event_id/);
  assert.match(worker,/extract\(epoch from statement_timestamp\(\)\)/);assert.doesNotMatch(worker,/Date.now\(/);
 });
+
+
+function scopedRegister(name,{role='finance',failed=false}={}){
+ const source=fs.readFileSync('src/app/api/erp/'+name+'/route.ts','utf8'),exp={},queries=[];
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const db={prepare:sql=>({bind:(...args)=>{queries.push({sql,args});return {
+  first:async()=>sql.includes('AS can_make')?{can_make:true,can_approve:true}:sql.includes(' AS role')?{role}:sql.includes('SELECT w.id')?{id:'wallet-a'}:null,
+  all:async()=>({success:!failed,results:[]})
+ };}})};
+ vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:'hostinger',RTICORE_SERVICE_CATALOG_ENABLED:'1',RTICORE_FLEXGUARD_ENTERPRISE_ENABLED:'1'}},require:n=>{
+  if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>({ok:true,identity:{db,email:'review@example.invalid',role,rolePreview:false}})};
+  if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+  if(n==='@/lib/erp-core')return {erpAssert:(ok,m,status=422)=>{if(!ok)throw Object.assign(Error(m),{status});},erpId:x=>typeof x==='string'&&x.length>0,erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503})};
+  if(n==='@/lib/bounded-json'||n==='@/lib/service-operations'||n==='@/lib/business-iam-crypto'||n==='@/lib/enterprise-pricing-engine')return {};
+  throw Error(n);
+ }});
+ return {queries,get:q=>exp.GET({url:'https://example.invalid/api/erp/'+name+'?'+q})};
+}
+test('catalog rejects ambiguous scope, masks cost despite inconsistent role grant, and rejects failed reads',async()=>{
+ const f=scopedRegister('service-catalog');assert.equal((await f.get('legal_entity_id=a&legal_entity_id=b')).status,422);assert.equal(f.queries.length,0);
+ const sales=scopedRegister('service-catalog',{role:'sales'});const r=await sales.get('legal_entity_id=entity-a');
+ assert.equal(r.status,200);assert.equal(r.body.cost_basis_visible,false);assert.equal(r.body.can_make,false);assert.equal(r.body.can_approve,false);
+ assert.ok(!sales.queries.some(x=>x.sql.includes('rticore_catalog_pricing_snapshots')||x.sql.includes('internal_cost_rate_cents')));
+ const finance=scopedRegister('service-catalog');assert.equal((await finance.get('legal_entity_id=entity-a')).body.cost_basis_visible,true);
+ assert.equal((await scopedRegister('service-catalog',{failed:true}).get('')).status,503);
+ assert.equal((await scopedRegister('service-catalog',{failed:true}).get('legal_entity_id=entity-a')).status,503);
+});
+test('FlexGuard rejects ambiguous scope before database access and joins portal acceptance by full scope',async()=>{
+ for(const q of ['legal_entity_id=a&legal_entity_id=b','wallet_id=wallet-a','legal_entity_id=entity-a&portal_admin=1','legal_entity_id=entity-a&wallet_id=wallet-a&portal_admin=1&service_requests=1']){
+  const f=scopedRegister('flexguard-enterprise');assert.equal((await f.get(q)).status,422);assert.equal(f.queries.length,0);
+ }
+ const f=scopedRegister('flexguard-enterprise');const r=await f.get('legal_entity_id=entity-a&wallet_id=wallet-a&service_requests=1');
+ assert.equal(r.status,200);assert.match(f.queries.find(x=>x.sql.includes('SELECT w.id')).sql,/c.customer_id=w.customer_id/);
+ const sql=f.queries.find(x=>x.sql.includes('LEFT JOIN rticore_native_fg_portal_binding')).sql;assert.match(sql,/b.tenant_id=s.tenant_id AND b.legal_entity_id=s.legal_entity_id AND b.wallet_id=s.wallet_id/);
+ for(const q of ['', 'legal_entity_id=entity-a','legal_entity_id=entity-a&wallet_id=wallet-a','legal_entity_id=entity-a&wallet_id=wallet-a&service_requests=1','legal_entity_id=entity-a&wallet_id=wallet-a&portal_admin=1'])assert.equal((await scopedRegister('flexguard-enterprise',{failed:true}).get(q)).status,503);
+});
