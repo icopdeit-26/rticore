@@ -54,6 +54,11 @@ export async function nativeGrcWrite(a:BoQIdentity,v:Record<string,unknown>){
   else if(f.choices){erpAssert(typeof value==='string'&&f.choices.includes(value),'Pilihan '+f.name+' tidak valid');vals.push(value);}
   else {erpAssert(erpText(value,f.min??1,f.max??2000),'Data '+f.name+' tidak valid');vals.push(value.trim());}
  }
+ // Reject inaccessible parent CTI cases before reading evidence or attempting mutation.
+ if(k==='cti_ioc'){
+  const parent=await a.db.prepare("SELECT id FROM rticore_native_cti_case WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND (tlp<>'TLP:RED' OR lower(created_by)=?)").bind(TENANT,entity,v.project_id,String(v.case_id),a.email.toLowerCase()).first();
+  erpAssert(parent,'Akses CTI case ditolak',403);
+ }
  const doc=await supportingOriginal(a.db,v.document_id,opportunity).catch(e=>{if(e instanceof ServiceError)throw new ERPError(e.message,e.status);throw e;});const rid=crypto.randomUUID();
  const columns=['id','tenant_id','legal_entity_id','project_id',...fields[k].map(f=>f.name),'document_id','document_sha256','created_by'];
  const write=a.db.prepare('INSERT INTO rticore_native_'+k+'('+columns.join(',')+') VALUES('+columns.map(()=>'?').join(',')+')').bind(rid,TENANT,entity,v.project_id,...vals,v.document_id,doc.sha256.toLowerCase(),a.email);
