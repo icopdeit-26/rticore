@@ -37,7 +37,8 @@
         "0085_native_fg_portal_acceptance_binding.sql",
         "0086_native_technical_team_scope.sql",
         "0087_native_cti_grc_lifecycle.sql",
-        "0088_flexguard_expiry_recovery_evidence.sql"
+        "0088_flexguard_expiry_recovery_evidence.sql",
+        "0089_native_pricing_mandays_emergency.sql"
       ]
     },
     {

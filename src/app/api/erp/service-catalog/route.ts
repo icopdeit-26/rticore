@@ -60,7 +60,7 @@ export async function POST(req:Request){
     erpAssert(erpText(v.matrix_code,3,64)&&erpText(v.label,3,160)&&int(v.version,1,1000000)&&int(v.factor_bps,5000,40000),'Complexity tidak valid');
     data={matrix_code:v.matrix_code,label:v.label,version:v.version,factor_bps:v.factor_bps};
    }else if(v.action==='create_pricing_snapshot'){
-    erpAssert([v.service_id,v.profile_id,v.complexity_id,v.opportunity_id].every(erpId)&&int(v.quantity,1,1000)&&['target_margin','cost_plus'].includes(String(v.pricing_method))&&int(v.overhead_bps,0,6000)&&int(v.risk_bps,0,5000)&&int(v.target_bps,0,8500)&&int(v.minimum_margin_bps,0,8500),'Pricing snapshot tidak valid');
+    erpAssert([v.service_id,v.profile_id,v.complexity_id,v.opportunity_id].every(erpId)&&int(v.quantity,1,1000)&&['target_margin','cost_plus','mandays_based','emergency_service'].includes(String(v.pricing_method))&&int(v.overhead_bps,0,6000)&&int(v.risk_bps,0,5000)&&int(v.target_bps,0,8500)&&int(v.minimum_margin_bps,0,8500),'Pricing snapshot tidak valid');
     data=Object.fromEntries(['service_id','profile_id','complexity_id','opportunity_id','quantity','pricing_method','overhead_bps','risk_bps','target_bps','minimum_margin_bps'].map(k=>[k,v[k]]));
    }else{erpAssert(erpId(v.id)&&erpText(v.notes,12,1000),'Approval tidak valid');id=v.id;data={notes:v.notes};}
    const r=await a.identity.db.prepare('SELECT rticore_catalog_workflow_command(?,?,?,?,?,CAST(? AS jsonb)) AS result').bind(TENANT,v.legal_entity_id,a.identity.email,String(v.action),id,JSON.stringify(data)).first<{result:unknown}>();

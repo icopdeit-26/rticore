@@ -180,9 +180,9 @@ test('advisory pricing withholds incomplete registers and invalid or future serv
  const start=source.indexOf(' function preview(){'),end=source.indexOf(' const estimate=preview();',start);assert.ok(start>=0&&end>start);
  const run=vm.runInNewContext('(function(context){const {finance,canMake,tab,data,fields,today,approved}=context;'+ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return preview();})',{});
  const service={id:'svc',effective_date:'2026-01-01',min_mandays_tenths:5,max_mandays_tenths:100};
- const records={services:[service],activity_profiles:[{id:'profile',service_id:'svc',activities:[{resource_role:'analyst',resource_count:1,hours_hundredths:800,billable:true}]}],complexity_matrices:[{id:'matrix',factor_bps:10000}],rate_cards:[{role_code:'analyst',effective_date:'2026-01-01',version:1,internal_cost_rate_cents:10000,min_selling_rate_cents:15000}]};
+ const records={services:[service],activity_profiles:[{id:'profile',service_id:'svc',activities:[{resource_role:'analyst',resource_count:1,hours_hundredths:800,billable:true}]}],complexity_matrices:[{id:'matrix',factor_bps:10000}],rate_cards:[{role_code:'analyst',effective_date:'2026-01-01',version:1,internal_cost_rate_cents:10000,min_selling_rate_cents:15000,standard_selling_rate_cents:20000}]};
  const context={finance:true,canMake:true,tab:'pricing_snapshots',data:{},fields:{service_id:'svc',profile_id:'profile',complexity_id:'matrix'},today:'2026-11-28',approved:k=>records[k]};
- assert.ok(run(context)?.net>=15000);
+ assert.ok(run(context)?.net>=15000);assert.equal(run({...context,fields:{...context.fields,pricing_method:'mandays_based'}}).net,20000);assert.equal(run({...context,fields:{...context.fields,pricing_method:'emergency_service'}}).net,22117);
  for(const patch of [{data:{truncated:true}},{data:{workflow_truncated:true}},{fields:{...context.fields,quantity:''}},{fields:{...context.fields,quantity:false}}])assert.equal(run({...context,...patch}),null);
  service.effective_date='2027-01-01';assert.equal(run(context),null);
 });
