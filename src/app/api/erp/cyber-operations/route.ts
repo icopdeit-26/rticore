@@ -45,6 +45,18 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const findingProject=u.searchParams.get('finding_project_id');
+  if(findingProject!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native VAPT required',403);
+   erpAssert(erpId(findingProject),'Project ID wajib');
+   const entity=await erpProjectUnit(a.identity.db,findingProject);
+   const grant=await a.identity.db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,findingProject,a.identity.email).first<{role:string|null}>();
+   erpAssert(grant?.role===a.identity.role,'Akses VAPT ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT * FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,findingProject).all();
+   const engagements=await a.identity.db.prepare("SELECT id,engagement_code,title FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND status='roe_approved' ORDER BY created_at DESC LIMIT 200").bind(TENANT,entity,findingProject).all();
+   const events=await a.identity.db.prepare('SELECT finding_id,version,status,actor_email,notes,document_id,document_sha256,recorded_at FROM rticore_native_vapt_finding_event WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY recorded_at DESC LIMIT 501').bind(TENANT,entity,findingProject).all();
+   return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),engagements:engagements.results,events:events.results.slice(0,500),truncated:rows.results.length>200||events.results.length>500});
+  }
   const vaptProject=u.searchParams.get('vapt_project_id');
   if(vaptProject!==null){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native VAPT required',403);
@@ -90,6 +102,38 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  if(v.action==='register_vapt_finding'||v.action==='transition_vapt_finding'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
+   erpAssert(erpId(v.project_id)&&erpText(v.notes,12,800),'Project dan catatan wajib');
+   const project=v.project_id;const entity=await erpProjectUnit(db,project);
+   const grant=await db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,project,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses VAPT ditolak',403);
+   const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
+   erpAssert(p,'Project tidak ditemukan',404);
+   if(v.action==='register_vapt_finding'){
+    erpAssert(['admin','presales'].includes(role),'Maker VAPT wajib',403);
+    erpAssert(erpId(v.engagement_id)&&erpId(v.document_id)&&erpText(v.finding_code,3,64)&&erpText(v.title,5,200)&&erpText(v.affected_asset,3,250)&&erpText(v.remediation,12,2000)&&typeof v.cvss_tenths==='number'&&Number.isSafeInteger(v.cvss_tenths)&&v.cvss_tenths>=0&&v.cvss_tenths<=100,'Data finding tidak valid');
+    const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_vapt_finding(id,tenant_id,legal_entity_id,project_id,engagement_id,finding_code,title,cvss_tenths,affected_asset,remediation,evidence_document_id,evidence_sha256,created_by,last_actor,last_notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,project,v.engagement_id,v.finding_code.trim(),v.title.trim(),v.cvss_tenths,v.affected_asset.trim(),v.remediation.trim(),v.document_id,doc.sha256.toLowerCase(),email,email,v.notes.trim())],'cyber',id,'VAPT_FINDING_REGISTER',{engagement_id:v.engagement_id,document_id:v.document_id});
+    return erpReply({success:true,id,status:'open'},201);
+   }
+   erpAssert(erpId(v.id)&&typeof v.version==='number'&&Number.isSafeInteger(v.version)&&v.version>=1&&typeof v.next_status==='string'&&['qa_approved','qa_rejected','retest_requested','retest_submitted','verified_fixed','still_vulnerable'].includes(v.next_status),'Status atau versi tidak valid');
+   const next=v.next_status;
+   erpAssert(next==='retest_submitted'?['admin','presales'].includes(role):role==='approver','Maker-checker wajib',403);
+   const row=await db.prepare('SELECT evidence_document_id,retest_document_id FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND version=?').bind(TENANT,entity,project,v.id,v.version).first<{evidence_document_id:string;retest_document_id:string|null}>();
+   erpAssert(row,'Finding tidak ditemukan atau versi berubah',409);
+   let write;
+   if(next==='retest_submitted'){
+    erpAssert(erpId(v.document_id),'Bukti retest asli wajib');const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);
+    write=db.prepare('UPDATE rticore_native_vapt_finding SET status=?,version=version+1,last_actor=?,last_notes=?,retest_document_id=?,retest_sha256=?,retest_by=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?').bind(next,email,v.notes.trim(),v.document_id,doc.sha256.toLowerCase(),email,TENANT,entity,project,v.id);
+   }else{
+    const evidence=['verified_fixed','still_vulnerable'].includes(next)?row.retest_document_id:row.evidence_document_id;
+    erpAssert(evidence,'Bukti asli wajib');await supportingOriginal(db,evidence,p.opportunity_id);
+    write=db.prepare('UPDATE rticore_native_vapt_finding SET status=?,version=version+1,last_actor=?,last_notes=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?').bind(next,email,v.notes.trim(),TENANT,entity,project,v.id);
+   }
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND version=?)",[TENANT,entity,project,v.id,v.version],[write],'cyber',v.id,'VAPT_FINDING_TRANSITION',{next_status:next});
+   return erpReply({success:true,status:next});
+  }
   if(v.action==='register_vapt_engagement'||v.action==='review_vapt_roe'){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
    erpAssert(erpId(v.project_id),'Project ID wajib');

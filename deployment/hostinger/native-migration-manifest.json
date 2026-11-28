@@ -28,7 +28,8 @@
         "0076_flexguard_acknowledgement_guard.sql",
         "0077_native_dfir_custody.sql",
         "0078_native_soc_sla.sql",
-        "0079_native_vapt_engagement.sql"
+        "0079_native_vapt_engagement.sql",
+        "0080_native_vapt_findings.sql"
       ]
     },
     {

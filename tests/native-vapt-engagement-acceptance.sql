@@ -21,4 +21,22 @@ BEGIN
  DELETE FROM rticore_native_vapt_engagement WHERE id='vapt-eng-ci';
  RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'VAPT_ENGAGEMENT_IMMUTABLE' THEN RAISE; END IF; END;
 END $v$;
+-- Actual finding guard and append-only transition history.
+INSERT INTO rticore_document_library(id,tenant_id,opportunity_id,kind,version,file_name,media_type,byte_length,sha256,iv,chunk_count,created_by) VALUES('vapt-retest-ci-doc','defendit360','vapt-ci-opportunity','supporting',2,'synthetic-retest.pdf','application/pdf',1,repeat('d',64),repeat('a',16),1,'ci');
+INSERT INTO rticore_native_vapt_finding(id,tenant_id,legal_entity_id,project_id,engagement_id,finding_code,title,cvss_tenths,affected_asset,remediation,evidence_document_id,evidence_sha256,created_by,last_actor,last_notes)
+VALUES('vapt-finding-ci','defendit360','p0-rehearsal-a','vapt-ci-project','vapt-eng-ci','F-001','Synthetic finding',75,'Synthetic asset','Synthetic remediation guidance','vapt-ci-doc',repeat('c',64),'vapt-maker@example.invalid','vapt-maker@example.invalid','Synthetic finding record');
+DO $v$
+BEGIN
+ BEGIN
+ UPDATE rticore_native_vapt_finding SET status='qa_approved',version=2,last_actor='vapt-maker@example.invalid',last_notes='Synthetic self approval' WHERE id='vapt-finding-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'VAPT_QA_REVIEW_INVALID' THEN RAISE; END IF; END;
+ UPDATE rticore_native_vapt_finding SET status='qa_approved',version=2,last_actor='vapt-checker@example.invalid',last_notes='Synthetic independent QA' WHERE id='vapt-finding-ci';
+ UPDATE rticore_native_vapt_finding SET status='retest_requested',version=3,last_actor='vapt-checker@example.invalid',last_notes='Synthetic retest request' WHERE id='vapt-finding-ci';
+ UPDATE rticore_native_vapt_finding SET status='retest_submitted',version=4,last_actor='vapt-maker@example.invalid',last_notes='Synthetic retest submission',retest_document_id='vapt-retest-ci-doc',retest_sha256=repeat('d',64),retest_by='vapt-maker@example.invalid' WHERE id='vapt-finding-ci';
+ UPDATE rticore_native_vapt_finding SET status='verified_fixed',version=5,last_actor='vapt-checker@example.invalid',last_notes='Synthetic independent retest verification' WHERE id='vapt-finding-ci';
+ IF (SELECT count(*) FROM rticore_native_vapt_finding_event WHERE finding_id='vapt-finding-ci')<>5 THEN RAISE EXCEPTION 'VAPT_HISTORY_INVALID'; END IF;
+ BEGIN
+ DELETE FROM rticore_native_vapt_finding_event WHERE finding_id='vapt-finding-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'VAPT_FINDING_EVENT_IMMUTABLE' THEN RAISE; END IF; END;
+END $v$;
 ROLLBACK;
