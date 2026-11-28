@@ -54,6 +54,11 @@ export async function nativeGrcWrite(a:BoQIdentity,v:Record<string,unknown>){
   else if(f.choices){erpAssert(typeof value==='string'&&f.choices.includes(value),'Pilihan '+f.name+' tidak valid');vals.push(value);}
   else {erpAssert(erpText(value,f.min??1,f.max??2000),'Data '+f.name+' tidak valid');vals.push(value.trim());}
  }
+ // Check independent control testing before reading any Vault evidence; the SQL trigger repeats this under lock.
+ if(k==='grc_control_test'){
+  const parent=await a.db.prepare('SELECT created_by FROM rticore_native_grc_control WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?').bind(TENANT,entity,v.project_id,String(v.control_id)).first<{created_by:string}>();
+  erpAssert(parent&&parent.created_by.toLowerCase()!==a.email.toLowerCase(),'Pengujian kontrol independen diperlukan',403);
+ }
  // Reject inaccessible parent CTI cases before reading evidence or attempting mutation.
  if(k==='cti_ioc'){
   const parent=await a.db.prepare("SELECT id FROM rticore_native_cti_case WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND (tlp<>'TLP:RED' OR lower(created_by)=?)").bind(TENANT,entity,v.project_id,String(v.case_id),a.email.toLowerCase()).first();
@@ -72,6 +77,19 @@ export async function nativeGrcTransition(a:BoQIdentity,v:Record<string,unknown>
  const {entity,opportunity,cti}=await nativeGrcScope(a,v.project_id);
  erpAssert((v.record_kind==='cti_case')===cti,'Scope invalid',403);
  erpAssert(['reviewed','returned','closed'].includes(v.status)?a.role==='approver':['admin','presales','defense_leader','governance_leader','governance_member'].includes(a.role),'Maker-checker wajib',403);
+ // The record kind is allowlisted above. Deny foreign/missing records and TLP:RED before Vault access.
+ const table=v.record_kind==='cti_case'?'rticore_native_cti_case':v.record_kind==='grc_engagement'?'rticore_native_grc_engagement':'rticore_native_grc_risk';
+ const restricted=v.record_kind==='cti_case';
+ const parent=await a.db.prepare('SELECT created_by FROM '+table+' WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?'+(restricted?" AND (tlp<>'TLP:RED' OR lower(created_by)=?)":'')).bind(TENANT,entity,v.project_id,v.record_id,...(restricted?[a.email.toLowerCase()]:[])).first<{created_by:string}>();
+ erpAssert(parent,'Akses register lifecycle ditolak',403);
+ const reviewing=['reviewed','returned','closed'].includes(v.status);
+ erpAssert(!reviewing||parent.created_by.toLowerCase()!==a.email.toLowerCase(),'Maker tidak boleh melakukan review sendiri',403);
+ const prior=await a.db.prepare('SELECT status,version,actor_email FROM rticore_native_cti_grc_lifecycle WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND record_kind=? AND record_id=? ORDER BY version DESC LIMIT 1').bind(TENANT,entity,v.project_id,v.record_kind,v.record_id).first<{status:string;version:number;actor_email:string}>();
+ const previous=prior?.status??'open';
+ erpAssert(Number(prior?.version??0)===v.expected_version,'Versi lifecycle berubah; muat ulang register',409);
+ erpAssert(((previous==='open'||previous==='returned')&&v.status==='in_progress')||(previous==='in_progress'&&v.status==='submitted')||(previous==='submitted'&&['reviewed','returned'].includes(v.status))||(previous==='reviewed'&&v.status==='closed'),'Transisi lifecycle tidak valid',409);
+ erpAssert(!reviewing||previous!=='submitted'||prior?.actor_email.toLowerCase()!==a.email.toLowerCase(),'Reviewer harus berbeda dari submitter',403);
+ // SQL trigger remains authoritative for concurrent scope, evidence, version and transition checks.
  const doc=await supportingOriginal(a.db,v.document_id,opportunity).catch(e=>{if(e instanceof ServiceError)throw new ERPError(e.message,e.status);throw e;});
  const id=crypto.randomUUID();
  const write=a.db.prepare('INSERT INTO rticore_native_cti_grc_lifecycle(id,tenant_id,legal_entity_id,project_id,record_kind,record_id,version,status,actor_email,notes,document_id,document_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,v.project_id,v.record_kind,v.record_id,v.expected_version+1,v.status,a.email,v.notes.trim(),v.document_id,doc.sha256.toLowerCase());

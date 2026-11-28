@@ -117,3 +117,44 @@ test('executive management requires an explicit period and scoped Finance grant,
  for(const suffix of ['&period=2026-12','&view=commercial'])assert.equal((await fixture('executive-command',{row}).exp.GET({url:url+suffix})).status,422);
  assert.equal((await fixture('executive-command',{row:{...row,approved_minutes:'1',billable_minutes:'2'}}).exp.GET({url})).status,503);
 });
+
+test('native CTI/GRC rejects foreign lifecycle, self-review and stale transitions before Vault access',async()=>{
+ const source=fs.readFileSync('src/lib/native-cti-grc.ts','utf8'),exp={};
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ function runFixture({role='approver',cti=false,parent={created_by:'maker@example.invalid'},prior={status:'submitted',version:2,actor_email:'submitter@example.invalid'},grant=true}={}){
+  const exports={},queries=[];let evidenceReads=0,mutations=0;
+  const db={prepare:sql=>({bind:(...args)=>{queries.push({sql,args});return {first:async()=>{
+   if(sql.includes('rticore_native_cti_grc_actor'))return {role:grant?role:null};
+   if(sql.includes('FROM rticore_delivery_projects'))return {opportunity_id:'opp-a',service_family:cti?'CTI':'GRC'};
+   if(sql.startsWith('SELECT created_by FROM'))return parent;
+   if(sql.startsWith('SELECT status,version,actor_email'))return prior;
+   throw Error('Unexpected read '+sql);
+  }};}})};
+  class ERPError extends Error{constructor(message,status=422){super(message);this.status=status;}}
+  vm.runInNewContext(code,{exports,process:{env:{RTICORE_RUNTIME:'hostinger'}},crypto:{randomUUID:()=> 'fixture-id'},require:n=>{
+   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+   if(n==='@/lib/erp-core')return {ERPError,erpAssert:(ok,m,status=422)=>{if(!ok)throw new ERPError(m,status);},erpId:x=>typeof x==='string'&&x.length>0,erpText:(x,min,max)=>typeof x==='string'&&x.trim().length>=min&&x.length<=max,erpProjectUnit:async()=> 'entity-a',erpReply:(body,status)=>({body,status}),erpAtom:async()=>{mutations++;}};
+   if(n==='@/lib/service-operations')return {ServiceError:class extends Error{},supportingOriginal:async()=>{evidenceReads++;return {sha256:'a'.repeat(64)};}};
+   throw Error(n);
+  }});
+  const identity={db,email:'review@example.invalid',role,rolePreview:false};
+  return {queries,transition:v=>exports.nativeGrcTransition(identity,v),write:v=>exports.nativeGrcWrite(identity,v),counts:()=>({evidenceReads,mutations})};
+ }
+ const payload={project_id:'project-a',record_kind:'grc_risk',record_id:'risk-a',status:'reviewed',expected_version:2,document_id:'doc-a',notes:'Independent review notes'};
+ for(const [opts,patch,status] of [
+  [{parent:null},{},403],
+  [{parent:{created_by:'REVIEW@example.invalid'}},{},403],
+  [{prior:{status:'submitted',version:2,actor_email:'REVIEW@example.invalid'}},{},403],
+  [{},{expected_version:1},409],
+  [{prior:{status:'in_progress',version:2,actor_email:'maker@example.invalid'}},{},409],
+  [{grant:false},{},403],
+  [{cti:true,parent:null},{record_kind:'cti_case'},403]
+ ]){
+  const f=runFixture(opts);await assert.rejects(()=>f.transition({...payload,...patch}),e=>e.status===status);assert.deepEqual(f.counts(),{evidenceReads:0,mutations:0});
+  if(opts.cti){const q=f.queries.find(x=>x.sql.startsWith('SELECT created_by FROM'));assert.match(q.sql,/tlp<>'TLP:RED'/);assert.deepEqual(q.args,['defendit360','entity-a','project-a','risk-a','review@example.invalid']);}
+ }
+ const ok=runFixture();assert.equal((await ok.transition(payload)).status,201);assert.deepEqual(ok.counts(),{evidenceReads:1,mutations:1});
+ const control={project_id:'project-a',record_kind:'grc_control_test',control_id:'control-a',test_type:'design',assessment_status:'effective',test_notes:'Independent control review',document_id:'doc-a'};
+ for(const parent of [null,{created_by:'REVIEW@example.invalid'}]){const f=runFixture({parent});await assert.rejects(()=>f.write(control),e=>e.status===403);assert.deepEqual(f.counts(),{evidenceReads:0,mutations:0});}
+ const independent=runFixture();assert.equal((await independent.write(control)).status,201);assert.deepEqual(independent.counts(),{evidenceReads:1,mutations:1});
+});
