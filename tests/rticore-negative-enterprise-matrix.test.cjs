@@ -27,13 +27,15 @@ const actionRoles={
  approve:['admin','approver'],
  manage_members:['admin']
 };
-test('canonical baseline: all identities, 44 unique navigable pages and 13 business groups',()=>{
+test('canonical baseline: all identities, 45 unique navigable pages and 13 business groups',()=>{
  assert.deepEqual([...roles].sort(),[...roleSet].sort());
  // 41 = previous 40 + Admin-only "Model Scoping & Harga" (/settings/scoping-model).
  // 42 = + "Platform Diagnostics" (/platform/diagnostics, group 13) for Admin and IT Developer Team (0051).
  // 43 = approved Service Catalog & Pricing workspace, Finance/Approver only.
  // 44 = native read-only Operations Center, Finance/Approver/Admin only.
- assert.equal(items.length,44);
+ // 45 = native project registers for allocated Offense/Governance teams only.
+ assert.equal(items.length,45);
+ assert.deepEqual(items.find(x=>x.href==='/erp/technical-registers')?.roles,['offense_lead','offense_member','governance_leader','governance_member']);
  assert.deepEqual(items.find(x=>x.href==='/erp/operations-center')?.roles,['admin','finance','approver']);
  assert.deepEqual(items.find(x=>x.href==='/erp/service-catalog')?.roles,['finance','approver']);
  assert.deepEqual(items.find(x=>x.href==='/settings/scoping-model')?.roles,['admin']);
