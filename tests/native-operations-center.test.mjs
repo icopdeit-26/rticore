@@ -56,3 +56,33 @@ test('native executive aggregate denies unauthorized scope, preview and malforme
  const ok=await run();assert.equal(ok.r.status,200);assert.equal(ok.r.body.metrics.queued,240);assert.equal(ok.r.body.read_only,true);assert.equal(ok.r.body.automatic_posting,false);
  assert.equal(ok.calls.length,1);assert.match(ok.calls[0],/rticore_fg_actor_role/);assert.match(ok.calls[0],/j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id/);assert.doesNotMatch(ok.calls[0],/\b(UPDATE|DELETE|INSERT)\b/);
 });
+
+
+test('native operations denies duplicate entity and failed register reads; recovery requires configured origin',async()=>{
+ const source=readFileSync('src/app/api/erp/operations-jobs/route.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const origin='https://rticore.example.invalid';
+ function fixture({failedRead=-1,role='finance',preview=false,grant='finance',configuredOrigin=origin}={}){
+  const exp={},calls=[];let read=0;
+  const db={prepare:sql=>({bind:(...args)=>{calls.push({sql,args});return {
+   first:async()=>sql.includes('rticore_fg_actor_role')?{role:grant}:{result:{status:'pending'}},
+   all:async()=>({success:read++!==failedRead,results:[]})
+  };}})};
+  const erpAssert=(ok,message,status=422)=>{if(!ok)throw Object.assign(Error(message),{status});};
+  vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:'hostinger',RTICORE_PUBLIC_ORIGIN:configuredOrigin}},require:n=>{
+   if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>({ok:true,identity:{db,email:'review@example.invalid',role,rolePreview:preview}})};
+   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+   if(n==='@/lib/bounded-json')return {readBoundedJSON:async()=>({legal_entity_id:'entity-a',job_id:'job-a',action:'request',notes:'Recovery review reason'})};
+   if(n==='@/lib/erp-core')return {erpAssert,erpId:x=>typeof x==='string'&&x.length>0,erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503}),erpOrigin:req=>erpAssert(!req.headers.get('origin')||req.headers.get('origin')===new URL(req.url).origin,'Origin denied',403),erpText:x=>typeof x==='string'&&x.length>=12};
+   throw Error(n);
+  }});
+  return {exp,calls,get:(query='legal_entity_id=entity-a')=>exp.GET({url:origin+'/api/erp/operations-jobs?'+query}),post:value=>exp.POST({url:origin+'/api/erp/operations-jobs',headers:{get:()=>value}})};
+ }
+ const ambiguous=fixture();assert.equal((await ambiguous.get('legal_entity_id=entity-a&legal_entity_id=entity-b')).status,422);assert.equal(ambiguous.calls.length,0);
+ for(const failedRead of [0,1,2])assert.equal((await fixture({failedRead}).get()).status,503);
+ const denied=fixture({grant:null});assert.equal((await denied.get()).status,403);assert.equal(denied.calls.length,1);
+ const valid=fixture();assert.equal((await valid.get()).status,200);assert.match(valid.calls[1].sql,/b\.legal_entity_id=a\.legal_entity_id/);
+ for(const value of [null,'https://other.example.invalid']){const f=fixture();assert.equal((await f.post(value)).status,403);assert.equal(f.calls.length,0);}
+ const noConfig=fixture({configuredOrigin:''});assert.equal((await noConfig.post(origin)).status,403);assert.equal(noConfig.calls.length,0);
+ const authorized=fixture();const res=await authorized.post(origin);assert.equal(res.status,201);assert.equal(res.body.automatic_posting,false);assert.match(authorized.calls[0].sql,/rticore_native_recovery_command/);
+});
