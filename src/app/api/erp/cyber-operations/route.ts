@@ -30,10 +30,11 @@ async function board(a:Parameters<typeof defenseProjects>[0]&{role:string}){
  const mine=await a.db.prepare(`SELECT ${CASE_COLS} ${CASE_FROM} WHERE c.tenant_id=? AND c.project_id IN (${marks}) AND c.status='open' AND lower(x.assignee_email)=? ORDER BY c.created_at DESC LIMIT 250`).bind(TENANT,...ids,a.email.toLowerCase()).all();
  const team=a.role==='defense_leader'||a.role==='admin'
   ?await a.db.prepare(`SELECT ${CASE_COLS} ${CASE_FROM} WHERE c.tenant_id=? AND c.project_id IN (${marks}) AND (c.status IN ('open','reviewed')) ORDER BY CASE c.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,c.created_at LIMIT 250`).bind(TENANT,...ids).all()
-  :{results:[]};
+  :{results:[],success:true};
  const analysts=a.role==='defense_leader'||a.role==='admin'
   ?await a.db.prepare("SELECT email,role FROM rticore_members WHERE active=1 AND role IN ('defense_leader','defense_member') ORDER BY CASE role WHEN 'defense_member' THEN 0 ELSE 1 END,email LIMIT 200").all()
-  :{results:[]};
+  :{results:[],success:true};
+ erpAssert(mine.success&&team.success&&analysts.success,'Board SOC tidak tersedia',503);
  return {success:true,role:a.role,projects,my_queue:mine.results,team_queue:team.results,analysts:analysts.results};
 }
 async function loadCase(db:Parameters<typeof supportingOriginal>[0],id:string){
@@ -47,6 +48,8 @@ export async function GET(req:Request){
  try{
   const u=new URL(req.url);
   const technical=u.pathname==='/api/erp/technical-registers';
+  const selectors=['grc_project_id','finding_project_id','vapt_project_id','sla_project_id','custody_case_id','board','project_id'];
+  erpAssert(selectors.reduce((n,k)=>n+u.searchParams.getAll(k).length,0)===1,'Satu scope Cyber Operations wajib');
   if(technical){const role=a.identity.role;const keys=[...u.searchParams.keys()];erpAssert(keys.length===1&&((['offense_lead','offense_member'].includes(role)&&['vapt_project_id','finding_project_id'].includes(keys[0]))||(['governance_leader','governance_member'].includes(role)&&keys[0]==='grc_project_id')),'Technical scope denied',403);}
   else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(a.identity.role),'Technical endpoint required',403);
   const grcProject=u.searchParams.get('grc_project_id');
@@ -61,6 +64,7 @@ export async function GET(req:Request){
    const rows=await a.identity.db.prepare('SELECT * FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,findingProject).all();
    const engagements=await a.identity.db.prepare("SELECT id,engagement_code,title FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND status='roe_approved' ORDER BY created_at DESC LIMIT 200").bind(TENANT,entity,findingProject).all();
    const events=await a.identity.db.prepare('SELECT finding_id,version,status,actor_email,notes,document_id,document_sha256,recorded_at FROM rticore_native_vapt_finding_event WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY recorded_at DESC LIMIT 501').bind(TENANT,entity,findingProject).all();
+   erpAssert(rows.success&&engagements.success&&events.success,'Register VAPT finding tidak tersedia',503);
    return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),engagements:engagements.results,events:events.results.slice(0,500),truncated:rows.results.length>200||events.results.length>500});
   }
   const vaptProject=u.searchParams.get('vapt_project_id');
@@ -71,6 +75,7 @@ export async function GET(req:Request){
    const grant=await a.identity.db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,vaptProject,a.identity.email).first<{role:string|null}>();
    erpAssert(grant?.role===a.identity.role,'Akses VAPT ditolak',403);
    const rows=await a.identity.db.prepare('SELECT * FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,vaptProject).all();
+   erpAssert(rows.success,'Register cyber tidak tersedia',503);
    return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),truncated:rows.results.length>200});
   }
   const slaProject=u.searchParams.get('sla_project_id');
@@ -81,6 +86,7 @@ export async function GET(req:Request){
    const grant=await a.identity.db.prepare('SELECT rticore_native_soc_actor(?,?,?,?) AS role').bind(TENANT,entity,slaProject,a.identity.email).first<{role:string|null}>();
    erpAssert(grant?.role===a.identity.role,'Akses SOC SLA ditolak',403);
    const rows=await a.identity.db.prepare('SELECT *,round(within_sla::numeric*10000/observations)::integer AS sla_compliance_bps FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY period_code DESC,created_at DESC LIMIT 201').bind(TENANT,entity,slaProject).all();
+   erpAssert(rows.success,'Register cyber tidak tersedia',503);
    return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),truncated:rows.results.length>200,financial_posting:false});
   }
   const custodyCase=u.searchParams.get('custody_case_id');
@@ -92,6 +98,7 @@ export async function GET(req:Request){
    const permitted=await a.identity.db.prepare('SELECT rticore_native_dfir_actor(?,?,?,?) AS allowed').bind(TENANT,entity,c.id,a.identity.email).first<{allowed:boolean}>();
    erpAssert(permitted?.allowed===true,'Akses custody ditolak',403);
    const rows=await a.identity.db.prepare('SELECT evidence_tag,seq,document_id,sha256,action,actor_email,custodian_email,notes,recorded_at FROM rticore_native_dfir_custody WHERE tenant_id=? AND legal_entity_id=? AND case_id=? ORDER BY evidence_tag,seq LIMIT 501').bind(TENANT,entity,c.id).all();
+   erpAssert(rows.success,'Register custody tidak tersedia',503);
    return erpReply({success:true,entries:rows.results.slice(0,500),truncated:rows.results.length>500});
   }
   if(u.searchParams.get('board')==='1'){
@@ -101,6 +108,7 @@ export async function GET(req:Request){
   const id=u.searchParams.get('project_id');erpAssert(erpId(id),'Project ID wajib');
   const unit=await erpProjectUnit(a.identity.db,id);await erpGrant(a.identity,'cyber_ops',unit);
   const rows=await a.identity.db.prepare(`SELECT ${CASE_COLS} ${CASE_FROM} WHERE c.tenant_id=? AND c.project_id=? ORDER BY c.created_at DESC LIMIT 250`).bind(TENANT,id).all();
+  erpAssert(rows.success,'Register case tidak tersedia',503);
   return erpReply({success:true,cases:rows.results,warning:'Metadata workflow only; not a SIEM/EDR/scanner'});
  }catch(e){return erpError(e);}
 }

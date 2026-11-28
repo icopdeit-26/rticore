@@ -86,3 +86,42 @@ test('native operations denies duplicate entity and failed register reads; recov
  const noConfig=fixture({configuredOrigin:''});assert.equal((await noConfig.post(origin)).status,403);assert.equal(noConfig.calls.length,0);
  const authorized=fixture();const res=await authorized.post(origin);assert.equal(res.status,201);assert.equal(res.body.automatic_posting,false);assert.match(authorized.calls[0].sql,/rticore_native_recovery_command/);
 });
+
+test('native backup evidence rejects ambiguous entity, failed reads and invalid calendar timestamps',async()=>{
+ const source=readFileSync('src/app/api/erp/backup-drills/route.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const origin='https://example.invalid';
+ function fixture({failed=false,body={}}={}){
+  const exp={},calls=[];
+  const db={prepare:sql=>({bind:(...args)=>{calls.push({sql,args});return {first:async()=>sql.includes('AS role')?{role:'admin'}:{id:'drill-a',status:'pending'},all:async()=>({success:!failed,results:[]})};}})};
+  const erpAssert=(ok,m,status=422)=>{if(!ok)throw Object.assign(Error(m),{status});};
+  vm.runInNewContext(code,{exports:exp,URL,crypto:{randomUUID:()=> 'drill-a'},process:{env:{RTICORE_RUNTIME:'hostinger'}},require:n=>{
+   if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>({ok:true,identity:{db,email:'maker@example.invalid',role:'admin',rolePreview:false}})};
+   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+   if(n==='@/lib/bounded-json')return {readBoundedJSON:async()=>body};
+   if(n==='@/lib/erp-core')return {erpAssert,erpId:x=>typeof x==='string'&&x.length>0,erpText:x=>typeof x==='string'&&x.length>=12,erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503}),erpOrigin:()=>{}};
+   throw Error(n);
+  }});
+  return {calls,get:q=>exp.GET({url:origin+'/api/erp/backup-drills?'+q}),post:()=>exp.POST({url:origin+'/api/erp/backup-drills'})};
+ }
+ const f=fixture();assert.equal((await f.get('legal_entity_id=a&legal_entity_id=b')).status,422);assert.equal(f.calls.length,0);
+ assert.equal((await fixture({failed:true}).get('legal_entity_id=a')).status,503);
+ const body={action:'record',legal_entity_id:'entity-a',environment:'staging',source_sha:'a'.repeat(40),evidence_sha256:'b'.repeat(64),backup_sha256:'c'.repeat(64),backup_at:'2026-02-28T00:00:00Z',restore_completed_at:'2026-02-28T00:01:00.000Z',notes:'Real evidence reference required',backup_bytes:100,compared_tables:1,rto_seconds:60,rpo_seconds:0,rto_target_seconds:120,rpo_target_seconds:60,row_match:true,privileges_verified:true,isolated_restore:true};
+ for(const changes of [{backup_at:'2026-02-30T00:00:00Z'},{backup_at:'2026-03-01T00:00:00Z'},{restore_completed_at:'2026-02-28T24:00:00Z'}]){
+  const bad=fixture({body:{...body,...changes}});assert.equal((await bad.post()).status,422);assert.ok(!bad.calls.some(x=>x.sql.includes('INSERT')));
+ }
+ const ok=await fixture({body}).post();assert.equal(ok.status,201);assert.equal(ok.body.production_certification,false);
+});
+test('Cyber Operations rejects multiple scopes before querying any register',async()=>{
+ const source=readFileSync('src/app/api/erp/cyber-operations/route.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const exp={},calls=[];
+ const erpAssert=(ok,m,status=422)=>{if(!ok)throw Object.assign(Error(m),{status});};
+ vm.runInNewContext(code,{exports:exp,URL,require:n=>{
+  if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>({ok:true,identity:{role:'admin',db:{prepare:()=>{calls.push('query');throw Error('unexpected query');}}}})};
+  if(n==='@/lib/erp-core')return {erpAssert,erpError:e=>({status:e.status||503})};
+  return {};
+ }});
+ for(const query of ['','project_id=a&project_id=b','board=1&finding_project_id=a','grc_project_id=a&sla_project_id=b'])assert.equal((await exp.GET({url:'https://example.invalid/api/erp/cyber-operations?'+query})).status,422);
+ assert.equal(calls.length,0);
+});
