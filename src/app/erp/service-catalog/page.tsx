@@ -24,7 +24,7 @@ export default function ServiceCatalogPage(){
  const records=rows(tab);const finance=data.cost_basis_visible===true;const canMake=data.can_make===true;const canApprove=data.can_approve===true;
  const approved=(key:string,status='status')=>rows(key).filter(r=>r[status]==='approved');
  const val=(k:string,def:unknown='')=>s(fields[k]??def);
- const update=(k:string,v:unknown)=>setFields(f=>({...f,[k]:v}));
+ const update=(k:string,v:unknown)=>setFields(f=>({...f,[k]:v,...(k==='service_id'&&tab==='pricing_snapshots'?{profile_id:''}:{})}));
  async function get(q:string,signal:AbortSignal){const res=await fetch('/api/erp/service-catalog'+q,{cache:'no-store',credentials:'same-origin',signal});const d=await res.json();if(!res.ok||!d.success)throw Error(d.message||'Service Catalog tidak tersedia');return d;}
  useEffect(()=>{const a=new AbortController();setLoading(true);void get('',a.signal).then(d=>{if(!a.signal.aborted){setEntities(d.entities||[]);setEntity(s(d.entities?.[0]?.id));if(!d.entities?.length)setError('Tidak ada legal entity yang disetujui.');}}).catch(e=>{if(!a.signal.aborted)setError(s(e.message));}).finally(()=>{if(!a.signal.aborted)setLoading(false);});return()=>a.abort();},[]);
  useEffect(()=>{setData({});setApprovalId('');if(!entity)return;const a=new AbortController();setLoading(true);setError('');void get('?legal_entity_id='+encodeURIComponent(entity),a.signal).then(d=>{if(!a.signal.aborted)setData(d);}).catch(e=>{if(!a.signal.aborted)setError(s(e.message));}).finally(()=>{if(!a.signal.aborted)setLoading(false);});return()=>a.abort();},[entity,refresh]);
