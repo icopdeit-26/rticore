@@ -98,3 +98,21 @@ test('native scheduler rejects privileged connection before mutation and rolls b
   assert.match(result.queries.find(x=>x.sql.includes('rticore_native_job_finish')&&x.sql.includes('true)')).sql,/lease_until>clock_timestamp\(\)/);
  }
 });
+
+test('executive management requires an explicit period and scoped Finance grant, preserves signed profit',async()=>{
+ const keys=['opportunities','won','open_pipeline_idr','certified_projects','certified_revenue_cents','certified_profit_cents','approved_minutes','billable_minutes','available_credits','reserved_credits','consumed_credits','expired_credits','opex_budget_records','opex_budget_cents','opex_actual_cents','high_open_grc_risks'];
+ const row=Object.fromEntries(keys.map(k=>[k,'0']));row.certified_profit_cents='-100';row.certified_projects='1';
+ const f=fixture('executive-command',{row});
+ const url='https://example.invalid/api/erp/executive-command?legal_entity_id=entity-a&view=management&period=2026-11';
+ const result=await f.exp.GET({url});assert.equal(result.status,200);assert.equal(result.body.management_metrics.certified_profit_cents,-100);assert.equal(result.body.automatic_posting,false);
+ assert.match(f.queries[0].sql,/a.business_unit_id IS NULL AND a.department_id IS NULL/);
+ assert.match(f.queries[0].sql,/certification_status='certified_closed'/);
+ assert.match(f.queries[0].sql,/t.billable=1/);
+ assert.doesNotMatch(f.queries[0].sql,/TLP:RED|rticore_native_cti_case|INSERT INTO|UPDATE /);
+ assert.deepEqual(f.queries[0].args,['defendit360','entity-a','review@example.invalid','finance','review@example.invalid','2026-11']);
+ assert.equal((await fixture('executive-command').exp.GET({url})).status,403);
+ assert.equal((await fixture('executive-command',{role:'sales',row}).exp.GET({url})).status,403);
+ assert.equal((await fixture('executive-command',{preview:true,row}).exp.GET({url})).status,403);
+ for(const suffix of ['&period=2026-12','&view=commercial'])assert.equal((await fixture('executive-command',{row}).exp.GET({url:url+suffix})).status,422);
+ assert.equal((await fixture('executive-command',{row:{...row,approved_minutes:'1',billable_minutes:'2'}}).exp.GET({url})).status,503);
+});
