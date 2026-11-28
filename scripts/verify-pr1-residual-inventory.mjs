@@ -26,6 +26,9 @@ const counterparts={
  'src/app/erp/executive-command/page.tsx':['src/app/erp/operations-center/page.tsx','src/app/erp/operations-center/ExecutiveSummary.tsx','src/app/api/erp/executive-command/route.ts'],
  'src/app/erp/pricing-simulator/page.tsx':['src/app/erp/service-catalog/page.tsx','src/app/erp/service-catalog/PricingEvidence.tsx','src/app/api/erp/pricing-engine/route.ts'],
  'scripts/hostinger-job-engine.mjs':['scripts/native-operations-worker.mjs'],
+ 'scripts/hostinger-worker-telemetry.mjs':['src/app/api/erp/executive-command/route.ts','src/app/erp/operations-center/ExecutiveSummary.tsx','scripts/native-operations-worker.mjs'],
+ 'scripts/hostinger-sales-alerts.mjs':['automation/sales-cron/native-postgres.mjs','scripts/run-native-sales-cron.mjs','tests/native-sales-cron.test.mjs'],
+ 'scripts/hostinger-backup-restore-drill.mjs':['scripts/ci-native-migration-rehearsal.sh','src/app/api/erp/backup-drills/route.ts','src/app/erp/operations-center/BackupDrills.tsx'],
 };
 for(const [source,targets] of Object.entries(counterparts)){
  assert.ok(m.files.some(f=>f.path===source),'Unknown mapped source: '+source);

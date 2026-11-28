@@ -39,7 +39,7 @@ import vm from 'node:vm';
 test('native executive aggregate denies unauthorized scope, preview and malformed rows; never fabricates zero',async()=>{
  const source=readFileSync('src/app/api/erp/executive-command/route.ts','utf8');
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
- const row={legal_entity_id:'entity-a',queued:'240',running:'3',succeeded:'900',dead_letter:'2',pending_recovery:'1'};
+ const row={legal_entity_id:'entity-a',queued:'240',running:'3',succeeded:'900',dead_letter:'2',pending_recovery:'1',due_queued:'220',expired_lease:'2'};
  async function run({role='finance',preview=false,runtime='hostinger',authenticated=true,result=row,entity='entity-a'}={}){
   const exp={},calls=[];
   const db={prepare:sql=>{calls.push(sql);return {bind:(...args)=>{assert.deepEqual(args,['defendit360',entity,'a@example.invalid',role]);return {first:async()=>result};}};}};
@@ -52,8 +52,8 @@ test('native executive aggregate denies unauthorized scope, preview and malforme
   }});
   return {r:await exp.GET({url:'https://example.invalid/api/erp/executive-command?legal_entity_id='+entity}),calls};
  }
- for(const [opts,status] of [[{authenticated:false},401],[{role:'sales'},403],[{preview:true},403],[{runtime:'local'},503],[{result:null},403],[{result:{...row,queued:'bad'}},503]])assert.equal((await run(opts)).r.status,status);
- const ok=await run();assert.equal(ok.r.status,200);assert.equal(ok.r.body.metrics.queued,240);assert.equal(ok.r.body.read_only,true);assert.equal(ok.r.body.automatic_posting,false);
+ for(const [opts,status] of [[{authenticated:false},401],[{role:'sales'},403],[{preview:true},403],[{runtime:'local'},503],[{result:null},403],[{result:{...row,queued:'bad'}},503],[{result:{...row,due_queued:'241'}},503],[{result:{...row,expired_lease:'4'}},503],[{result:{...row,expired_lease:undefined}},503]])assert.equal((await run(opts)).r.status,status);
+ const ok=await run();assert.equal(ok.r.status,200);assert.equal(ok.r.body.metrics.queued,240);assert.equal(ok.r.body.metrics.due_queued,220);assert.equal(ok.r.body.metrics.expired_lease,2);assert.match(ok.calls[0],/j\.due_at<=statement_timestamp\(\)/);assert.match(ok.calls[0],/j\.lease_until<=statement_timestamp\(\)/);assert.equal(ok.r.body.read_only,true);assert.equal(ok.r.body.automatic_posting,false);
  assert.equal(ok.calls.length,1);assert.match(ok.calls[0],/rticore_fg_actor_role/);assert.match(ok.calls[0],/j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id/);assert.doesNotMatch(ok.calls[0],/\b(UPDATE|DELETE|INSERT)\b/);
 });
 

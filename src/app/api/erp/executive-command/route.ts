@@ -65,14 +65,17 @@ export async function GET(req:Request){
   (SELECT count(*)::text FROM rticore_native_jobs j WHERE j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id AND j.status='running') AS running,
   (SELECT count(*)::text FROM rticore_native_jobs j WHERE j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id AND j.status='succeeded') AS succeeded,
   (SELECT count(*)::text FROM rticore_native_jobs j WHERE j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id AND j.status='dead_letter') AS dead_letter,
+  (SELECT count(*)::text FROM rticore_native_jobs j WHERE j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id AND j.status='queued' AND j.due_at<=statement_timestamp()) AS due_queued,
+  (SELECT count(*)::text FROM rticore_native_jobs j WHERE j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id AND j.status='running' AND j.lease_until<=statement_timestamp()) AS expired_lease,
   (SELECT count(*)::text FROM rticore_native_job_recovery r WHERE r.tenant_id=s.tenant_id AND r.legal_entity_id=s.id AND r.status='pending') AS pending_recovery
   FROM scope s`).bind(TENANT,entity,email,role).first<Record<string,unknown>>();
   erpAssert(row,'Legal entity di luar scope',403);
   const metrics:Record<string,number>={};
-  for(const k of ['queued','running','succeeded','dead_letter','pending_recovery']){
+  for(const k of ['queued','running','succeeded','dead_letter','pending_recovery','due_queued','expired_lease']){
    const v=row[k];erpAssert((typeof v==='string'&&/^\d+$/.test(v))||typeof v==='number','Invalid aggregate',503);
    const n=Number(v);erpAssert(Number.isSafeInteger(n)&&n>=0,'Invalid aggregate',503);metrics[k]=n;
   }
+  erpAssert(metrics.due_queued<=metrics.queued&&metrics.expired_lease<=metrics.running,'Invalid queue aggregate',503);
   // Opt-in management view preserves the existing operations-only contract.
   if(params.get('view')==='commercial'){
    erpAssert(params.getAll('view').length===1,'View ambigu');

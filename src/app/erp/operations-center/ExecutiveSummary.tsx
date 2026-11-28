@@ -17,7 +17,7 @@ function ManagementSummary({entity}:{entity:string}){
  <h4 className="font-semibold">OPEX — {requested}</h4><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{cell('Approved budget',data.opex_budget_records?idr(data.opex_budget_cents/100):'No approved budget')}{cell('Actual realized',data.opex_budget_records?idr(data.opex_actual_cents/100):'No approved budget')}{cell('Budget less actual',data.opex_budget_records?idr((data.opex_budget_cents-data.opex_actual_cents)/100):'No approved budget')}{cell('OPEX absorption',data.opex_budget_records&&data.opex_budget_cents>0?(100*data.opex_actual_cents/data.opex_budget_cents).toFixed(1)+'%':'Not applicable')}</div>
  <h4 className="font-semibold">Risk — current</h4>{cell('Open high residual GRC risks',data.high_open_grc_risks)}</div>}</section>;
 }
-const keys=['queued','running','succeeded','dead_letter','pending_recovery'] as const;
+const keys=['queued','running','succeeded','dead_letter','pending_recovery','due_queued','expired_lease'] as const;
 export default function ExecutiveSummary({entity}:{entity:string}){
  const [metrics,setMetrics]=useState<Record<string,number>|null>(null),[error,setError]=useState('');
  useEffect(()=>{
@@ -31,8 +31,8 @@ export default function ExecutiveSummary({entity}:{entity:string}){
   return()=>c.abort();
  },[entity]);
  return <section className="space-y-2 rounded-lg border p-4"><h2 className="font-semibold">Executive Command — Native Operations</h2>
- <p className="text-sm">Jumlah keseluruhan pada legal entity ini; bukan jumlah baris daftar yang dibatasi. Tidak termasuk pendapatan, risiko proyek atau sertifikasi produksi.</p>
- {error?<p role="alert" className="text-sm">{error}</p>:metrics?<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{keys.map(k=><div key={k} className="rounded border p-2"><p className="text-xs">{k}</p><p className="text-xl font-bold">{metrics[k].toLocaleString('id-ID')}</p></div>)}</div>:<p role="status" className="text-sm">Memuat ringkasan…</p>}
+ <p className="text-sm">Jumlah keseluruhan pada legal entity ini; bukan jumlah baris daftar yang dibatasi. Due queued dan expired lease adalah subset antrean menurut waktu database; bukan instruksi requeue atau sertifikasi produksi.</p>
+ {error?<p role="alert" className="text-sm">{error}</p>:metrics?<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{keys.map(k=><div key={k} className="rounded border p-2"><p className="text-xs">{k==='due_queued'?'Queued — due':k==='expired_lease'?'Running — expired lease':k}</p><p className="text-xl font-bold">{metrics[k].toLocaleString('id-ID')}</p></div>)}</div>:<p role="status" className="text-sm">Memuat ringkasan…</p>}
  <ManagementSummary key={entity} entity={entity}/>
  </section>;
 }
