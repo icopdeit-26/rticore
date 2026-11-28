@@ -1,5 +1,22 @@
 'use client';
 import {useEffect,useState} from 'react';
+const managementKeys=['opportunities','won','open_pipeline_idr','certified_projects','certified_revenue_cents','certified_profit_cents','approved_minutes','billable_minutes','available_credits','reserved_credits','consumed_credits','expired_credits','opex_budget_records','opex_budget_cents','opex_actual_cents','high_open_grc_risks'] as const;
+function ManagementSummary({entity}:{entity:string}){
+ const [period,setPeriod]=useState(()=>new Date().toISOString().slice(0,7)),[requested,setRequested]=useState(''),[data,setData]=useState<Record<string,number>|null>(null),[error,setError]=useState('');
+ useEffect(()=>{setData(null);setError('');if(!requested)return;const c=new AbortController();
+ void(async()=>{try{const r=await fetch('/api/erp/executive-command?'+new URLSearchParams({legal_entity_id:entity,view:'management',period:requested}),{credentials:'same-origin',cache:'no-store',signal:c.signal});const b=await r.json();if(!r.ok||b.success!==true||b.legal_entity_id!==entity||b.period!==requested||b.scope!=='native_management'||b.read_only!==true||b.automatic_posting!==false||!b.management_metrics||!managementKeys.every(k=>Number.isSafeInteger(b.management_metrics[k])&&(k==='certified_profit_cents'||b.management_metrics[k]>=0)))throw Error();if(!c.signal.aborted)setData(b.management_metrics);}catch{if(!c.signal.aborted)setError('Management data unavailable or Finance access denied.');}})();return()=>c.abort();},[entity,requested]);
+ const idr=(v:number)=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR'}).format(v);
+ const cell=(label:string,value:string|number)=><div className="rounded border p-2"><p className="text-xs">{label}</p><p className="font-bold">{value}</p></div>;
+ return <section className="space-y-3 border-t pt-4"><h3 className="font-semibold">Executive Management View</h3><p className="text-sm">Requires an approved entity-wide executive Finance grant. Commercial pipeline, FlexGuard balances and open risks are current; certified project results, timesheets and OPEX are selected-period metrics.</p>
+ <form className="flex flex-wrap gap-2" onSubmit={e=>{e.preventDefault();setRequested(period);}}><label>Reporting period <input aria-label="Reporting period" type="month" required min="2000-01" max="2099-12" value={period} onChange={e=>{setPeriod(e.target.value);setRequested('');setData(null);setError('');}} className="rounded border p-2"/></label><button className="rounded bg-slate-800 px-3 text-white" type="submit">Load management metrics</button></form>
+ {error&&<p role="alert">{error}</p>}{requested&&!data&&!error&&<p role="status">Loading…</p>}
+ {data&&<div className="space-y-3"><h4 className="font-semibold">Commercial — current</h4><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{cell('Opportunities',data.opportunities)}{cell('Won',data.won)}{cell('Estimated open pipeline (not revenue)',idr(data.open_pipeline_idr))}</div>
+ <h4 className="font-semibold">Certified project results — {requested}</h4><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{cell('Certified projects',data.certified_projects)}{cell('Certified recognized revenue',data.certified_projects?idr(data.certified_revenue_cents/100):'No certified data')}{cell('Certified gross profit',data.certified_projects?idr(data.certified_profit_cents/100):'No certified data')}</div>
+ <h4 className="font-semibold">Resource performance — {requested}</h4><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{cell('Approved hours',(data.approved_minutes/60).toFixed(2))}{cell('Billable hours',(data.billable_minutes/60).toFixed(2))}{cell('Billable share',data.approved_minutes?(100*data.billable_minutes/data.approved_minutes).toFixed(1)+'%':'No approved time')}</div>
+ <h4 className="font-semibold">FlexGuard — current native ledger</h4><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{cell('Available credits',data.available_credits)}{cell('Reserved credits',data.reserved_credits)}{cell('Consumed credits',data.consumed_credits)}{cell('Expired credits',data.expired_credits)}</div>
+ <h4 className="font-semibold">OPEX — {requested}</h4><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{cell('Approved budget',data.opex_budget_records?idr(data.opex_budget_cents/100):'No approved budget')}{cell('Actual realized',data.opex_budget_records?idr(data.opex_actual_cents/100):'No approved budget')}{cell('Budget less actual',data.opex_budget_records?idr((data.opex_budget_cents-data.opex_actual_cents)/100):'No approved budget')}</div>
+ <h4 className="font-semibold">Risk — current</h4>{cell('Open high residual GRC risks',data.high_open_grc_risks)}</div>}</section>;
+}
 const keys=['queued','running','succeeded','dead_letter','pending_recovery'] as const;
 export default function ExecutiveSummary({entity}:{entity:string}){
  const [metrics,setMetrics]=useState<Record<string,number>|null>(null),[error,setError]=useState('');
@@ -16,5 +33,6 @@ export default function ExecutiveSummary({entity}:{entity:string}){
  return <section className="space-y-2 rounded-lg border p-4"><h2 className="font-semibold">Executive Command — Native Operations</h2>
  <p className="text-sm">Jumlah keseluruhan pada legal entity ini; bukan jumlah baris daftar yang dibatasi. Tidak termasuk pendapatan, risiko proyek atau sertifikasi produksi.</p>
  {error?<p role="alert" className="text-sm">{error}</p>:metrics?<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{keys.map(k=><div key={k} className="rounded border p-2"><p className="text-xs">{k}</p><p className="text-xl font-bold">{metrics[k].toLocaleString('id-ID')}</p></div>)}</div>:<p role="status" className="text-sm">Memuat ringkasan…</p>}
+ <ManagementSummary key={entity} entity={entity}/>
  </section>;
 }
