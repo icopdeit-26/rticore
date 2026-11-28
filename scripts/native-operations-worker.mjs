@@ -46,6 +46,8 @@ try {
    outcomes.push(failed?.ok===true?'retry_or_dead_letter':'lease_lost');
   }
  }
- console.log(JSON.stringify({outcomes,automatic_approval:false,automatic_posting:false}));
+ // Structured, bounded telemetry: no actor, tenant, credentials or raw SQL in logs.
+ const counts=Object.fromEntries(['succeeded','retry_or_dead_letter','lease_lost'].map(status=>[status,outcomes.filter(x=>x===status).length]));
+ console.log(JSON.stringify({event:'native_operations_cycle',outcomes,claimed:outcomes.length,counts,idle:outcomes.length===0,automatic_approval:false,automatic_posting:false}));
  if(outcomes.some(x=>x!=='succeeded'))process.exitCode=1;
 }finally{await db.end()}
