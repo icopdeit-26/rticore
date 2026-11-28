@@ -1,4 +1,4 @@
-﻿import {nativeGrcRead,nativeGrcWrite} from '@/lib/native-cti-grc';
+﻿import {nativeGrcRead,nativeGrcWrite,nativeGrcTransition} from '@/lib/native-cti-grc';
 import {authorizeBoQ} from '@/lib/boq-auth';
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal as vaultOriginal,ServiceError} from '@/lib/service-operations';
@@ -46,6 +46,9 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const technical=u.pathname==='/api/erp/technical-registers';
+  if(technical){const role=a.identity.role;const keys=[...u.searchParams.keys()];erpAssert(keys.length===1&&((['offense_lead','offense_member'].includes(role)&&['vapt_project_id','finding_project_id'].includes(keys[0]))||(['governance_leader','governance_member'].includes(role)&&keys[0]==='grc_project_id')),'Technical scope denied',403);}
+  else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(a.identity.role),'Technical endpoint required',403);
   const grcProject=u.searchParams.get('grc_project_id');
   if(grcProject!==null){erpAssert(erpId(grcProject),'Project ID wajib');return await nativeGrcRead(a.identity,grcProject);}
   const findingProject=u.searchParams.get('finding_project_id');
@@ -105,6 +108,11 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  const technical=new URL(req.url).pathname==='/api/erp/technical-registers';
+  if(technical){
+   erpAssert((['offense_lead','offense_member'].includes(role)&&(v.action==='register_vapt_finding'||(v.action==='transition_vapt_finding'&&v.next_status==='retest_submitted')||(role==='offense_lead'&&v.action==='register_vapt_engagement')))||(['governance_leader','governance_member'].includes(role)&&((v.action==='native_cti_grc_register'&&typeof v.record_kind==='string'&&['grc_engagement','grc_risk','grc_control'].includes(v.record_kind))||(v.action==='native_cti_grc_transition'&&['grc_engagement','grc_risk'].includes(String(v.record_kind))&&['in_progress','submitted'].includes(String(v.status))))),'Technical mutation denied',403);
+  }else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(role),'Technical endpoint required',403);
+  if(v.action==='native_cti_grc_transition')return await nativeGrcTransition(a.identity,v);
   if(v.action==='native_cti_grc_register')return await nativeGrcWrite(a.identity,v);
   if(v.action==='register_vapt_finding'||v.action==='transition_vapt_finding'){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
@@ -115,7 +123,7 @@ export async function POST(req:Request){
    const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
    erpAssert(p,'Project tidak ditemukan',404);
    if(v.action==='register_vapt_finding'){
-    erpAssert(['admin','presales'].includes(role),'Maker VAPT wajib',403);
+    erpAssert(['admin','presales','offense_lead','offense_member'].includes(role),'Maker VAPT wajib',403);
     erpAssert(erpId(v.engagement_id)&&erpId(v.document_id)&&erpText(v.finding_code,3,64)&&erpText(v.title,5,200)&&erpText(v.affected_asset,3,250)&&erpText(v.remediation,12,2000)&&typeof v.cvss_tenths==='number'&&Number.isSafeInteger(v.cvss_tenths)&&v.cvss_tenths>=0&&v.cvss_tenths<=100,'Data finding tidak valid');
     const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);const id=crypto.randomUUID();
     await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_vapt_finding(id,tenant_id,legal_entity_id,project_id,engagement_id,finding_code,title,cvss_tenths,affected_asset,remediation,evidence_document_id,evidence_sha256,created_by,last_actor,last_notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,project,v.engagement_id,v.finding_code.trim(),v.title.trim(),v.cvss_tenths,v.affected_asset.trim(),v.remediation.trim(),v.document_id,doc.sha256.toLowerCase(),email,email,v.notes.trim())],'cyber',id,'VAPT_FINDING_REGISTER',{engagement_id:v.engagement_id,document_id:v.document_id});
@@ -123,7 +131,7 @@ export async function POST(req:Request){
    }
    erpAssert(erpId(v.id)&&typeof v.version==='number'&&Number.isSafeInteger(v.version)&&v.version>=1&&typeof v.next_status==='string'&&['qa_approved','qa_rejected','retest_requested','retest_submitted','verified_fixed','still_vulnerable'].includes(v.next_status),'Status atau versi tidak valid');
    const next=v.next_status;
-   erpAssert(next==='retest_submitted'?['admin','presales'].includes(role):role==='approver','Maker-checker wajib',403);
+   erpAssert(next==='retest_submitted'?['admin','presales','offense_lead','offense_member'].includes(role):role==='approver','Maker-checker wajib',403);
    const row=await db.prepare('SELECT evidence_document_id,retest_document_id FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND version=?').bind(TENANT,entity,project,v.id,v.version).first<{evidence_document_id:string;retest_document_id:string|null}>();
    erpAssert(row,'Finding tidak ditemukan atau versi berubah',409);
    let write;
@@ -147,7 +155,7 @@ export async function POST(req:Request){
    const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
    erpAssert(p,'Project tidak ditemukan',404);
    if(v.action==='register_vapt_engagement'){
-    erpAssert(['admin','presales'].includes(role),'Maker VAPT wajib',403);
+    erpAssert(['admin','presales','offense_lead'].includes(role),'Maker VAPT wajib',403);
     erpAssert(erpText(v.engagement_code,4,64)&&erpText(v.title,5,200)&&erpText(v.scope_summary,12,2000)&&erpId(v.roe_document_id),'Kode, judul, scope, RoE asli wajib');
     erpAssert(typeof v.test_type==='string'&&['web_app','mobile_app','api','network','cloud','active_directory','wireless','red_team','purple_team','source_code'].includes(v.test_type),'Test type tidak valid');
     erpAssert(erpDate(v.window_start)&&erpDate(v.window_end)&&v.window_end>=v.window_start,'Testing window tidak valid');

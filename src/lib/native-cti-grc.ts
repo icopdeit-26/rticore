@@ -35,14 +35,15 @@ export async function nativeGrcRead(a:BoQIdentity,project:string){
   const rows=await a.db.prepare('SELECT * FROM rticore_native_'+k+' WHERE tenant_id=? AND legal_entity_id=? AND project_id=?'+redFilter+' ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,project,...(redFilter?[a.email.toLowerCase()]:[])).all();
   registers[k]=rows.results.slice(0,200);truncated ||= rows.results.length>200;
  }
- return erpReply({success:true,role:a.role,registers,truncated,scope:cti?'cti':'grc'});
+ const lifecycle=await a.db.prepare("SELECT l.* FROM rticore_native_cti_grc_lifecycle l WHERE l.tenant_id=? AND l.legal_entity_id=? AND l.project_id=? AND (l.record_kind<>'cti_case' OR EXISTS(SELECT 1 FROM rticore_native_cti_case c WHERE c.tenant_id=l.tenant_id AND c.legal_entity_id=l.legal_entity_id AND c.project_id=l.project_id AND c.id=l.record_id AND (c.tlp<>'TLP:RED' OR lower(c.created_by)=?))) ORDER BY l.record_kind,l.record_id,l.version DESC LIMIT 501").bind(TENANT,entity,project,a.email.toLowerCase()).all();
+ return erpReply({success:true,role:a.role,registers,lifecycle:lifecycle.results.slice(0,500),truncated:truncated||lifecycle.results.length>500,scope:cti?'cti':'grc'});
 }
 export async function nativeGrcWrite(a:BoQIdentity,v:Record<string,unknown>){
  erpAssert(erpId(v.project_id)&&erpId(v.document_id),'Project dan bukti asli wajib');
  const k=kinds.find(x=>x===v.record_kind);erpAssert(k,'Register tidak valid');
  const {entity,opportunity,cti}=await nativeGrcScope(a,v.project_id);
  erpAssert(k.startsWith('cti_')===cti,'Register di luar service family',403);
- erpAssert(k==='grc_control_test'?a.role==='approver':['admin','presales','defense_leader'].includes(a.role),'Kewenangan maker/checker tidak valid',403);
+ erpAssert(k==='grc_control_test'?a.role==='approver':['admin','presales','defense_leader','governance_leader','governance_member'].includes(a.role),'Kewenangan maker/checker tidak valid',403);
  const vals:(string|number)[]=[];
  for(const f of fields[k]){
   const value=v[f.name];
@@ -56,4 +57,17 @@ export async function nativeGrcWrite(a:BoQIdentity,v:Record<string,unknown>){
  const write=a.db.prepare('INSERT INTO rticore_native_'+k+'('+columns.join(',')+') VALUES('+columns.map(()=>'?').join(',')+')').bind(rid,TENANT,entity,v.project_id,...vals,v.document_id,doc.sha256.toLowerCase(),a.email);
  await erpAtom(a,'1=1',[],[write],'cyber',rid,'NATIVE_'+k.toUpperCase(),{project_id:v.project_id,document_id:v.document_id});
  return erpReply({success:true,id:rid},201);
+}
+
+export async function nativeGrcTransition(a:BoQIdentity,v:Record<string,unknown>){
+ erpAssert(erpId(v.project_id)&&erpId(v.record_id)&&erpId(v.document_id)&&erpText(v.notes,12,1000),'Project, register, bukti dan catatan wajib');
+ erpAssert(typeof v.record_kind==='string'&&['cti_case','grc_engagement','grc_risk'].includes(v.record_kind)&&typeof v.status==='string'&&['in_progress','submitted','reviewed','returned','closed'].includes(v.status)&&typeof v.expected_version==='number'&&Number.isSafeInteger(v.expected_version)&&v.expected_version>=0&&v.expected_version<2147483647,'Lifecycle data invalid');
+ const {entity,opportunity,cti}=await nativeGrcScope(a,v.project_id);
+ erpAssert((v.record_kind==='cti_case')===cti,'Scope invalid',403);
+ erpAssert(['reviewed','returned','closed'].includes(v.status)?a.role==='approver':['admin','presales','defense_leader','governance_leader','governance_member'].includes(a.role),'Maker-checker wajib',403);
+ const doc=await supportingOriginal(a.db,v.document_id,opportunity).catch(e=>{if(e instanceof ServiceError)throw new ERPError(e.message,e.status);throw e;});
+ const id=crypto.randomUUID();
+ const write=a.db.prepare('INSERT INTO rticore_native_cti_grc_lifecycle(id,tenant_id,legal_entity_id,project_id,record_kind,record_id,version,status,actor_email,notes,document_id,document_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,v.project_id,v.record_kind,v.record_id,v.expected_version+1,v.status,a.email,v.notes.trim(),v.document_id,doc.sha256.toLowerCase());
+ await erpAtom(a,'1=1',[],[write],'cyber',v.record_id,'CTI_GRC_LIFECYCLE_TRANSITION',{status:v.status,version:v.expected_version+1,document_id:v.document_id});
+ return erpReply({success:true,status:v.status,version:v.expected_version+1},201);
 }
