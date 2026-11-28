@@ -16,3 +16,17 @@ test('critical read-only workflows run on main push and support deliberate rerun
   assert.ok(checkouts.length>0,file);
  }
 });
+
+import {normalizeRestoreSchema} from '../scripts/normalize-restore-schema.mjs';
+test('restore comparison normalizes only known equivalent check renderings',()=>{
+ const prefix='    CONSTRAINT rticore_flexguard_requests_credit_amount_check CHECK ';
+ const a=prefix+"((((credit_amount >= '-100000'::integer) AND (credit_amount <= 100000)) AND (credit_amount <> 0))),";
+ const b=prefix+"(((credit_amount >= '-100000'::integer) AND (credit_amount <= 100000) AND (credit_amount <> 0))),";
+ assert.equal(normalizeRestoreSchema(a),b);
+ assert.equal(normalizeRestoreSchema(b),b);
+ const tamper=a.replace('<= 100000','<= 100001');
+ assert.notEqual(normalizeRestoreSchema(tamper),b);
+ const other=a.replace('rticore_flexguard_requests_credit_amount_check','unrelated_check');
+ assert.equal(normalizeRestoreSchema(other),other);
+ assert.equal(normalizeRestoreSchema('\\restrict random\n'+a+'\n\\unrestrict random\n'),b+'\n');
+});

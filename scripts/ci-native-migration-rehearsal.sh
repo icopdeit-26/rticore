@@ -100,9 +100,9 @@ sequence_fingerprint() {
  done <<< "$sequences"
 }
 schema_fingerprint() {
- # pg_dump may emit a random psql restrict key; strip only those two metacommands.
+ # Strip random psql restrict keys and normalize only known equivalent CHECK renderings.
  # Ownership and ACLs are deliberately excluded, as this is a logical restore.
- pg_dump --schema-only --no-owner --no-privileges | sed -E '/^\\(un)?restrict [^[:space:]]+$/d' >"$1"
+ pg_dump --schema-only --no-owner --no-privileges | node scripts/normalize-restore-schema.mjs >"$1"
  [[ -s "$1" ]]
 }
 fingerprint "$tmp/before.tsv"
