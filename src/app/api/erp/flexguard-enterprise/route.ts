@@ -14,28 +14,34 @@ export async function GET(req:Request){
   erpAssert(!a.identity.rolePreview,'Role preview ditolak',403);
   const {db,email,role}=a.identity;const u=new URL(req.url);const entity=u.searchParams.get('legal_entity_id'),wallet=u.searchParams.get('wallet_id');
   erpAssert(['finance','approver','admin'].includes(role),'Akses nilai moneter Finance ditolak',403);
+  erpAssert(['legal_entity_id','wallet_id','portal_admin','service_requests'].every(k=>u.searchParams.getAll(k).length<=1),'Parameter scope ambigu');
+  erpAssert((!wallet||!!entity)&&(!(u.searchParams.has('portal_admin')||u.searchParams.has('service_requests'))||!!wallet)&&!(u.searchParams.has('portal_admin')&&u.searchParams.has('service_requests')),'Scope wallet wajib dan mode register harus tunggal');
   if(!entity){
-   const entities=await db.prepare("SELECT u.id,u.label FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND rticore_fg_actor_role(u.tenant_id,u.id,?) IS NOT NULL ORDER BY u.label").bind(TENANT,email).all();
+   const entities=await db.prepare("SELECT u.id,u.label FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND rticore_fg_actor_role(u.tenant_id,u.id,?)=? ORDER BY u.label").bind(TENANT,email,role).all();
+   erpAssert(entities.success,'Register entity tidak tersedia',503);
    return erpReply({success:true,entities:entities.results,role});
   }
   erpAssert(erpId(entity)&&(!wallet||erpId(wallet)),'Legal entity atau wallet tidak valid');
   const allowed=await db.prepare("SELECT rticore_fg_actor_role(?,?,?) AS role").bind(TENANT,entity,email).first<{role:string|null}>();
   erpAssert(allowed?.role===role,'Akses legal entity ditolak',403);
   if(!wallet){
-   const wallets=await db.prepare("SELECT w.id,w.status,w.entitlement_units,w.contract_id,w.customer_id,c.end_date,a.legal_name,CASE WHEN EXISTS(SELECT 1 FROM rticore_flexguard_events e WHERE e.tenant_id=w.tenant_id AND e.wallet_id=w.id) THEN 1 ELSE 0 END AS legacy_reconciliation_required FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes s ON s.tenant_id=c.tenant_id AND s.project_id=c.project_id AND s.status='approved' JOIN rticore_sales_accounts a ON a.tenant_id=w.tenant_id AND a.id=w.customer_id WHERE w.tenant_id=? AND s.legal_entity_id=? ORDER BY w.created_at DESC LIMIT 201").bind(TENANT,entity).all();
+   const wallets=await db.prepare("SELECT w.id,w.status,w.entitlement_units,w.contract_id,w.customer_id,c.end_date,a.legal_name,CASE WHEN EXISTS(SELECT 1 FROM rticore_flexguard_events e WHERE e.tenant_id=w.tenant_id AND e.wallet_id=w.id) THEN 1 ELSE 0 END AS legacy_reconciliation_required FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id AND c.customer_id=w.customer_id JOIN rticore_erp_project_scopes s ON s.tenant_id=c.tenant_id AND s.project_id=c.project_id AND s.status='approved' JOIN rticore_sales_accounts a ON a.tenant_id=w.tenant_id AND a.id=w.customer_id WHERE w.tenant_id=? AND s.legal_entity_id=? ORDER BY w.created_at DESC LIMIT 201").bind(TENANT,entity).all();
+   erpAssert(wallets.success,'Register wallet tidak tersedia',503);
    return erpReply({success:true,wallets:wallets.results.slice(0,200),role,truncated:wallets.results.length>200});
   }
-  const scope=await db.prepare("SELECT w.id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes p ON p.tenant_id=c.tenant_id AND p.project_id=c.project_id AND p.status='approved' WHERE w.tenant_id=? AND p.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first();
+  const scope=await db.prepare("SELECT w.id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id AND c.customer_id=w.customer_id JOIN rticore_erp_project_scopes p ON p.tenant_id=c.tenant_id AND p.project_id=c.project_id AND p.status='approved' WHERE w.tenant_id=? AND p.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first();
   erpAssert(scope,'Wallet di luar scope',403);
   if(u.searchParams.get('portal_admin')==='1'){
    const rows=await db.prepare('SELECT id,email,customer_id,reason,status,requested_by,reviewed_by,review_notes,revoked_by,revocation_notes FROM rticore_native_fg_portal_grant WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY requested_at DESC LIMIT 200').bind(TENANT,entity,wallet).all();
    const submissions=await db.prepare('SELECT * FROM rticore_native_fg_portal_submission WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY recorded_at DESC LIMIT 200').bind(TENANT,entity,wallet).all();
+   erpAssert(rows.success&&submissions.success,'Register portal tidak tersedia',503);
    return erpReply({success:true,role,grants:rows.results,submissions:submissions.results,automatic_posting:false});
   }
   if(u.searchParams.get('service_requests')==='1'){
    const rows=await db.prepare('SELECT * FROM rticore_native_fg_service_request WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,wallet).all();
    const events=await db.prepare('SELECT * FROM rticore_native_fg_service_event WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY recorded_at DESC LIMIT 501').bind(TENANT,entity,wallet).all();
-   const inbox=await db.prepare("SELECT s.id,s.kind,s.request_id,s.request_version,s.notes,s.email,b.request_id AS bound_request_id,b.target_version FROM rticore_native_fg_portal_submission s LEFT JOIN rticore_native_fg_portal_binding b ON b.submission_id=s.id WHERE s.tenant_id=? AND s.legal_entity_id=? AND s.wallet_id=? ORDER BY s.recorded_at DESC LIMIT 201").bind(TENANT,entity,wallet).all();
+   const inbox=await db.prepare("SELECT s.id,s.kind,s.request_id,s.request_version,s.notes,s.email,b.request_id AS bound_request_id,b.target_version FROM rticore_native_fg_portal_submission s LEFT JOIN rticore_native_fg_portal_binding b ON b.submission_id=s.id AND b.tenant_id=s.tenant_id AND b.legal_entity_id=s.legal_entity_id AND b.wallet_id=s.wallet_id WHERE s.tenant_id=? AND s.legal_entity_id=? AND s.wallet_id=? ORDER BY s.recorded_at DESC LIMIT 201").bind(TENANT,entity,wallet).all();
+   erpAssert(rows.success&&events.success&&inbox.success,'Register service request tidak tersedia',503);
    return erpReply({success:true,role,service_requests:rows.results.slice(0,200),events:events.results.slice(0,500),portal_inbox:inbox.results.slice(0,200),truncated:rows.results.length>200||events.results.length>500||inbox.results.length>200,automatic_posting:false});
   }
   const [lots,ledger,requests,allocations,retryAttempts]=await Promise.all([
@@ -45,6 +51,7 @@ export async function GET(req:Request){
    db.prepare('SELECT * FROM rticore_fg_invoice_allocations WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC LIMIT 201').bind(TENANT,entity,wallet).all(),
    db.prepare("SELECT a.event_id,a.attempt_no,a.outcome,a.reason_code,a.attempted_at FROM rticore_fg_retry_attempts a JOIN rticore_flexguard_enterprise_ledger l ON l.tenant_id=a.tenant_id AND l.legal_entity_id=a.legal_entity_id AND l.finance_outbox_event_id=a.event_id WHERE a.tenant_id=? AND a.legal_entity_id=? AND l.wallet_id=? ORDER BY a.attempted_at DESC,a.event_id,a.attempt_no DESC LIMIT 201").bind(TENANT,entity,wallet).all()
   ]);
+  erpAssert([lots,ledger,requests,allocations,retryAttempts].every(x=>x.success),'Register ledger tidak tersedia',503);
   const legacy=await db.prepare("SELECT id FROM rticore_flexguard_events WHERE tenant_id=? AND wallet_id=? LIMIT 1").bind(TENANT,wallet).first();
   return erpReply({success:true,lots:lots.results.slice(0,200),ledger:ledger.results.slice(0,200),requests:requests.results.slice(0,200),allocations:allocations.results.slice(0,200),retry_attempts:retryAttempts.results.slice(0,200),truncated:[lots,ledger,requests,allocations,retryAttempts].some(x=>x.results.length>200),legacy_reconciliation_required:!!legacy});
  }catch(e){return erpError(e);}
