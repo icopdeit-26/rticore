@@ -419,4 +419,53 @@ BEGIN
  OR events_before IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM rticore_finance_integration_events e WHERE e.legal_entity_id='fg-terms-a') THEN RAISE EXCEPTION 'HISTORICAL_UNEXPECTED_FINANCIAL_MUTATION'; END IF;
 END $historical$;
 
+-- Rehearsal only: move synthetic lot dates to the past in the disposable transaction.
+-- The integrated service lifecycle already released the unused reserved credit.
+DO $expiry$
+DECLARE lid text; wid text; reservation text; req text; r jsonb; eid text; jid text; n bigint;
+ maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid'; poster constant text:='fg-terms-poster@example.invalid';
+BEGIN
+ SELECT id,wallet_id INTO STRICT lid,wid FROM rticore_flexguard_credit_lots WHERE invoice_id='fg-ci-invoice';
+ IF EXISTS(SELECT 1 FROM rticore_fg_missing_outbox_candidates('defendit360','fg-terms-a',maker)) THEN RAISE EXCEPTION 'FALSE_MISSING_OUTBOX_CANDIDATE'; END IF;
+ BEGIN
+  PERFORM rticore_fg_missing_outbox_candidates('defendit360','fg-terms-b',maker);
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_ACCESS_DENIED' THEN RAISE; END IF; END;
+END $expiry$;
+ALTER TABLE rticore_flexguard_credit_lots DISABLE TRIGGER rticore_fg_lot_immutable;
+UPDATE rticore_flexguard_credit_lots SET issued_at=(CURRENT_DATE-2)::text,expires_at=(CURRENT_DATE-1)::text WHERE invoice_id='fg-ci-invoice';
+ALTER TABLE rticore_flexguard_credit_lots ENABLE TRIGGER rticore_fg_lot_immutable;
+INSERT INTO rticore_finance_posting_rules(id,tenant_id,legal_entity_id,rule_code,business_event,journal_type,service_category,tax_treatment,debit_account_id,credit_account_id,policy_reference,effective_from,status,created_by,approved_by,review_notes)
+ VALUES('fg-ci-expiry-rule','defendit360','fg-terms-a','FG-CI-EXPIRY','flexguard.credit_expired','revenue_recognition','FlexGuard','IDR','fg-ci-liability','fg-ci-revenue','Synthetic expiry policy',(CURRENT_DATE-1)::text,'approved','ci-maker','ci-checker','Synthetic independent review');
+DO $expiry$
+DECLARE lid text; wid text; req text; r jsonb; eid text; jid text; n bigint; attempt record;
+ maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid'; poster constant text:='fg-terms-poster@example.invalid';
+BEGIN
+ SELECT id,wallet_id INTO STRICT lid,wid FROM rticore_flexguard_credit_lots WHERE invoice_id='fg-ci-invoice';
+ SELECT q.request_id,q.credits INTO STRICT req,n FROM rticore_fg_expiry_due('defendit360','fg-terms-a',maker,25) q WHERE q.lot_id=lid;
+ IF n<>19 OR EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger WHERE id=req) THEN RAISE EXCEPTION 'EXPIRY_MAKER_ONLY_FAILED'; END IF;
+ IF EXISTS(SELECT 1 FROM rticore_fg_expiry_due('defendit360','fg-terms-a',maker,25)) THEN RAISE EXCEPTION 'DUPLICATE_EXPIRY_REQUEST'; END IF;
+ r:=rticore_fg_review('defendit360','fg-terms-a',checker,req,true,'Synthetic independent expiry approval');eid:=r->>'finance_outbox_event_id';
+ IF r->>'status' IS DISTINCT FROM 'posted' OR eid IS NULL THEN RAISE EXCEPTION 'EXPIRY_OUTBOX_FAILED'; END IF;
+ SELECT * INTO STRICT attempt FROM rticore_fg_retry_due('defendit360','fg-terms-a',maker,'fg-ci-fin-period',25) q WHERE q.event_id=eid;
+ IF attempt.outcome IS DISTINCT FROM 'drafted' THEN RAISE EXCEPTION 'EXPIRY_RETRY_FAILED'; END IF;
+ SELECT resulting_journal_id INTO STRICT jid FROM rticore_finance_integration_events WHERE id=eid AND status='validated';
+ IF NOT EXISTS(SELECT 1 FROM rticore_gl_journals WHERE id=jid AND status='draft') THEN RAISE EXCEPTION 'EXPIRY_AUTOMATIC_POSTING'; END IF;
+ IF EXISTS(SELECT 1 FROM rticore_fg_retry_due('defendit360','fg-terms-a',maker,'fg-ci-fin-period',25) q WHERE q.event_id=eid) THEN RAISE EXCEPTION 'EXPIRY_DUPLICATE_RETRY'; END IF;
+ PERFORM rticore_fg_journal_command('defendit360','fg-terms-a',checker,jid,'approve','Independent synthetic expiry approval');
+ PERFORM rticore_fg_journal_command('defendit360','fg-terms-a',poster,jid,'post','Independent synthetic expiry posting');
+ r:=rticore_fg_dock('defendit360','fg-terms-a',checker,eid,'ack',NULL,NULL,NULL);
+ IF r->>'status' IS DISTINCT FROM 'processed' THEN RAISE EXCEPTION 'EXPIRY_ACK_FAILED'; END IF;
+ SELECT coalesce(sum(l.credit_cents-l.debit_cents),0) INTO n FROM rticore_gl_lines l JOIN rticore_gl_journals j ON j.tenant_id=l.tenant_id AND j.id=l.journal_id WHERE j.legal_entity_id='fg-terms-a' AND j.status='posted' AND l.account_id='fg-ci-liability';
+ IF n<>0 OR (SELECT coalesce(sum(available_delta+reserved_delta),0) FROM rticore_flexguard_enterprise_ledger WHERE lot_id=lid)<>0 THEN RAISE EXCEPTION 'EXPIRY_GL_VARIANCE'; END IF;
+END $expiry$;
+-- Simulate a pre-existing missing pointer ONLY in disposable CI, then roll back.
+ALTER TABLE rticore_flexguard_enterprise_ledger DISABLE TRIGGER rticore_fg_ledger_immutable;
+UPDATE rticore_flexguard_enterprise_ledger SET finance_outbox_event_id=NULL WHERE legal_entity_id='fg-terms-a' AND transaction_type='purchase';
+ALTER TABLE rticore_flexguard_enterprise_ledger ENABLE TRIGGER rticore_fg_ledger_immutable;
+DO $missing$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM rticore_fg_missing_outbox_candidates('defendit360','fg-terms-a','fg-terms-maker@example.invalid') c WHERE c.transaction_type='purchase' AND c.reason_code='MISSING_IMMUTABLE_OUTBOX_POINTER' AND c.request_matches AND c.allocation_approved AND c.existing_event_count=1 AND c.posted_invoice_journal_count=1) THEN RAISE EXCEPTION 'MISSING_OUTBOX_EVIDENCE_NOT_FOUND'; END IF;
+END $missing$;
+
 ROLLBACK;

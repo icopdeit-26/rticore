@@ -6,6 +6,8 @@ export const REQUIRED_NATIVE_COMMANDS=[
  'rticore_catalog_boq_binding_command(text,text,text,text,text,jsonb)',
  'rticore_catalog_bind_priced_contract(text,text,text,text,text,text,text)',
  'rticore_fg_historical_allocation_candidates(text,text,text)',
+ 'rticore_fg_missing_outbox_candidates(text,text,text)',
+ 'rticore_fg_expiry_due(text,text,text,integer)',
  'rticore_fg_historical_allocation_review(text,text,text,text,text,text,text)',
  'rticore_reserve_ai_request(text,text,text,text)',
  'rticore_native_job_claim(text,text,text,text)',
