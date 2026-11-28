@@ -17,6 +17,20 @@ const tracked=new Map(git(['ls-tree','-r','-z','--full-tree','HEAD']).split('\0'
 }));
 const retired=['migrations/0053_enterprise_service_catalog_pricing.sql','migrations/0054_flexguard_enterprise_suite.sql','migrations/0055_enterprise_cyber_grc_cti_bi_ops.sql','migrations/0056_vapt_dfir_soc_sla_enterprise.sql'];
 for(const path of retired)assert.ok(!tracked.has(path),'Legacy migration must not be restored: '+path);
+// Known native counterparts are traceability links, not semantic closure.
+const counterparts={
+ 'src/app/api/erp/cyber-delivery/route.ts':['src/app/api/erp/cyber-operations/route.ts','src/app/api/erp/technical-registers/route.ts'],
+ 'src/app/api/erp/cyber-grc-cti/route.ts':['src/app/api/erp/cyber-operations/route.ts','src/app/api/erp/technical-registers/route.ts'],
+ 'src/app/erp/cyber-delivery/page.tsx':['src/app/erp/cyber-operations/page.tsx','src/app/erp/technical-registers/page.tsx'],
+ 'src/app/erp/cyber-grc-cti/page.tsx':['src/app/erp/cyber-operations/page.tsx','src/app/erp/technical-registers/page.tsx'],
+ 'src/app/erp/executive-command/page.tsx':['src/app/erp/operations-center/page.tsx','src/app/erp/operations-center/ExecutiveSummary.tsx','src/app/api/erp/executive-command/route.ts'],
+ 'src/app/erp/pricing-simulator/page.tsx':['src/app/erp/service-catalog/page.tsx','src/app/erp/service-catalog/PricingEvidence.tsx','src/app/api/erp/pricing-engine/route.ts'],
+ 'scripts/hostinger-job-engine.mjs':['scripts/native-operations-worker.mjs'],
+};
+for(const [source,targets] of Object.entries(counterparts)){
+ assert.ok(m.files.some(f=>f.path===source),'Unknown mapped source: '+source);
+ for(const target of targets)assert.equal(tracked.get(target)?.type,'blob','Missing mapped counterpart: '+target);
+}
 const files=m.files.map(f=>{
  assert.match(f.source,valid);
  if(f.target!==null) assert.match(f.target,valid);
@@ -25,7 +39,8 @@ const files=m.files.map(f=>{
  const sha=current?.type==='blob'?current.sha:null;
  if(f.disposition==='identical')assert.equal(sha,f.source,'Previously identical file drift: '+f.path);
  const status=sha===f.source?'source-identical':retired.includes(f.path)?'legacy-migration-excluded':f.disposition==='historical-reference'&&sha===null?'historical-reference':sha===null?'native-port-review-required':'semantic-review-required';
- return {path:f.path,source_sha:f.source,baseline_sha:f.target,current_sha:sha,status,changed_since_baseline:sha!==f.target};
+ const targetPaths=[...new Set([...(sha?[f.path]:[]),...(counterparts[f.path]||[])])];
+ return {path:f.path,source_sha:f.source,baseline_sha:f.target,current_sha:sha,status,changed_since_baseline:sha!==f.target,target_candidates:targetPaths.map(path=>({path,sha:tracked.get(path).sha})),mapping_status:sha===f.source?'identical':targetPaths.length?'candidate-not-certified':'unmapped-or-excluded'};
 });
 const migrations=nativeMigrationManifest();
 assert.equal(new Set(migrations.map(x=>x.path)).size,migrations.length,'Duplicate native migration path');
