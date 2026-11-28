@@ -17,7 +17,8 @@ try {
  const auth=(await db.query('SELECT rticore_fg_maintenance_actor($1,$2,$3) AS allowed',args)).rows[0];
  if(auth?.allowed!==true)throw Error('Maintenance authorization denied');
  // Five minute idempotency window; repeated cron invocations do not duplicate work.
- const bucket=Math.floor(Date.now()/300000);
+ const bucket=String((await db.query('SELECT floor(extract(epoch from statement_timestamp())/300)::bigint AS bucket')).rows[0]?.bucket);
+ if(!/^\d+$/.test(bucket))throw Error('Maintenance clock unavailable');
  for(const kind of ['flexguard_retry','flexguard_expiry']){
   await db.query("INSERT INTO rticore_native_jobs(id,tenant_id,legal_entity_id,kind,idempotency_key,requested_by) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,legal_entity_id,kind,idempotency_key) DO NOTHING",[randomUUID(),args[0],args[1],kind,'scheduled-'+kind+'-'+bucket,args[2]]);
  }

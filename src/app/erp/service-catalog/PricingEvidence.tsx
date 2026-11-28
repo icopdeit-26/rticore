@@ -1,0 +1,8 @@
+'use client';
+import {useEffect,useState} from 'react';
+export default function PricingEvidence({entity,ids}:{entity:string;ids:string[]}){
+ const [id,setId]=useState(''),[data,setData]=useState<Record<string,unknown>|null>(null),[error,setError]=useState('');
+ useEffect(()=>{setData(null);setError('');if(!id)return;const c=new AbortController();
+ void(async()=>{try{const r=await fetch('/api/erp/pricing-engine?'+new URLSearchParams({legal_entity_id:entity,snapshot_id:id}),{credentials:'same-origin',cache:'no-store',signal:c.signal});const b=await r.json();if(!r.ok||b.success!==true||b.legal_entity_id!==entity||b.snapshot_id!==id||b.read_only!==true||b.automatic_posting!==false)throw Error();if(!c.signal.aborted)setData(b);}catch{if(!c.signal.aborted)setError('Bukti snapshot tidak tersedia atau integritas gagal.');}})();return()=>c.abort();},[entity,id]);
+ return <section className="space-y-2 rounded-lg border p-4"><h2 className="font-semibold">Frozen pricing calculation</h2><p className="text-sm">Bukti formula, rate version dan biaya yang telah disimpan; bukan simulasi baru atau approval.</p><select aria-label="Pricing snapshot" className="rounded border bg-transparent p-2" value={id} onChange={e=>{setData(null);setId(e.target.value);}}><option value="">Pilih snapshot</option>{ids.map(v=><option key={v}>{v}</option>)}</select>{error&&<p role="alert">{error}</p>}{data&&<><p className="break-all text-xs">SHA-256: {String(data.calculation_sha256)}</p><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(data.calculation,null,2)}</pre></>}</section>;
+}

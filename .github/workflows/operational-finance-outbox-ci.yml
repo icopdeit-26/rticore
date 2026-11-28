@@ -30,6 +30,7 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      - run: node --test tests/native-commercial-residual.test.cjs
       - run: npm run test:pricing && npm run test:flexguard && npm run test:psa-timesheets && npm run test:service-operations
       - name: PostgreSQL atomicity, entity FKs and canonical trigger acceptance
         run: node --experimental-strip-types --test --test-concurrency=1 tests/rticore-postgres-atomic-live.test.cjs tests/finance-entity-constraints-live.test.cjs tests/postgres-canonical-triggers-live.test.cjs tests/business-iam-postgres.test.cjs

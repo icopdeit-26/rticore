@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState,type FormEvent} from 'react';
+import PricingEvidence from './PricingEvidence';
 import {ENTERPRISE_SERVICE_CATEGORIES,ENTERPRISE_RESOURCE_ROLES,STANDARD_ACTIVITY_PHASES} from '@/lib/enterprise-pricing-engine';
 type Row=Record<string,unknown>;
 type Activity={phase_code:string;resource_role:string;activity_name:string;resource_count:number;hours_hundredths:number;billable:boolean};
@@ -43,6 +44,7 @@ export default function ServiceCatalogPage(){
  {loading?<p role="status">Memuat data...</p>:entity&&Object.keys(data).length>0&&<>
  {(data.truncated===true||data.workflow_truncated===true)&&<p role="status" className="text-sm text-amber-800">Hasil dibatasi 200 record per register. Jangan gunakan sebagai inventaris lengkap.</p>}
  <div className="overflow-auto rounded-xl border bg-white p-4"><h2 className="mb-3 font-bold">{config.label} ({records.length})</h2>{records.length===0?<p className="text-sm text-slate-600">Belum ada data yang dapat diakses.</p>:<table className="w-full text-left text-sm"><thead><tr><th className="p-2">Record</th><th className="p-2">ID</th><th className="p-2">Status</th><th className="p-2">Nilai / effort</th></tr></thead><tbody>{records.map(r=><tr key={s(r.id)} className="border-t"><td className="p-2">{s(r.service_name||r.role_code||r.label||r.service_id||r.opportunity_id)}</td><td className="break-all p-2">{s(r.id)}</td><td className="p-2">{s(r[config.status])}</td><td className="p-2">{tab==='rate_cards'?money(r.standard_selling_rate_cents):tab==='pricing_snapshots'?money(r.net_price_cents)+' · '+s(r.billable_mandays_tenths)+' /10 MD':tab==='complexity_matrices'?s(r.factor_bps)+' bps':tab==='activity_profiles'?String(Array.isArray(r.activities)?r.activities.length:0)+' aktivitas':s(r.standard_mandays_tenths)+' /10 MD'}</td></tr>)}</tbody></table>}</div>
+ {finance&&tab==='pricing_snapshots'&&<PricingEvidence key={entity} entity={entity} ids={records.map(r=>s(r.id))}/>}
  {finance&&<div className="grid gap-4 lg:grid-cols-2">
  <form onSubmit={create} className="space-y-3 rounded-xl border bg-white p-4"><h2 className="font-bold">Buat draft · {config.label}</h2>
  {tab==='services'&&<>{text('service_code','Kode layanan')}{text('service_name','Nama layanan')}{select('service_category','Kategori',ENTERPRISE_SERVICE_CATEGORIES.map(c=>({value:c.code,label:c.label})))}{text('description','Deskripsi')}{text('scope_summary','Scope')}{select('complexity_level','Complexity',['basic','standard','medium','high','critical'].map(value=>({value,label:value})),'standard')}{num('min_mandays_tenths','Minimum MD (x10)',10,5,100000)}{num('standard_mandays_tenths','Standard MD (x10)',20,5,100000)}{num('max_mandays_tenths','Maximum MD (x10)',100,5,100000)}{text('effective_date','Effective date (YYYY-MM-DD)',today)}{num('service_version','Version',1,1,1000000)}</>}
