@@ -50,4 +50,5 @@ jobs:
           path: |
             artifacts/wave09/restore-evidence.json
             artifacts/wave09/restore-table-digests.tsv
+            artifacts/wave09/native-migration-manifest.json
           retention-days: 14
