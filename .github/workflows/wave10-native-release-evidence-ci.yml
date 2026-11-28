@@ -1,0 +1,24 @@
+name: Wave 10 native release evidence contract
+on:
+  pull_request:
+  push:
+    branches: [main, 'integration/v6-erp-finance-20261127']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --test tests/native-release-certification.test.mjs tests/hostinger-schema-inventory.test.mjs
+      - name: Missing real evidence must fail closed
+        run: |
+          if npm run verify:native-release; then echo 'Release verifier accepted missing evidence'; exit 1; fi
