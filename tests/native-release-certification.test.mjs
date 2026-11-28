@@ -1,9 +1,9 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {checkNativeCompletion,REQUIRED_NATIVE_COMMANDS} from '../scripts/hostinger-native-completion.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {checkNativeCompletion,REQUIRED_NATIVE_COMMANDS,assertNativeMfaEnrollment} from '../scripts/hostinger-native-completion.mjs';
 import {verifyNativeReceipt,NATIVE_GATES} from '../scripts/native-release-certification.mjs';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {generateKeyPairSync,sign} from 'node:crypto';
 test('latest native command preflight is read-only and fails closed on missing inventory',async()=>{
  const commands=REQUIRED_NATIVE_COMMANDS.map(signature=>({signature,present:true}));
- const objects={boq:true,budget_index:true,feature_requests:true,feature_pending_index:true,jobs:true,jobs_due_index:true,job_recovery:true,recovery_pending_index:true,feature_guard:true,journal_guard:true,workflow_guard:true};
+ const objects={boq:true,budget_index:true,feature_requests:true,feature_pending_index:true,jobs:true,jobs_due_index:true,job_recovery:true,recovery_pending_index:true,recovery_once_index:true,recovery_guard:true,feature_guard:true,journal_guard:true,workflow_guard:true};
  const run=(a,b)=>checkNativeCompletion({query:async(sql,args)=>{assert.match(sql,/^SELECT/);return {rows:args?a:[b]};}});
  assert.equal((await run(commands,objects)).applied_ledger_verified,false);
  await assert.rejects(run(commands.slice(1),objects),/command inventory incomplete/);
@@ -28,4 +28,10 @@ test('native release refuses missing authority, legacy Cloudflare receipt and un
   payload.expires_at='invalid';save();assert.throws(check,/STALE_NATIVE_RECEIPT/);
   payload.issued_at=new Date(Date.now()+60000).toISOString();payload.expires_at=new Date(Date.now()+120000).toISOString();save();assert.throws(check,/STALE_NATIVE_RECEIPT/);
  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('native MFA preflight accepts only distinct active enrolled administrators and fails closed',async()=>{
+ const run=rows=>assertNativeMfaEnrollment({query:async sql=>{assert.match(sql,/^SELECT/);assert.match(sql,/count\(DISTINCT lower\(trim\(m.email\)\)\)/);assert.match(sql,/c.password_hash IS NOT NULL/);assert.match(sql,/c.invite_hash IS NULL/);assert.match(sql,/m.active=1 AND m.role='admin'/);return {rows};}});
+ assert.equal(await run([{n:2}]),true);
+ for(const rows of [[],[{}],[{n:null}],[{n:1}],[{n:'2'}],[{n:NaN}],[{n:2.5}],[{n:2},{n:2}]]) await assert.rejects(run(rows),/Two independently enrolled administrators/);
 });
