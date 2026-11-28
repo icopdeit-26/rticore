@@ -1,6 +1,7 @@
 // Run from a restricted Hostinger cron/service account; never an automatic approval/posting job.
 import pg from 'pg';
 import {randomUUID} from 'node:crypto';
+import {assertRuntimeLeastPrivilege} from './hostinger-runtime-privileges.mjs';
 const {Client}=pg;
 const env=process.env;
 if(env.RTICORE_FG_MAINTENANCE_ENABLED!=='1'||!env.RTICORE_FG_MAINTENANCE_DATABASE_URL||!env.RTICORE_FG_MAINTENANCE_EXPECTED_DATABASE||!env.RTICORE_FG_MAINTENANCE_TENANT||!env.RTICORE_FG_MAINTENANCE_ENTITY||!env.RTICORE_FG_MAINTENANCE_ACTOR||env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw Error('Explicit FlexGuard maintenance configuration required');
@@ -12,6 +13,7 @@ try {
  await db.connect();
  const identity=(await db.query('SELECT current_database() AS db,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
  if(!identity||identity.db!==env.RTICORE_FG_MAINTENANCE_EXPECTED_DATABASE||identity.rolsuper||identity.rolcreatedb||identity.rolcreaterole||identity.rolbypassrls)throw Error('Unexpected or privileged maintenance role');
+ await assertRuntimeLeastPrivilege(db);
  const args=[env.RTICORE_FG_MAINTENANCE_TENANT,env.RTICORE_FG_MAINTENANCE_ENTITY,env.RTICORE_FG_MAINTENANCE_ACTOR];
  if(env.RTICORE_NATIVE_JOB_QUEUE_ENABLED!=='1')throw Error('Explicit native job queue enablement required');
  const auth=(await db.query('SELECT rticore_fg_maintenance_actor($1,$2,$3) AS allowed',args)).rows[0];
@@ -35,7 +37,7 @@ try {
    if(job.job_kind==='flexguard_retry')await db.query('SELECT * FROM rticore_fg_retry_due($1,$2,$3,$4,25)',[...args,env.RTICORE_FG_MAINTENANCE_PERIOD||null]);
    else if(job.job_kind==='flexguard_expiry')await db.query('SELECT * FROM rticore_fg_expiry_due($1,$2,$3,25)',args);
    else throw Error('Unsupported job kind');
-   const done=(await db.query('SELECT rticore_native_job_finish($1,$2,$3,$4,$5,true) AS ok',[...args,job.job_id,token])).rows[0];
+   const done=(await db.query('SELECT rticore_native_job_finish($1,$2,$3,$4,$5,true) AS ok FROM rticore_native_jobs WHERE tenant_id=$1 AND legal_entity_id=$2 AND id=$4 AND lease_token=$5 AND status='running' AND lease_until>clock_timestamp()',[...args,job.job_id,token])).rows[0];
    if(done?.ok!==true)throw Error('Job finish rejected');
    await db.query('COMMIT');outcomes.push('succeeded');
   }catch{
@@ -45,4 +47,5 @@ try {
   }
  }
  console.log(JSON.stringify({outcomes,automatic_approval:false,automatic_posting:false}));
+ if(outcomes.some(x=>x!=='succeeded'))process.exitCode=1;
 }finally{await db.end()}

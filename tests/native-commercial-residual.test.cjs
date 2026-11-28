@@ -62,3 +62,34 @@ test('FlexGuard rejects ambiguous scope before database access and joins portal 
  const sql=f.queries.find(x=>x.sql.includes('LEFT JOIN rticore_native_fg_portal_binding')).sql;assert.match(sql,/b.tenant_id=s.tenant_id AND b.legal_entity_id=s.legal_entity_id AND b.wallet_id=s.wallet_id/);
  for(const q of ['', 'legal_entity_id=entity-a','legal_entity_id=entity-a&wallet_id=wallet-a','legal_entity_id=entity-a&wallet_id=wallet-a&service_requests=1','legal_entity_id=entity-a&wallet_id=wallet-a&portal_admin=1'])assert.equal((await scopedRegister('flexguard-enterprise',{failed:true}).get(q)).status,503);
 });
+
+test('native scheduler rejects privileged connection before mutation and rolls back expired lease before commit',async()=>{
+ const source=fs.readFileSync('scripts/native-operations-worker.mjs','utf8');
+ const code='(async()=>{'+source.replace(/^import .*;\r?\n/gm,'')+'})()';
+ async function run({privileged=false,expired=false,failedFinish=false}={}){
+  const queries=[],logs=[];let claim=0,closed=false,privilegeChecked=false;
+  const process={env:{RTICORE_FG_MAINTENANCE_ENABLED:'1',RTICORE_FG_MAINTENANCE_DATABASE_URL:'postgresql://test:fixture@example.invalid/rticore?sslmode=verify-full',RTICORE_FG_MAINTENANCE_EXPECTED_DATABASE:'rticore',RTICORE_FG_MAINTENANCE_TENANT:'tenant-a',RTICORE_FG_MAINTENANCE_ENTITY:'entity-a',RTICORE_FG_MAINTENANCE_ACTOR:'worker@example.invalid',RTICORE_NATIVE_JOB_QUEUE_ENABLED:'1'}};
+  class Client{
+   async connect(){}
+   async end(){closed=true;}
+   async query(sql,args){queries.push({sql,args});
+    if(sql.includes('current_database()'))return {rows:[{db:'rticore',rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolbypassrls:false}]};
+    if(sql.includes('rticore_fg_maintenance_actor'))return {rows:[{allowed:true}]};
+    if(sql.includes('AS bucket'))return {rows:[{bucket:'123456'}]};
+    if(sql.includes('rticore_native_job_claim'))return {rows:claim++?[]:[{job_id:'job-a',job_kind:'flexguard_expiry'}]};
+    if(sql.includes('FOR UPDATE'))return {rows:[{id:'job-a'}]};
+    if(sql.includes('rticore_native_job_finish')&&sql.includes('true)'))return {rows:expired?[]:[{ok:true}]};
+    if(sql.includes('rticore_native_job_finish')&&sql.includes('false)'))return {rows:[{ok:!failedFinish}]};
+    return {rows:[]};
+   }
+  }
+  let error;try{await vm.runInNewContext(code,{pg:{Client},URL,process,randomUUID:()=> '12345678-1234-1234-1234-123456789abc',console:{log:x=>logs.push(JSON.parse(x))},assertRuntimeLeastPrivilege:async()=>{privilegeChecked=true;if(privileged)throw Error('Runtime database privilege certification failed');}});}catch(e){error=e;}
+  return {queries,logs,closed,privilegeChecked,error,exitCode:process.exitCode};
+ }
+ const denied=await run({privileged:true});assert.match(String(denied.error),/privilege certification failed/);assert.equal(denied.privilegeChecked,true);assert.equal(denied.closed,true);assert.ok(!denied.queries.some(x=>x.sql.includes('INSERT')));
+ const valid=await run();assert.equal(valid.error,undefined);assert.equal(valid.exitCode,undefined);assert.equal(valid.logs[0].outcomes[0],'succeeded');assert.ok(valid.queries.some(x=>x.sql==='COMMIT'));
+ for(const failedFinish of [false,true]){
+  const result=await run({expired:true,failedFinish});assert.equal(result.error,undefined);assert.equal(result.exitCode,1);assert.equal(result.closed,true);assert.ok(result.queries.some(x=>x.sql==='ROLLBACK'));assert.ok(!result.queries.some(x=>x.sql==='COMMIT'));assert.equal(result.logs[0].outcomes[0],failedFinish?'lease_lost':'retry_or_dead_letter');
+  assert.match(result.queries.find(x=>x.sql.includes('rticore_native_job_finish')&&x.sql.includes('true)')).sql,/lease_until>clock_timestamp\(\)/);
+ }
+});
