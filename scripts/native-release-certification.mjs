@@ -13,7 +13,7 @@ const nonempty=s=>typeof s==='string'&&s.trim().length>0;
 const hash=b=>createHash('sha256').update(b).digest('hex');
 // A signed receipt cannot turn a shared generic attachment into 940 case results.
 // Each case requires a typed, hash-checked record plus at least one separate trace.
-export function assertIndividualEvidence({test,definition,roster,signoffs,verified}){
+export function assertIndividualEvidence({test,definition,roster,signoffs,verified,usedTraces=new Set()}){
  const id=definition.id;
  const actor=roster.find(i=>i.subject===test.tester_subject);
  fail(nonempty(definition.actor_role)&&actor?.role===definition.actor_role,'UAT_ACTOR_ROLE_MISMATCH_'+id);
@@ -28,6 +28,9 @@ export function assertIndividualEvidence({test,definition,roster,signoffs,verifi
  const {record,item}=matches[0];
  fail(record.definition_sha256===definitionSha&&record.release_sha===test.release_sha&&record.tester_subject===test.tester_subject&&record.actor_role===actor.role&&record.executed_at===test.executed_at&&record.actual_result===test.actual_result&&record.execution_kind===test.execution_kind&&record.status==='PASS'&&record.scope_verified===true&&record.sod_checked===true,'UAT_CASE_RECORD_MISMATCH_'+id);
  fail(Array.isArray(record.artifacts)&&record.artifacts.length>0&&record.artifacts.every(ref=>verified.some(v=>v.ref.path!==item.ref.path&&v.ref.sha256!==item.ref.sha256&&v.ref.path===ref.path&&v.ref.sha256===ref.sha256&&v.bytes.length>0)),'UAT_CASE_TRACE_REQUIRED_'+id);
+ const traceDigests=record.artifacts.map(ref=>ref.sha256);
+ fail(new Set(traceDigests).size===traceDigests.length&&traceDigests.every(d=>!usedTraces.has(d)),'UAT_CASE_TRACE_REUSED_'+id);
+ for(const d of traceDigests)usedTraces.add(d);
 }
 export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='before',root=process.cwd(),now=Date.now()}){
  fail(receiptPath&&publicKey,'NATIVE_SIGNED_RECEIPT_REQUIRED');
@@ -72,17 +75,18 @@ export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='be
  const groups=financeGroups(readFileSync(resolve(root,'tests/rti-finance-uat-520.test.cjs'),'utf8'));
  const finIds=groups.flatMap(g=>Array.from({length:g.target},(_,i)=>'FIN-'+g.domains.replace(' & ','-')+'-'+String(i+1).padStart(3,'0')));
  fail(finIds.length===520&&new Set(finIds).size===520,'FINANCE_CATALOG_INCOMPLETE');
- fail(unique(p.finance_definitions,'id',520)&&finIds.every(id=>p.finance_definitions.some(d=>d.id===id&&nonempty(d.scenario)&&nonempty(d.expected)&&nonempty(d.actor)&&nonempty(d.approved_by))),'APPROVED_FINANCE_520_DEFINITIONS_REQUIRED');
+ fail(unique(p.finance_definitions,'id',520)&&finIds.every(id=>p.finance_definitions.some(d=>d.id===id&&nonempty(d.scenario)&&nonempty(d.expected)&&nonempty(d.actor)&&nonempty(d.actor_role)&&nonempty(d.approved_by))),'APPROVED_FINANCE_520_DEFINITIONS_REQUIRED');
  // Preserve historical IDs and bind approved native replacements to the original
  // catalog bytes, rather than silently treating legacy D1/Worker cases as native.
  fail(unique(p.erp_definitions,'id',420)&&erp.every(c=>p.erp_definitions.some(d=>d.id===c.id&&d.source_sha256===hash(Buffer.from(JSON.stringify(c)))&&nonempty(d.scenario)&&nonempty(d.expected)&&nonempty(d.actor_role)&&nonempty(d.approved_by))),'APPROVED_NATIVE_ERP_420_DEFINITIONS_REQUIRED');
  fail(Array.isArray(p.signoffs),'INDEPENDENT_SIGNOFFS_REQUIRED');
+ const usedTraces=new Set();
  for(const [name,cases,results] of [['ERP',p.erp_definitions,p.erp_uat],['FINANCE',p.finance_definitions,p.finance_uat]]){
   fail(unique(results,'id',cases.length),name+'_INDIVIDUAL_UAT_REQUIRED');
   for(const c of cases){
    const t=results.find(x=>x.id===c.id);
    fail(t&&t.release_sha===sha&&t.status==='PASS'&&t.execution_kind==='authenticated_native_hostinger_staging'&&nonempty(t.actual_result)&&t.scope_verified===true&&t.sod_checked===true&&roster.some(i=>i.subject===t.tester_subject&&i.mfa_verified===true&&i.auth_method==='native_business_totp'&&i.active_membership_verified===true)&&Number.isFinite(Date.parse(t.executed_at))&&Date.parse(t.executed_at)<=issued,name+'_UAT_NOT_PASS_'+c.id);
-   assertIndividualEvidence({test:t,definition:c,roster,signoffs:p.signoffs,verified:proof(t.evidence)});
+   assertIndividualEvidence({test:t,definition:c,roster,signoffs:p.signoffs,verified:proof(t.evidence),usedTraces});
   }
  }
  const required=['security','finance','operations','release','legal','hr','procurement','cyber_operations'];
