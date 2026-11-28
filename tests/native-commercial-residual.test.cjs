@@ -102,11 +102,11 @@ test('native scheduler rejects privileged connection before mutation and rolls b
 });
 
 test('executive management requires an explicit period and scoped Finance grant, preserves signed profit',async()=>{
- const keys=['opportunities','won','open_pipeline_idr','certified_projects','certified_revenue_cents','certified_profit_cents','approved_minutes','billable_minutes','available_credits','reserved_credits','consumed_credits','expired_credits','opex_budget_records','opex_budget_cents','opex_actual_cents','high_open_grc_risks'];
- const row=Object.fromEntries(keys.map(k=>[k,'0']));row.certified_profit_cents='-100';row.certified_projects='1';
+ const keys=['opportunities','won','open_pipeline_idr','certified_projects','certified_revenue_cents','certified_profit_cents','certified_direct_cost_cents','certified_indirect_cost_cents','certified_billed_cents','certified_cash_collected_cents','certified_committed_cost_cents','approved_minutes','billable_minutes','available_credits','reserved_credits','consumed_credits','expired_credits','opex_budget_records','opex_budget_cents','opex_actual_cents','high_open_grc_risks'];
+ const row=Object.fromEntries(keys.map(k=>[k,'0']));row.certified_profit_cents='-100';row.certified_projects='1';row.certified_revenue_cents='1000';row.certified_direct_cost_cents='900';row.certified_indirect_cost_cents='200';row.certified_billed_cents='800';row.certified_cash_collected_cents='500';row.certified_committed_cost_cents='300';
  const f=fixture('executive-command',{row});
  const url='https://example.invalid/api/erp/executive-command?legal_entity_id=entity-a&view=management&period=2026-11';
- const result=await f.exp.GET({url});assert.equal(result.status,200);assert.equal(result.body.management_metrics.certified_profit_cents,-100);assert.equal(result.body.automatic_posting,false);
+ const result=await f.exp.GET({url});assert.equal(result.status,200);assert.equal(result.body.management_metrics.certified_profit_cents,-100);assert.equal(result.body.management_metrics.certified_cash_collected_cents,500);assert.equal((await fixture('executive-command',{row:{...row,certified_profit_cents:'-99'}}).exp.GET({url})).status,503);assert.equal(result.body.automatic_posting,false);
  assert.match(f.queries[0].sql,/a.business_unit_id IS NULL AND a.department_id IS NULL/);
  assert.match(f.queries[0].sql,/certification_status='certified_closed'/);
  assert.match(f.queries[0].sql,/t.billable=1/);
@@ -115,7 +115,7 @@ test('executive management requires an explicit period and scoped Finance grant,
  assert.equal((await fixture('executive-command').exp.GET({url})).status,403);
  assert.equal((await fixture('executive-command',{role:'sales',row}).exp.GET({url})).status,403);
  assert.equal((await fixture('executive-command',{preview:true,row}).exp.GET({url})).status,403);
- for(const suffix of ['&period=2026-12','&view=commercial'])assert.equal((await fixture('executive-command',{row}).exp.GET({url:url+suffix})).status,422);
+ for(const suffix of ['&period=2026-12','&view=commercial','&unknown=1'])assert.equal((await fixture('executive-command',{row}).exp.GET({url:url+suffix})).status,422);
  assert.equal((await fixture('executive-command',{row:{...row,approved_minutes:'1',billable_minutes:'2'}}).exp.GET({url})).status,503);
 });
 
