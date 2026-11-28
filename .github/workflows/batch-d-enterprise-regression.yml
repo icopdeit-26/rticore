@@ -25,3 +25,5 @@ jobs:
       - run: npm run test:erp
       - run: npm run test:service-operations
       - run: npm run test:psa-timesheets
+
+      - run: node --test tests/native-operations-center.test.mjs

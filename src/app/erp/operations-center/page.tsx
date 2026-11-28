@@ -1,6 +1,7 @@
 'use client';
 import BackupDrills from './BackupDrills';
 import FeatureGovernance from './FeatureGovernance';
+import ExecutiveSummary from './ExecutiveSummary';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 
 type Job={id:string;kind:string;status:string;attempts:number;max_attempts:number;due_at:string;last_reason:string|null;created_at:string};
@@ -51,10 +52,11 @@ export default function OperationsCenter(){
   </form>
   {error&&<p role="alert" className="rounded border border-red-500 p-3 text-sm">{error}</p>}
   {result&&<section aria-live="polite" className="space-y-4">
+   <ExecutiveSummary key={loadedEntity} entity={loadedEntity}/>
    <BackupDrills key={loadedEntity} entity={loadedEntity} role={result.role}/>
    {['admin','approver'].includes(result.role)&&<FeatureGovernance key={loadedEntity} entity={loadedEntity} role={result.role}/>}
    <p className="text-sm">Scope: {loadedEntity}{result.truncated?' — hasil dibatasi 200 baris per register.':''}</p>
-   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{['queued','running','succeeded','dead_letter'].map(status=><div key={status} className="rounded-lg border p-3"><p className="text-sm">{status}</p><p className="text-xl font-bold">{result.jobs.filter(j=>j.status===status).length}</p></div>)}</div>
+   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{['queued','running','succeeded','dead_letter'].map(status=><div key={status} className="rounded-lg border p-3"><p className="text-sm">{status} (daftar dimuat)</p><p className="text-xl font-bold">{result.jobs.filter(j=>j.status===status).length}</p></div>)}</div>
    <section className="overflow-x-auto rounded-lg border p-3"><h2 className="mb-3 font-semibold">Native job queue (hasil dimuat)</h2>
    {result.jobs.length===0?<p className="text-sm">Tidak ada job pada scope ini.</p>:<table className="w-full text-left text-sm"><thead><tr>{['ID','Jenis','Status','Attempts','Due','Reason'].map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead><tbody>{result.jobs.map(j=><tr key={j.id} className="border-t">{[j.id,j.kind,j.status,`${j.attempts}/${j.max_attempts}`,j.due_at,j.last_reason].map((v,i)=><td key={i} className="p-2">{show(v)}</td>)}</tr>)}</tbody></table>}</section>
    <section className="overflow-x-auto rounded-lg border p-3"><h2 className="mb-3 font-semibold">Latest finance integration retry attempts</h2>

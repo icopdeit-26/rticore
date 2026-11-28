@@ -33,3 +33,26 @@ test('feature governance is an explicit scoped maker-checker workspace, never a 
  assert.match(panel,/credentials:'same-origin'/);
  assert.doesNotMatch(panel,/process\.env|localStorage/);
 });
+
+import ts from 'typescript';
+import vm from 'node:vm';
+test('native executive aggregate denies unauthorized scope, preview and malformed rows; never fabricates zero',async()=>{
+ const source=readFileSync('src/app/api/erp/executive-command/route.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const row={legal_entity_id:'entity-a',queued:'240',running:'3',succeeded:'900',dead_letter:'2',pending_recovery:'1'};
+ async function run({role='finance',preview=false,runtime='hostinger',authenticated=true,result=row,entity='entity-a'}={}){
+  const exp={},calls=[];
+  const db={prepare:sql=>{calls.push(sql);return {bind:(...args)=>{assert.deepEqual(args,['defendit360',entity,'a@example.invalid',role]);return {first:async()=>result};}};}};
+  const assertERP=(ok,message,status=422)=>{if(!ok)throw Object.assign(Error(message),{status});};
+  vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:runtime}},require:n=>{
+   if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>authenticated?{ok:true,identity:{db,email:'a@example.invalid',role,rolePreview:preview}}:{ok:false,response:{status:401}}};
+   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+   if(n==='@/lib/erp-core')return {erpAssert:assertERP,erpId:v=>typeof v==='string'&&v.length>0,erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503})};
+   throw Error(n);
+  }});
+  return {r:await exp.GET({url:'https://example.invalid/api/erp/executive-command?legal_entity_id='+entity}),calls};
+ }
+ for(const [opts,status] of [[{authenticated:false},401],[{role:'sales'},403],[{preview:true},403],[{runtime:'local'},503],[{result:null},403],[{result:{...row,queued:'bad'}},503]])assert.equal((await run(opts)).r.status,status);
+ const ok=await run();assert.equal(ok.r.status,200);assert.equal(ok.r.body.metrics.queued,240);assert.equal(ok.r.body.read_only,true);assert.equal(ok.r.body.automatic_posting,false);
+ assert.equal(ok.calls.length,1);assert.match(ok.calls[0],/rticore_fg_actor_role/);assert.match(ok.calls[0],/j.tenant_id=s.tenant_id AND j.legal_entity_id=s.id/);assert.doesNotMatch(ok.calls[0],/\b(UPDATE|DELETE|INSERT)\b/);
+});
