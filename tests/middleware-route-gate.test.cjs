@@ -84,3 +84,24 @@ test('native root redirects missing, malformed and duplicate cookie before strea
   runtimeEnv.RTICORE_AUTH_MODE='oidc';assert.equal(middleware(req(null)).status,200);
  }finally{delete runtimeEnv.RTICORE_RUNTIME;delete runtimeEnv.RTICORE_AUTH_MODE;}
 });
+
+test('feature governance route is exact, native-only and independently authenticated',()=>{
+ const path='/api/admin/feature-flags';
+ assert.equal(isEnabledD1ApiRoute(path),false);
+ runtimeEnv.RTICORE_RUNTIME='hostinger';
+ try{
+  assert.equal(isEnabledD1ApiRoute(path),true);
+  assert.equal(middleware({nextUrl:{pathname:path}}).status,200);
+  for(const p of [path+'/',path+'/debug',path+'-extra','/api/admin/unknown']){
+   assert.equal(isEnabledD1ApiRoute(p),false,p);
+   assert.equal(middleware({nextUrl:{pathname:p}}).status,503,p);
+  }
+ }finally{delete runtimeEnv.RTICORE_RUNTIME;}
+ const api=fs.readFileSync(base+'/src/app/api/admin/feature-flags/route.ts','utf8');
+ assert.match(api,/await authorizeBoQ\(req\)/);
+ assert.match(api,/await scope\(a.identity,entity\)/);
+ assert.match(api,/role==='admin'/);
+ assert.match(api,/role==='approver'/);
+ assert.match(api,/lower\(requested_by\)<>\?/);
+ assert.match(api,/activation:false/);
+});
