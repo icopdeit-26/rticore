@@ -194,7 +194,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="font-extrabold tracking-tight text-slate-900 text-base sm:text-lg">RTICORE</span>
-                  <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-bold text-blue-700 border border-blue-200/60">ERP</span>
+                  <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-200">ERP</span>
                 </div>
                 <p className="hidden text-[10px] font-medium text-slate-500 sm:block -mt-1">
                   RTI Enterprise OS
@@ -209,14 +209,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   aria-controls="rticore-left-sidebar-desktop" aria-expanded={desktopMenuOpen}
                   aria-label={desktopMenuOpen?'Sembunyikan menu kiri RTICORE':'Tampilkan menu kiri RTICORE'}
                   title={desktopMenuOpen?'Sembunyikan menu kiri':'Tampilkan menu kiri'}
-                  className="hidden h-9 items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 text-xs font-bold text-teal-800 transition hover:border-teal-400 hover:bg-teal-100 focus-visible:outline-2 focus-visible:outline-teal-500 lg:flex">
+                  className="hidden h-9 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-800 transition hover:border-amber-400 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-500 lg:flex">
                   {desktopMenuOpen?<PanelLeftClose className="h-4 w-4" aria-hidden="true"/>:<PanelLeftOpen className="h-4 w-4" aria-hidden="true"/>}
                   <span>Menu</span>
                 </button>
                 <button type="button" onClick={onToggleMenu}
                   aria-controls="rticore-left-sidebar-mobile" aria-expanded={mobileMenuOpen}
                   aria-label={mobileMenuOpen?'Tutup menu kiri RTICORE':'Buka menu kiri RTICORE'}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 text-teal-800 transition hover:bg-teal-100 focus-visible:outline-2 focus-visible:outline-teal-500 lg:hidden">
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-800 transition hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-500 lg:hidden">
                   {mobileMenuOpen?<X className="h-4 w-4" aria-hidden="true"/>:<Menu className="h-4 w-4" aria-hidden="true"/>}
                 </button>
               </>
@@ -229,10 +229,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* AI Assistant Quick Trigger */}
             <button
               onClick={() => setAiAssistantOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-[#102c36] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-teal-800 transition-all"
+              className="flex items-center gap-1.5 rounded-lg bg-amber-800 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-800 transition-all"
               title="Buka AI Business Assistant"
             >
-              <Sparkles className="h-3.5 w-3.5 text-teal-200" />
+              <Sparkles className="h-3.5 w-3.5 text-amber-200" />
               <span className="hidden sm:inline">AI Assistant</span>
             </button>
 
@@ -262,24 +262,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Verified identity stays the same; only Admin may use the server-enforced role preview. */}
             <details className="group relative min-w-0">
               <summary aria-label="Menu akun dan logout" title="Menu akun: profil dan keluar"
-                className="flex min-h-11 min-w-0 max-w-[118px] cursor-pointer list-none items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:border-teal-300 hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-teal-500 sm:max-w-[260px] [&::-webkit-details-marker]:hidden">
-                <UserCheck className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true"/>
+                className="flex min-h-11 min-w-0 max-w-[118px] cursor-pointer list-none items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:border-amber-300 hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-amber-500 sm:max-w-[260px] [&::-webkit-details-marker]:hidden">
+                <UserCheck className="h-4 w-4 shrink-0 text-amber-700" aria-hidden="true"/>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold" title={currentRoleInfo.label}>{currentRoleInfo.label}</span>
-                  <span className="block truncate text-[10px] font-medium text-teal-700">{currentRoleInfo.badge}</span>
+                  <span className="block truncate text-[10px] font-medium text-amber-700">{currentRoleInfo.badge}</span>
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true"/>
               </summary>
               <div className="absolute right-0 top-[calc(100%+8px)] z-[90] max-h-[min(78dvh,34rem)] w-[min(19rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-xl">
                 <p className="break-all text-xs font-semibold text-slate-900">{currentRoleInfo.label}</p>
-                <p className="mb-3 text-xs text-teal-700">Role: {currentRoleInfo.badge}{rolePreview?' · Mode uji':''}</p>
+                <p className="mb-3 text-xs text-amber-700">Role: {currentRoleInfo.badge}{rolePreview?' · Mode uji':''}</p>
                 {assignedRole==='admin'&&(
-                  <div className="mb-3 rounded-xl border border-teal-100 bg-teal-50/70 p-3">
-                    <label htmlFor="rticore-role-select" className="mb-1.5 block text-xs font-bold text-teal-900">Ganti Role / Mode Uji</label>
+                  <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+                    <label htmlFor="rticore-role-select" className="mb-1.5 block text-xs font-bold text-amber-900">Ganti Role / Mode Uji</label>
                     <select id="rticore-role-select" aria-label="Pilih role pengguna untuk simulasi"
                       value={role||'admin'} disabled={roleSwitchBusy}
                       onChange={event=>void handleRoleSwitch(event.target.value)}
-                      className="min-h-11 w-full rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-60">
+                      className="min-h-11 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-60">
                       {roles.map(value=><option key={value} value={value}>{roleLabels[value]}</option>)}
                     </select>
                     <p className="mt-2 text-[11px] leading-4 text-slate-600">
@@ -288,7 +288,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     {roleSwitchError&&<p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{roleSwitchError}</p>}
                     {rolePreview&&<button type="button" disabled={roleSwitchBusy}
                       onClick={()=>void handleRoleSwitch('admin')}
-                      className="mt-2 min-h-10 w-full rounded-lg border border-teal-200 bg-white px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-100 disabled:opacity-60">
+                      className="mt-2 min-h-10 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-60">
                       Kembali ke Role Admin
                     </button>}
                   </div>
@@ -310,9 +310,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div role="dialog" aria-modal="true" aria-label="RTICORE AI Business Assistant"
             className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[85dvh] sm:max-h-[85dvh] sm:w-[440px] sm:rounded-2xl sm:border sm:border-slate-200">
             {/* Drawer Header */}
-            <div className="flex shrink-0 items-center justify-between gap-2 bg-gradient-to-r from-slate-900 via-teal-950 to-purple-950 p-3 text-white sm:p-4">
+            <div className="flex shrink-0 items-center justify-between gap-2 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 p-3 text-white sm:p-4">
               <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center text-cyan-300">
+                <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-300">
                   <Bot className="h-5 w-5" />
                 </div>
                 <div>
@@ -368,7 +368,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {conversationTurns.length > 0 && (
-              <p className="shrink-0 bg-teal-50 px-3 py-1 text-[10px] font-medium text-teal-700" role="status">
+              <p className="shrink-0 bg-amber-50 px-3 py-1 text-[10px] font-medium text-amber-700" role="status">
                 Konteks aktif{activeTopic?' · '+activeTopicLabels[activeTopic]:''} · {selectConversationHistory(conversationTurns).length / 2} tanya-jawab terakhir. Pertanyaan lanjutan tetap terkait; gunakan Percakapan baru untuk mengganti sesi.
               </p>
             )}
@@ -383,7 +383,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div
                     className={`max-w-[85%] rounded-2xl p-3 leading-relaxed whitespace-pre-line ${
                       msg.sender === 'user'
-                        ? 'bg-blue-600 text-white rounded-br-xs'
+                        ? 'bg-amber-800 text-white rounded-br-xs'
                         : 'bg-slate-100 text-slate-900 border border-slate-200/80 rounded-bl-xs'
                     }`}
                   >
@@ -428,7 +428,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 type="submit"
                 disabled={isAiLoading || !chatInput.trim()}
                 aria-label="Kirim pesan ke AI"
-                className="relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                className="relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-amber-900 disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
               </button>
