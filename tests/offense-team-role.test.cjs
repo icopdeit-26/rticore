@@ -30,8 +30,9 @@ test('Offense menus: Member delivery/timesheets/Vault; Leader adds read-only Fea
  const {navigationForRole,canOpenRoute,firstAccessibleHref}=navigation();
  for(const role of ['offense_lead','offense_member'])assert.equal(firstAccessibleHref(role),'/sales/delivery',role+' lands on its daily desk');
  const routes=role=>Array.from(navigationForRole(role).flatMap(g=>g.items.map(i=>i.href)));
- assert.deepEqual(routes('offense_member'),['/sales/delivery','/psa/timesheets','/sales/documents']);
- assert.deepEqual(routes('offense_lead'),['/sales/feasibility','/sales/delivery','/psa/timesheets','/sales/documents']);
+ assert.deepEqual(routes('offense_member'),['/sales/delivery','/psa/timesheets','/sales/documents','/erp/technical-registers']);
+ assert.deepEqual(routes('offense_lead'),['/sales/feasibility','/sales/delivery','/psa/timesheets','/sales/documents','/erp/technical-registers']);
+ for(const role of ['offense_lead','offense_member'])assert.equal(canOpenRoute(role,'/erp/technical-registers'),true,role+' scoped technical workspace');
  for(const role of ['offense_lead','offense_member'])
   for(const href of ['/boq','/sales/pipeline','/customers','/sales/billing','/flexguard','/approvals','/erp/cyber-operations','/settings/system'])
    assert.equal(canOpenRoute(role,href),false,role+' '+href);
@@ -47,6 +48,7 @@ test('API allow-list keeps Offense roles away from every other handler',()=>{
    for(const role of ['offense_lead','offense_member'])assert.equal(offenseRouteAllowed(p,role),true,role+' '+p);
   // The approval bell answers 403 for project-scoped roles; the shell shows no count.
   assert.equal(offenseRouteAllowed('/api/sales/approval-queue','offense_member'),false);
+ for(const role of ['offense_lead','offense_member'])assert.equal(offenseRouteAllowed('/api/erp/technical-registers',role),true,role+' dedicated endpoint');
   assert.equal(offenseRouteAllowed('/api/sales/feasibility','offense_lead'),true);
   assert.equal(offenseRouteAllowed('/api/sales/feasibility','offense_member'),false);
   for(const p of ['/api/boq','/api/boq/export','/api/sales/flexguard','/api/erp/cyber-operations','/api/reports','/api/ai/generate','/api/sales/vault','/api/sales/lifecycle'])

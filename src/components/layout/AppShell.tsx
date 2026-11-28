@@ -21,6 +21,7 @@ const APPROVAL_QUEUE_ROLES=['admin','sales','presales','finance','approver','leg
 export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false})=>{
   const pathname=usePathname();
   const isLoginPage=pathname==='/login';
+  const isCustomerPortal=pathname==='/portal/flexguard'||pathname==='/portal/flexguard/login';
   const [session,setSession]=useState<Session>({status:'checking',identity:null});
   const [pendingApprovalsCount,setPendingApprovalsCount]=useState<number|null>(null);
   const [desktopMenuOpen,setDesktopMenuOpen]=useState(true);
@@ -49,7 +50,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
     else setMobileMenuOpen(false);
   },[]);
   useEffect(()=>{
-    if(isLoginPage||(nativeBusiness&&pathname==='/'))return; // Login and server-side native entry have no shell identity request.
+    if(isLoginPage||isCustomerPortal||(nativeBusiness&&pathname==='/'))return; // Login and server-side native entry have no shell identity request.
     const controller=new AbortController();
     fetch('/api/sales/identity',{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal})
       .then(async res=>{
@@ -62,10 +63,10 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
       })
       .catch(()=>{if(!controller.signal.aborted)setSession({status:'denied',identity:null});});
     return ()=>controller.abort();
-  },[isLoginPage,nativeBusiness,pathname]);
+  },[isLoginPage,isCustomerPortal,nativeBusiness,pathname]);
   // The bell count is real, role-scoped D1 data, or null when not verified. Never assume zero on failure.
   // Only roles the approval-queue API serves ask for it; others would get a 403 on every page.
-  const queueRole=session.status==='ready'&&APPROVAL_QUEUE_ROLES.includes(session.identity?.role??'');
+  const queueRole=!isCustomerPortal&&session.status==='ready'&&APPROVAL_QUEUE_ROLES.includes(session.identity?.role??'');
   useEffect(()=>{
     if(!queueRole){setPendingApprovalsCount(null);return;}
     const controller=new AbortController();
@@ -84,7 +85,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
   },[queueRole]);
   const role=session.status==='ready'?session.identity?.role??null:null;
   // The sign-in page has its own minimal layout (no authenticated header or navigation).
-  if(isLoginPage||(nativeBusiness&&pathname==='/'))return <>{children}</>;
+  if(isLoginPage||isCustomerPortal||(nativeBusiness&&pathname==='/'))return <>{children}</>;
   if(nativeBusiness&&session.status!=='ready')return <main className="mx-auto max-w-md p-8"><p role="status">{session.status==='checking'?'Memverifikasi sesi…':'Layanan identitas belum tersedia.'}</p><Link href="/login" className="mt-3 block underline">Buka login RTICORE</Link></main>;
   return (
     <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#f5f7fa] text-slate-900">

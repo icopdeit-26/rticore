@@ -97,6 +97,7 @@ export const RTICORE_NAVIGATION: readonly RTICoreNavGroup[] = [
     item('Human Resources & Workforce','/erp/hr',['admin','approver']),
     item('SIEM / EDR Integrations','/erp/security-integrations',['admin','presales','approver',...DEFENSE]),
     item('Procurement & Accounts Payable','/erp/procurement',['admin','presales','finance','approver']),
+    item('Technical Project Registers','/erp/technical-registers',[...OFFENSE,...GOVERNANCE]),
     item('Cybersecurity Operations','/erp/cyber-operations',['admin','presales','approver',...DEFENSE]),
   ]},
   {id:'administration',label:'11 · Administrasi · Khusus Admin',items:[

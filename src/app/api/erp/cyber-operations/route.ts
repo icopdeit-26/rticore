@@ -1,8 +1,9 @@
-﻿import {authorizeBoQ} from '@/lib/boq-auth';
+﻿import {nativeGrcRead,nativeGrcWrite,nativeGrcTransition} from '@/lib/native-cti-grc';
+import {authorizeBoQ} from '@/lib/boq-auth';
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal as vaultOriginal,ServiceError} from '@/lib/service-operations';
 import {TENANT} from '@/lib/sales-workflow';
-import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpProjectUnit} from '@/lib/erp-core';
+import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpProjectUnit,erpPeriod,erpDate} from '@/lib/erp-core';
 import {isDefenseRole,DEFENSE_CASE_KINDS,defenseProjects,hasCyberGrant} from '@/lib/defense-team';
 export const dynamic='force-dynamic';
 // Vault validation errors (wrong/foreign/expired document) surface as 4xx, not as a generic ERP 503.
@@ -45,6 +46,54 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const technical=u.pathname==='/api/erp/technical-registers';
+  if(technical){const role=a.identity.role;const keys=[...u.searchParams.keys()];erpAssert(keys.length===1&&((['offense_lead','offense_member'].includes(role)&&['vapt_project_id','finding_project_id'].includes(keys[0]))||(['governance_leader','governance_member'].includes(role)&&keys[0]==='grc_project_id')),'Technical scope denied',403);}
+  else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(a.identity.role),'Technical endpoint required',403);
+  const grcProject=u.searchParams.get('grc_project_id');
+  if(grcProject!==null){erpAssert(erpId(grcProject),'Project ID wajib');return await nativeGrcRead(a.identity,grcProject);}
+  const findingProject=u.searchParams.get('finding_project_id');
+  if(findingProject!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native VAPT required',403);
+   erpAssert(erpId(findingProject),'Project ID wajib');
+   const entity=await erpProjectUnit(a.identity.db,findingProject);
+   const grant=await a.identity.db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,findingProject,a.identity.email).first<{role:string|null}>();
+   erpAssert(grant?.role===a.identity.role,'Akses VAPT ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT * FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,findingProject).all();
+   const engagements=await a.identity.db.prepare("SELECT id,engagement_code,title FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND status='roe_approved' ORDER BY created_at DESC LIMIT 200").bind(TENANT,entity,findingProject).all();
+   const events=await a.identity.db.prepare('SELECT finding_id,version,status,actor_email,notes,document_id,document_sha256,recorded_at FROM rticore_native_vapt_finding_event WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY recorded_at DESC LIMIT 501').bind(TENANT,entity,findingProject).all();
+   return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),engagements:engagements.results,events:events.results.slice(0,500),truncated:rows.results.length>200||events.results.length>500});
+  }
+  const vaptProject=u.searchParams.get('vapt_project_id');
+  if(vaptProject!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native VAPT required',403);
+   erpAssert(erpId(vaptProject),'Project ID wajib');
+   const entity=await erpProjectUnit(a.identity.db,vaptProject);
+   const grant=await a.identity.db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,vaptProject,a.identity.email).first<{role:string|null}>();
+   erpAssert(grant?.role===a.identity.role,'Akses VAPT ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT * FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,vaptProject).all();
+   return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),truncated:rows.results.length>200});
+  }
+  const slaProject=u.searchParams.get('sla_project_id');
+  if(slaProject!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native SLA required',403);
+   erpAssert(erpId(slaProject),'Project ID wajib');
+   const entity=await erpProjectUnit(a.identity.db,slaProject);
+   const grant=await a.identity.db.prepare('SELECT rticore_native_soc_actor(?,?,?,?) AS role').bind(TENANT,entity,slaProject,a.identity.email).first<{role:string|null}>();
+   erpAssert(grant?.role===a.identity.role,'Akses SOC SLA ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT *,round(within_sla::numeric*10000/observations)::integer AS sla_compliance_bps FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY period_code DESC,created_at DESC LIMIT 201').bind(TENANT,entity,slaProject).all();
+   return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),truncated:rows.results.length>200,financial_posting:false});
+  }
+  const custodyCase=u.searchParams.get('custody_case_id');
+  if(custodyCase!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native custody required',403);
+   erpAssert(erpId(custodyCase),'Case ID wajib');
+   const {c}=await loadCase(a.identity.db,custodyCase);
+   const entity=await erpProjectUnit(a.identity.db,c.project_id);
+   const permitted=await a.identity.db.prepare('SELECT rticore_native_dfir_actor(?,?,?,?) AS allowed').bind(TENANT,entity,c.id,a.identity.email).first<{allowed:boolean}>();
+   erpAssert(permitted?.allowed===true,'Akses custody ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT evidence_tag,seq,document_id,sha256,action,actor_email,custodian_email,notes,recorded_at FROM rticore_native_dfir_custody WHERE tenant_id=? AND legal_entity_id=? AND case_id=? ORDER BY evidence_tag,seq LIMIT 501').bind(TENANT,entity,c.id).all();
+   return erpReply({success:true,entries:rows.results.slice(0,500),truncated:rows.results.length>500});
+  }
   if(u.searchParams.get('board')==='1'){
    erpAssert(isDefenseRole(a.identity.role)||a.identity.role==='admin','Board SOC Defense hanya untuk Defense Team atau Admin',403);
    return erpReply(await board(a.identity));
@@ -59,6 +108,107 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  const technical=new URL(req.url).pathname==='/api/erp/technical-registers';
+  if(technical){
+   erpAssert((['offense_lead','offense_member'].includes(role)&&(v.action==='register_vapt_finding'||(v.action==='transition_vapt_finding'&&v.next_status==='retest_submitted')||(role==='offense_lead'&&v.action==='register_vapt_engagement')))||(['governance_leader','governance_member'].includes(role)&&((v.action==='native_cti_grc_register'&&typeof v.record_kind==='string'&&['grc_engagement','grc_risk','grc_control'].includes(v.record_kind))||(v.action==='native_cti_grc_transition'&&['grc_engagement','grc_risk'].includes(String(v.record_kind))&&['in_progress','submitted'].includes(String(v.status))))),'Technical mutation denied',403);
+  }else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(role),'Technical endpoint required',403);
+  if(v.action==='native_cti_grc_transition')return await nativeGrcTransition(a.identity,v);
+  if(v.action==='native_cti_grc_register')return await nativeGrcWrite(a.identity,v);
+  if(v.action==='register_vapt_finding'||v.action==='transition_vapt_finding'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
+   erpAssert(erpId(v.project_id)&&erpText(v.notes,12,800),'Project dan catatan wajib');
+   const project=v.project_id;const entity=await erpProjectUnit(db,project);
+   const grant=await db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,project,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses VAPT ditolak',403);
+   const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
+   erpAssert(p,'Project tidak ditemukan',404);
+   if(v.action==='register_vapt_finding'){
+    erpAssert(['admin','presales','offense_lead','offense_member'].includes(role),'Maker VAPT wajib',403);
+    erpAssert(erpId(v.engagement_id)&&erpId(v.document_id)&&erpText(v.finding_code,3,64)&&erpText(v.title,5,200)&&erpText(v.affected_asset,3,250)&&erpText(v.remediation,12,2000)&&typeof v.cvss_tenths==='number'&&Number.isSafeInteger(v.cvss_tenths)&&v.cvss_tenths>=0&&v.cvss_tenths<=100,'Data finding tidak valid');
+    const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_vapt_finding(id,tenant_id,legal_entity_id,project_id,engagement_id,finding_code,title,cvss_tenths,affected_asset,remediation,evidence_document_id,evidence_sha256,created_by,last_actor,last_notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,project,v.engagement_id,v.finding_code.trim(),v.title.trim(),v.cvss_tenths,v.affected_asset.trim(),v.remediation.trim(),v.document_id,doc.sha256.toLowerCase(),email,email,v.notes.trim())],'cyber',id,'VAPT_FINDING_REGISTER',{engagement_id:v.engagement_id,document_id:v.document_id});
+    return erpReply({success:true,id,status:'open'},201);
+   }
+   erpAssert(erpId(v.id)&&typeof v.version==='number'&&Number.isSafeInteger(v.version)&&v.version>=1&&typeof v.next_status==='string'&&['qa_approved','qa_rejected','retest_requested','retest_submitted','verified_fixed','still_vulnerable'].includes(v.next_status),'Status atau versi tidak valid');
+   const next=v.next_status;
+   erpAssert(next==='retest_submitted'?['admin','presales','offense_lead','offense_member'].includes(role):role==='approver','Maker-checker wajib',403);
+   const row=await db.prepare('SELECT evidence_document_id,retest_document_id FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND version=?').bind(TENANT,entity,project,v.id,v.version).first<{evidence_document_id:string;retest_document_id:string|null}>();
+   erpAssert(row,'Finding tidak ditemukan atau versi berubah',409);
+   let write;
+   if(next==='retest_submitted'){
+    erpAssert(erpId(v.document_id),'Bukti retest asli wajib');const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);
+    write=db.prepare('UPDATE rticore_native_vapt_finding SET status=?,version=version+1,last_actor=?,last_notes=?,retest_document_id=?,retest_sha256=?,retest_by=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?').bind(next,email,v.notes.trim(),v.document_id,doc.sha256.toLowerCase(),email,TENANT,entity,project,v.id);
+   }else{
+    const evidence=['verified_fixed','still_vulnerable'].includes(next)?row.retest_document_id:row.evidence_document_id;
+    erpAssert(evidence,'Bukti asli wajib');await supportingOriginal(db,evidence,p.opportunity_id);
+    write=db.prepare('UPDATE rticore_native_vapt_finding SET status=?,version=version+1,last_actor=?,last_notes=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?').bind(next,email,v.notes.trim(),TENANT,entity,project,v.id);
+   }
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_vapt_finding WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND version=?)",[TENANT,entity,project,v.id,v.version],[write],'cyber',v.id,'VAPT_FINDING_TRANSITION',{next_status:next});
+   return erpReply({success:true,status:next});
+  }
+  if(v.action==='register_vapt_engagement'||v.action==='review_vapt_roe'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
+   erpAssert(erpId(v.project_id),'Project ID wajib');
+   const project=v.project_id;const entity=await erpProjectUnit(db,project);
+   const grant=await db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,project,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses VAPT ditolak',403);
+   const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
+   erpAssert(p,'Project tidak ditemukan',404);
+   if(v.action==='register_vapt_engagement'){
+    erpAssert(['admin','presales','offense_lead'].includes(role),'Maker VAPT wajib',403);
+    erpAssert(erpText(v.engagement_code,4,64)&&erpText(v.title,5,200)&&erpText(v.scope_summary,12,2000)&&erpId(v.roe_document_id),'Kode, judul, scope, RoE asli wajib');
+    erpAssert(typeof v.test_type==='string'&&['web_app','mobile_app','api','network','cloud','active_directory','wireless','red_team','purple_team','source_code'].includes(v.test_type),'Test type tidak valid');
+    erpAssert(erpDate(v.window_start)&&erpDate(v.window_end)&&v.window_end>=v.window_start,'Testing window tidak valid');
+    const doc=await supportingOriginal(db,v.roe_document_id,p.opportunity_id);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_vapt_engagement(id,tenant_id,legal_entity_id,project_id,engagement_code,title,test_type,scope_summary,window_start,window_end,roe_document_id,roe_sha256,created_by) VALUES(?,?,?,?,?,?,?,?,CAST(? AS date),CAST(? AS date),?,?,?)').bind(id,TENANT,entity,project,v.engagement_code.trim(),v.title.trim(),v.test_type,v.scope_summary.trim(),v.window_start,v.window_end,v.roe_document_id,doc.sha256.toLowerCase(),email)],'cyber',id,'VAPT_ENGAGEMENT_REGISTER',{project_id:project,document_id:v.roe_document_id});
+    return erpReply({success:true,id,status:'registered'},201);
+   }
+   erpAssert(role==='approver','Independent approver wajib',403);
+   erpAssert(erpId(v.id)&&typeof v.approve==='boolean'&&erpText(v.notes,12,800)&&v.version===1,'Review tidak valid');
+   const row=await db.prepare("SELECT roe_document_id FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='registered' AND version=1").bind(TENANT,entity,project,v.id).first<{roe_document_id:string}>();
+   erpAssert(row,'Engagement pending tidak ditemukan',404);await supportingOriginal(db,row.roe_document_id,p.opportunity_id);
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='registered' AND version=1 AND lower(created_by)<>?)",[TENANT,entity,project,v.id,email.toLowerCase()],[db.prepare("UPDATE rticore_native_vapt_engagement SET status=?,version=version+1,reviewed_by=?,reviewed_at=now(),review_notes=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?").bind(v.approve?'roe_approved':'roe_rejected',email,v.notes.trim(),TENANT,entity,project,v.id)],'cyber',v.id,'VAPT_ROE_REVIEW',{approved:v.approve});
+   return erpReply({success:true,status:v.approve?'roe_approved':'roe_rejected'});
+  }
+  if(v.action==='submit_soc_sla'||v.action==='review_soc_sla'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native SLA required',503);
+   erpAssert(erpId(v.project_id),'Project ID wajib');
+   const project=v.project_id;const entity=await erpProjectUnit(db,project);
+   const grant=await db.prepare('SELECT rticore_native_soc_actor(?,?,?,?) AS role').bind(TENANT,entity,project,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses SOC SLA ditolak',403);
+   const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
+   erpAssert(p,'Project tidak ditemukan',404);
+   if(v.action==='submit_soc_sla'){
+    erpAssert(['admin','defense_leader'].includes(role),'Maker SOC SLA wajib',403);
+    erpAssert(erpPeriod(v.period_code)&&erpId(v.document_id),'Periode dan dokumen wajib');
+    const valid=(x:unknown,min:number,max:number):x is number=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=min&&x<=max;
+    erpAssert(valid(v.observations,1,10000000)&&valid(v.within_sla,0,v.observations)&&valid(v.alerts_triaged,0,10000000)&&valid(v.incidents_escalated,0,v.alerts_triaged),'Metrik tidak valid');
+    erpAssert((v.mttd_minutes===null||valid(v.mttd_minutes,0,525600))&&(v.mttr_minutes===null||valid(v.mttr_minutes,0,525600)),'MTTD/MTTR tidak valid');
+    const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_soc_sla(id,tenant_id,legal_entity_id,project_id,period_code,observations,within_sla,alerts_triaged,incidents_escalated,mttd_minutes,mttr_minutes,document_id,document_sha256,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,project,v.period_code,v.observations,v.within_sla,v.alerts_triaged,v.incidents_escalated,v.mttd_minutes,v.mttr_minutes,v.document_id,doc.sha256.toLowerCase(),email)],'cyber',id,'SOC_SLA_SUBMIT',{project_id:project,period:v.period_code,document_id:v.document_id});
+    return erpReply({success:true,id,status:'pending'},201);
+   }
+   erpAssert(role==='approver','Independent approver wajib',403);
+   erpAssert(erpId(v.id)&&typeof v.approve==='boolean'&&erpText(v.notes,12,800),'Review tidak valid');
+   const row=await db.prepare("SELECT document_id FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='pending'").bind(TENANT,entity,project,v.id).first<{document_id:string}>();
+   erpAssert(row,'SLA pending tidak ditemukan',404);await supportingOriginal(db,row.document_id,p.opportunity_id);
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='pending' AND lower(created_by)<>?)",[TENANT,entity,project,v.id,email.toLowerCase()],[db.prepare("UPDATE rticore_native_soc_sla SET status=?,reviewed_by=?,reviewed_at=now(),review_notes=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?").bind(v.approve?'approved':'rejected',email,v.notes.trim(),TENANT,entity,project,v.id)],'cyber',v.id,'SOC_SLA_REVIEW',{approved:v.approve});
+   return erpReply({success:true,status:v.approve?'approved':'rejected'});
+  }
+  if(v.action==='append_custody'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native custody required',503);
+   erpAssert(erpId(v.id)&&erpId(v.document_id)&&erpText(v.evidence_tag,3,64)&&erpText(v.notes,12,800),'Case, dokumen, tag dan catatan wajib');
+   erpAssert(typeof v.custody_action==='string'&&['collected','transferred','analyzed','sealed','archived'].includes(v.custody_action),'Custody action invalid');
+   erpAssert(typeof v.expected_seq==='number'&&Number.isSafeInteger(v.expected_seq)&&v.expected_seq>=0&&v.expected_seq<1000000,'Versi custody wajib');
+   const recipient=v.custody_action==='transferred'?v.recipient_email:null;
+   erpAssert(v.custody_action!=='transferred'||(typeof recipient==='string'&&recipient.includes('@')&&recipient.length<=254),'Recipient wajib');
+   const {c}=await loadCase(db,v.id);const entity=await erpProjectUnit(db,c.project_id);
+   const permitted=await db.prepare('SELECT rticore_native_dfir_actor(?,?,?,?) AS allowed').bind(TENANT,entity,c.id,email).first<{allowed:boolean}>();
+   erpAssert(permitted?.allowed===true,'Akses custody ditolak',403);
+   await supportingOriginal(db,v.document_id,c.opportunity_id);
+   const row=await db.prepare('SELECT rticore_native_dfir_append(?,?,?,?,?,?,?,?,?,CAST(? AS integer)) AS result').bind(TENANT,entity,c.id,email,v.evidence_tag.trim(),v.document_id,v.custody_action,typeof recipient==='string'?recipient.trim().toLowerCase():null,v.notes.trim(),v.expected_seq).first<{result:unknown}>();
+   erpAssert(row,'Custody belum tersedia',503);return erpReply({success:true,result:row.result},201);
+  }
   if(v.action==='open'){
    erpAssert(OPENERS.includes(role),'Case hanya dibuat oleh operator bergrant',403);
    erpAssert(erpId(v.project_id)&&erpText(v.external_ref,3,120)&&erpText(v.title,8,240)&&['vapt_finding','soc_incident','dfir_incident'].includes(String(v.kind))&&['critical','high','medium','low','informational'].includes(String(v.severity))&&['confidential','restricted'].includes(String(v.classification)),'Metadata keamanan tidak valid');
