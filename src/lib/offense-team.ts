@@ -22,7 +22,7 @@ export const OFFENSE_TASKS:readonly string[]=['vapt_scope','vapt_test','vapt_rep
  * APIs an Offense Team account may call at all (checked in authorizeBoQ before any handler).
  * Every listed handler still checks the role and the allocated project itself.
  */
-const OFFENSE_API:readonly string[]=['/api/sales/identity','/api/sales','/api/sales/service-operations','/api/psa/timesheets','/api/sales/document-vault'];
+const OFFENSE_API:readonly string[]=['/api/sales/identity','/api/sales','/api/sales/service-operations','/api/psa/timesheets','/api/sales/document-vault','/api/erp/technical-registers'];
 const LEAD_API:readonly string[]=['/api/sales/feasibility'];
 export function offenseRouteAllowed(path:string,role:string):boolean{
  if(!isOffenseRole(role))return true;

@@ -34,7 +34,8 @@
         "0082_native_flexguard_service_request.sql",
         "0083_native_flexguard_portal.sql",
         "0084_native_backup_drill.sql",
-        "0085_native_fg_portal_acceptance_binding.sql"
+        "0085_native_fg_portal_acceptance_binding.sql",
+        "0086_native_technical_team_scope.sql"
       ]
     },
     {

@@ -39,4 +39,15 @@ BEGIN
  DELETE FROM rticore_native_vapt_finding_event WHERE finding_id='vapt-finding-ci';
  RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'VAPT_FINDING_EVENT_IMMUTABLE' THEN RAISE; END IF; END;
 END $v$;
+INSERT INTO rticore_members(email,role,active,created_by) VALUES('offense-ci@example.invalid','offense_member',1,'ci');
+INSERT INTO rticore_erp_staff_org(tenant_id,email,unit_id,position_title,created_by,status,reviewed_by,review_notes) VALUES('defendit360','offense-ci@example.invalid','p0-rehearsal-a','Technical CI','ci','approved','reviewer','Synthetic approval');
+INSERT INTO rticore_resource_people(id,tenant_id,email,display_name,skills,capacity_pd_month,daily_cost_idr,created_by) VALUES('offense-ci-person','defendit360','offense-ci@example.invalid','Synthetic technical person','[]',20,0,'ci');
+INSERT INTO rticore_resource_allocations(id,tenant_id,opportunity_id,person_id,allocation_month,work_role,person_days,daily_cost_snapshot,created_by) VALUES('offense-ci-allocation','defendit360','vapt-ci-opportunity','offense-ci-person',to_char(CURRENT_DATE,'YYYY-MM'),'Analyst',1,0,'ci');
+DO $test$ BEGIN
+ IF rticore_native_vapt_actor('defendit360','p0-rehearsal-a','vapt-ci-project','offense-ci@example.invalid') IS DISTINCT FROM 'offense_member' OR rticore_native_vapt_actor('defendit360','p0-rehearsal-b','vapt-ci-project','offense-ci@example.invalid') IS NOT NULL THEN RAISE EXCEPTION 'TECHNICAL_SCOPE_FAILED'; END IF;
+ INSERT INTO rticore_native_vapt_finding(id,tenant_id,legal_entity_id,project_id,engagement_id,finding_code,title,cvss_tenths,affected_asset,remediation,evidence_document_id,evidence_sha256,created_by,last_actor,last_notes) VALUES('offense-finding-ci','defendit360','p0-rehearsal-a','vapt-ci-project','vapt-eng-ci','F-OFF','Synthetic technical finding',50,'Synthetic asset','Synthetic mitigation advice','vapt-ci-doc',repeat('c',64),'offense-ci@example.invalid','offense-ci@example.invalid','Synthetic technical evidence');
+ BEGIN UPDATE rticore_native_vapt_finding SET status='qa_approved',version=2,last_actor='offense-ci@example.invalid',last_notes='Synthetic unauthorized approval' WHERE id='offense-finding-ci';RAISE EXCEPTION 'UNEXPECTED_SUCCESS';EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'VAPT_QA_REVIEW_INVALID' THEN RAISE;END IF;END;
+ UPDATE rticore_resource_allocations SET status='cancelled' WHERE id='offense-ci-allocation';
+ IF rticore_native_vapt_actor('defendit360','p0-rehearsal-a','vapt-ci-project','offense-ci@example.invalid') IS NOT NULL THEN RAISE EXCEPTION 'TECHNICAL_REVOKE_FAILED';END IF;
+END $test$;
 ROLLBACK;

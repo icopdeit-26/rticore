@@ -34,4 +34,14 @@ BEGIN
  DELETE FROM rticore_native_grc_control_test WHERE id='control-test-ci';
  RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'CTI_GRC_REGISTER_IMMUTABLE' THEN RAISE; END IF; END;
 END $g$;
+INSERT INTO rticore_members(email,role,active,created_by) VALUES('governance-ci@example.invalid','governance_member',1,'ci');
+INSERT INTO rticore_erp_staff_org(tenant_id,email,unit_id,position_title,created_by,status,reviewed_by,review_notes) VALUES('defendit360','governance-ci@example.invalid','p0-rehearsal-a','Technical CI','ci','approved','reviewer','Synthetic approval');
+INSERT INTO rticore_resource_people(id,tenant_id,email,display_name,skills,capacity_pd_month,daily_cost_idr,created_by) VALUES('governance-ci-person','defendit360','governance-ci@example.invalid','Synthetic technical person','[]',20,0,'ci');
+INSERT INTO rticore_resource_allocations(id,tenant_id,opportunity_id,person_id,allocation_month,work_role,person_days,daily_cost_snapshot,created_by) VALUES('governance-ci-allocation','defendit360','grc-ci-opportunity','governance-ci-person',to_char(CURRENT_DATE,'YYYY-MM'),'Analyst',1,0,'ci');
+DO $test$ BEGIN
+ IF rticore_native_cti_grc_actor('defendit360','p0-rehearsal-a','grc-ci-project','governance-ci@example.invalid') IS DISTINCT FROM 'governance_member' OR rticore_native_cti_grc_actor('defendit360','p0-rehearsal-a','cti-ci-project','governance-ci@example.invalid') IS NOT NULL THEN RAISE EXCEPTION 'GOVERNANCE_SCOPE_FAILED'; END IF;
+ INSERT INTO rticore_native_grc_engagement(id,tenant_id,legal_entity_id,project_id,code,title,framework,scope_summary,document_id,document_sha256,created_by) VALUES('gov-team-ci','defendit360','p0-rehearsal-a','grc-ci-project','GOV-TEAM','Synthetic allocated engagement','ISO 27001','Synthetic technical assessment','grc-ci-doc',repeat('c',64),'governance-ci@example.invalid');
+ UPDATE rticore_resource_allocations SET status='cancelled' WHERE id='governance-ci-allocation';
+ IF rticore_native_cti_grc_actor('defendit360','p0-rehearsal-a','grc-ci-project','governance-ci@example.invalid') IS NOT NULL THEN RAISE EXCEPTION 'GOVERNANCE_REVOKE_FAILED'; END IF;
+END $test$;
 ROLLBACK;

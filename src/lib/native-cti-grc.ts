@@ -42,7 +42,7 @@ export async function nativeGrcWrite(a:BoQIdentity,v:Record<string,unknown>){
  const k=kinds.find(x=>x===v.record_kind);erpAssert(k,'Register tidak valid');
  const {entity,opportunity,cti}=await nativeGrcScope(a,v.project_id);
  erpAssert(k.startsWith('cti_')===cti,'Register di luar service family',403);
- erpAssert(k==='grc_control_test'?a.role==='approver':['admin','presales','defense_leader'].includes(a.role),'Kewenangan maker/checker tidak valid',403);
+ erpAssert(k==='grc_control_test'?a.role==='approver':['admin','presales','defense_leader','governance_leader','governance_member'].includes(a.role),'Kewenangan maker/checker tidak valid',403);
  const vals:(string|number)[]=[];
  for(const f of fields[k]){
   const value=v[f.name];
