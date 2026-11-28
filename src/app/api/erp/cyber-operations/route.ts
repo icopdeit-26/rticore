@@ -50,6 +50,8 @@ export async function GET(req:Request){
   const technical=u.pathname==='/api/erp/technical-registers';
   const selectors=['grc_project_id','finding_project_id','vapt_project_id','sla_project_id','custody_case_id','board','project_id'];
   erpAssert(selectors.reduce((n,k)=>n+u.searchParams.getAll(k).length,0)===1,'Satu scope Cyber Operations wajib');
+  erpAssert([...u.searchParams.keys()].every(k=>selectors.includes(k)),'Parameter Cyber Operations tidak dikenal');
+  erpAssert(!u.searchParams.has('board')||u.searchParams.get('board')==='1','Board selector tidak valid');
   if(technical){const role=a.identity.role;const keys=[...u.searchParams.keys()];erpAssert(keys.length===1&&((['offense_lead','offense_member'].includes(role)&&['vapt_project_id','finding_project_id'].includes(keys[0]))||(['governance_leader','governance_member'].includes(role)&&keys[0]==='grc_project_id')),'Technical scope denied',403);}
   else erpAssert(!['offense_lead','offense_member','governance_leader','governance_member'].includes(a.identity.role),'Technical endpoint required',403);
   const grcProject=u.searchParams.get('grc_project_id');
