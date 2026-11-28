@@ -2,7 +2,8 @@ name: CAMS Native GL Acceptance
 on:
   pull_request:
   push:
-    branches: ['feature/cams-finance-docking-01','fix/cams-cost-center-scope-20261127','fix/cams-native-hostinger-20261127']
+    branches: [main, 'feature/cams-finance-docking-01','fix/cams-cost-center-scope-20261127','fix/cams-native-hostinger-20261127']
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -49,4 +50,6 @@ jobs:
           path: |
             artifacts/wave09/restore-evidence.json
             artifacts/wave09/restore-table-digests.tsv
+            artifacts/wave09/restore-sequence-state.tsv
+            artifacts/wave09/native-migration-manifest.json
           retention-days: 14
