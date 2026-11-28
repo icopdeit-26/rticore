@@ -2,7 +2,7 @@
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal as vaultOriginal,ServiceError} from '@/lib/service-operations';
 import {TENANT} from '@/lib/sales-workflow';
-import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpProjectUnit,erpPeriod} from '@/lib/erp-core';
+import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpProjectUnit,erpPeriod,erpDate} from '@/lib/erp-core';
 import {isDefenseRole,DEFENSE_CASE_KINDS,defenseProjects,hasCyberGrant} from '@/lib/defense-team';
 export const dynamic='force-dynamic';
 // Vault validation errors (wrong/foreign/expired document) surface as 4xx, not as a generic ERP 503.
@@ -45,6 +45,16 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const vaptProject=u.searchParams.get('vapt_project_id');
+  if(vaptProject!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native VAPT required',403);
+   erpAssert(erpId(vaptProject),'Project ID wajib');
+   const entity=await erpProjectUnit(a.identity.db,vaptProject);
+   const grant=await a.identity.db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,vaptProject,a.identity.email).first<{role:string|null}>();
+   erpAssert(grant?.role===a.identity.role,'Akses VAPT ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT * FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,vaptProject).all();
+   return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),truncated:rows.results.length>200});
+  }
   const slaProject=u.searchParams.get('sla_project_id');
   if(slaProject!==null){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native SLA required',403);
@@ -80,6 +90,30 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  if(v.action==='register_vapt_engagement'||v.action==='review_vapt_roe'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
+   erpAssert(erpId(v.project_id),'Project ID wajib');
+   const project=v.project_id;const entity=await erpProjectUnit(db,project);
+   const grant=await db.prepare('SELECT rticore_native_vapt_actor(?,?,?,?) AS role').bind(TENANT,entity,project,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses VAPT ditolak',403);
+   const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
+   erpAssert(p,'Project tidak ditemukan',404);
+   if(v.action==='register_vapt_engagement'){
+    erpAssert(['admin','presales'].includes(role),'Maker VAPT wajib',403);
+    erpAssert(erpText(v.engagement_code,4,64)&&erpText(v.title,5,200)&&erpText(v.scope_summary,12,2000)&&erpId(v.roe_document_id),'Kode, judul, scope, RoE asli wajib');
+    erpAssert(typeof v.test_type==='string'&&['web_app','mobile_app','api','network','cloud','active_directory','wireless','red_team','purple_team','source_code'].includes(v.test_type),'Test type tidak valid');
+    erpAssert(erpDate(v.window_start)&&erpDate(v.window_end)&&v.window_end>=v.window_start,'Testing window tidak valid');
+    const doc=await supportingOriginal(db,v.roe_document_id,p.opportunity_id);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_vapt_engagement(id,tenant_id,legal_entity_id,project_id,engagement_code,title,test_type,scope_summary,window_start,window_end,roe_document_id,roe_sha256,created_by) VALUES(?,?,?,?,?,?,?,?,CAST(? AS date),CAST(? AS date),?,?,?)').bind(id,TENANT,entity,project,v.engagement_code.trim(),v.title.trim(),v.test_type,v.scope_summary.trim(),v.window_start,v.window_end,v.roe_document_id,doc.sha256.toLowerCase(),email)],'cyber',id,'VAPT_ENGAGEMENT_REGISTER',{project_id:project,document_id:v.roe_document_id});
+    return erpReply({success:true,id,status:'registered'},201);
+   }
+   erpAssert(role==='approver','Independent approver wajib',403);
+   erpAssert(erpId(v.id)&&typeof v.approve==='boolean'&&erpText(v.notes,12,800)&&v.version===1,'Review tidak valid');
+   const row=await db.prepare("SELECT roe_document_id FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='registered' AND version=1").bind(TENANT,entity,project,v.id).first<{roe_document_id:string}>();
+   erpAssert(row,'Engagement pending tidak ditemukan',404);await supportingOriginal(db,row.roe_document_id,p.opportunity_id);
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_vapt_engagement WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='registered' AND version=1 AND lower(created_by)<>?)",[TENANT,entity,project,v.id,email.toLowerCase()],[db.prepare("UPDATE rticore_native_vapt_engagement SET status=?,version=version+1,reviewed_by=?,reviewed_at=now(),review_notes=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?").bind(v.approve?'roe_approved':'roe_rejected',email,v.notes.trim(),TENANT,entity,project,v.id)],'cyber',v.id,'VAPT_ROE_REVIEW',{approved:v.approve});
+   return erpReply({success:true,status:v.approve?'roe_approved':'roe_rejected'});
+  }
   if(v.action==='submit_soc_sla'||v.action==='review_soc_sla'){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native SLA required',503);
    erpAssert(erpId(v.project_id),'Project ID wajib');
