@@ -4,20 +4,6 @@ on:
     branches: [main, 'fix/p0-business-hosting-certification']
   pull_request:
     branches: ['integration/v6-erp-finance-20261127', main]
-    paths:
-      - 'scripts/business-iam-cleanup.mjs'
-      - 'scripts/business-iam-operator.mjs'
-      - 'scripts/business-iam-invite.mjs'
-      - 'scripts/business-iam-revoke.mjs'
-      - 'tests/business-iam-postgres.test.cjs'
-      - 'deployment/hostinger/business-cron.env.example'
-      - 'tests/business-iam-cleanup-contract.test.mjs'
-      - 'scripts/hostinger-preflight.mjs'
-      - 'scripts/hostinger-runtime-privileges.mjs'
-      - 'tests/hostinger-runtime-privileges.test.mjs'
-      - 'deployment/hostinger/BUSINESS-HOSTING.md'
-      - 'deployment/hostinger/PRODUCTION-CERTIFICATION.md'
-      - '.github/workflows/business-hosting-release-contract-ci.yml'
   workflow_dispatch:
 permissions:
   contents: read
