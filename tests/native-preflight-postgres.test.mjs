@@ -2,9 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
+import {readFileSync} from 'node:fs';
 import {checkNativeCompletion,assertNativeMfaEnrollment} from '../scripts/hostinger-native-completion.mjs';
 
-test('native preflight requires migration 0074 guards and two enrolled administrators on real PostgreSQL',async()=>{
+test('native preflight requires migrations 0074–0076 guards and two enrolled administrators on real PostgreSQL',async()=>{
  const e=process.env;
  assert.equal(e.CI,'true');
  assert.equal(e.PGHOST,'127.0.0.1');
@@ -26,6 +27,19 @@ test('native preflight requires migration 0074 guards and two enrolled administr
   await client.query('DROP INDEX public.rticore_native_job_recovery_once');
   await assert.rejects(checkNativeCompletion(client),/object inventory incomplete/);
   await client.query('ROLLBACK TO SAVEPOINT index_probe');
+  assert.equal((await checkNativeCompletion(client)).applied_ledger_verified,false);
+  await client.query('SAVEPOINT historical_probe');
+  const oldSource=readFileSync('deployment/hostinger/migrations/0070_flexguard_historical_review.sql','utf8');
+  const oldDefinition=oldSource.match(/CREATE OR REPLACE FUNCTION rticore_fg_historical_allocation_review\([\s\S]*?\$fg\$;/);
+  assert.ok(oldDefinition,'superseded historical review definition missing');
+  await client.query(oldDefinition[0]);
+  await assert.rejects(checkNativeCompletion(client),/definition mismatch/);
+  await client.query('ROLLBACK TO SAVEPOINT historical_probe');
+  assert.equal((await checkNativeCompletion(client)).applied_ledger_verified,false);
+  await client.query('SAVEPOINT ack_probe');
+  await client.query('ALTER FUNCTION public.rticore_fg_independent_posting(text,text,text,text) STABLE');
+  await assert.rejects(checkNativeCompletion(client),/definition mismatch/);
+  await client.query('ROLLBACK TO SAVEPOINT ack_probe');
   assert.equal((await checkNativeCompletion(client)).applied_ledger_verified,false);
   // Synthetic enrollment rows test the SQL inventory only, not actual TOTP authentication.
   assert.equal((await client.query('SELECT count(*)::int AS n FROM public.rticore_iam_credentials')).rows[0].n,0);
