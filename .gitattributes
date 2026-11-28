@@ -4,3 +4,7 @@
 *.jpg binary
 *.jpeg binary
 *.ico binary
+
+# Keep SQL schemas/migrations/triggers and shell scripts LF across Windows and Linux CI
+*.sql text eol=lf
+*.sh text eol=lf
