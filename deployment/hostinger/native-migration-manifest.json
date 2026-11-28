@@ -24,7 +24,8 @@
         "0072_native_feature_governance.sql",
         "0073_native_operations_queue.sql",
         "0074_native_job_recovery.sql",
-        "0075_flexguard_historical_review_guard.sql"
+        "0075_flexguard_historical_review_guard.sql",
+        "0076_flexguard_acknowledgement_guard.sql"
       ]
     },
     {
