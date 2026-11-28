@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
+import NativeApprovalInbox from './NativeApprovalInbox';
 import {
  Calculator,ClipboardCheck,FileCheck2,Receipt,ShieldCheck,RefreshCw,
  ArrowRight,CheckCircle2,Clock,AlertTriangle,Layers,Sparkles
@@ -178,6 +179,7 @@ export default function CanonicalApprovalLinks(){
       </article>)}</div>}
     </>}
    </section>
+   {role&&['approver','finance'].includes(role)&&<NativeApprovalInbox/>}
    <section className="space-y-3.5" aria-label="Modul approval berizin">
     <div className="flex flex-wrap items-center justify-between gap-2 px-1">
      <div className="flex items-center gap-2">

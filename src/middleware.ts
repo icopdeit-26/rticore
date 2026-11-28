@@ -38,6 +38,9 @@ const D1_ROUTES = new Set([
 ]);
 
 export function isEnabledD1ApiRoute(path: string): boolean {
+  // Native governance requests only; authorization and maker-checker remain in the handler.
+  if(path==='/api/admin/feature-flags')return process.env.RTICORE_RUNTIME==='hostinger';
+  if(path==='/api/portal/flexguard'||path==='/api/portal/flexguard/auth')return process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_AUTH_MODE==='business'&&process.env.RTICORE_FLEXGUARD_ENTERPRISE_ENABLED==='1'&&process.env.RTICORE_FLEXGUARD_PORTAL_ENABLED==='1';
   return D1_ROUTES.has(path) || path.startsWith('/api/finance/') || path.startsWith('/api/erp/') || path.startsWith('/api/boq/') || path.startsWith('/api/sales/');
 }
 

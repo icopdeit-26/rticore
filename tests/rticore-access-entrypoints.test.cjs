@@ -25,8 +25,14 @@ test('RTICORE login supports native business MFA and optional SSO with a protect
   assert.match(page, /LogoutButton/);
   assert.doesNotMatch(page, /type=["']password["']|localStorage\.setItem|jwtVerify\(/);
   assert.match(shell, /const isLoginPage=pathname==='\/login'/);
-  assert.match(shell, /if\(isLoginPage\|\|\(nativeBusiness&&pathname==='\/'\)\)return <>{children}<\/>/);
-  assert.match(shell, /if\(isLoginPage\|\|\(nativeBusiness&&pathname==='\/'\)\)return;/);
+  assert.match(shell, /const isCustomerPortal=pathname==='\/portal\/flexguard'\|\|pathname==='\/portal\/flexguard\/login';/);
+  assert.match(shell, /if\(isLoginPage\|\|isCustomerPortal\|\|\(nativeBusiness&&pathname==='\/'\)\)return <>{children}<\/>/);
+  assert.match(shell, /if\(isLoginPage\|\|isCustomerPortal\|\|\(nativeBusiness&&pathname==='\/'\)\)return;/);
+  assert.match(shell, /const queueRole=!isCustomerPortal&&session.status==='ready'/);
+  const portal=read('src/app/api/portal/flexguard/route.ts');
+  assert.match(portal,/erpAssert\(portalEnabled\(\),'Portal belum diaktifkan',503\)/);
+  assert.match(portal,/await portalSession\(db,req\);erpAssert\(email,'Portal MFA diperlukan',401\)/);
+  assert.match(portal,/rticore_native_fg_portal_allowed/);
   assert.match(shell, /if\(nativeBusiness&&session.status!=='ready'\)return <main/);
   assert.match(shell, /nativeBusiness&&\(res.status===401\|\|res.status===403\)/);
   assert.match(page, /if\(businessMode\)return/);

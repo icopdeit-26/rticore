@@ -13,24 +13,27 @@ export async function GET(req:Request){
  try{
   erpAssert(enabled(),'Service Catalog release gate belum aktif',503);
   const {db,email,role,rolePreview}=a.identity;erpAssert(!rolePreview&&roles.includes(role),'Akses ditolak',403);
-  const entity=new URL(req.url).searchParams.get('legal_entity_id');
+  const query=new URL(req.url).searchParams,entity=query.get('legal_entity_id');
+  erpAssert(query.getAll('legal_entity_id').length<=1,'Parameter legal entity ambigu');
   if(!entity){
    const units=await db.prepare("SELECT id,code,label FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.kind='legal_entity' AND u.active=1 AND rticore_fg_actor_role(u.tenant_id,u.id,?)=? ORDER BY code LIMIT 201").bind(TENANT,email,role).all();
+   erpAssert(units.success,'Register legal entity tidak tersedia',503);
    return erpReply({success:true,entities:units.results.slice(0,200),truncated:units.results.length>200});
   }
   erpAssert(erpId(entity),'Legal entity wajib');
   const scope=await db.prepare('SELECT rticore_fg_actor_role(?,?,?) AS role').bind(TENANT,entity,email).first<{role:string|null}>();
   erpAssert(scope?.role===role,'Akses legal entity ditolak',403);
   const finance=await db.prepare("SELECT rticore_catalog_finance_access(?,?,?,'make') AS can_make,rticore_catalog_finance_access(?,?,?,'approve') AS can_approve").bind(TENANT,entity,email,TENANT,entity,email).first<{can_make:boolean;can_approve:boolean}>();
-  const privileged=finance?.can_make===true||finance?.can_approve===true;
+  const privileged=['finance','approver'].includes(role)&&(finance?.can_make===true||finance?.can_approve===true);
   const services=await db.prepare("SELECT id,service_code,service_name,service_category,description,scope_summary,complexity_level,min_mandays_tenths,standard_mandays_tenths,max_mandays_tenths,effective_date,service_version,lifecycle_status FROM rticore_service_catalog_v2 WHERE tenant_id=? AND legal_entity_id=?"+(privileged?'':" AND lifecycle_status='approved' AND effective_date<=CURRENT_DATE")+" ORDER BY service_code,service_version DESC LIMIT 201").bind(TENANT,entity).all();
   const rates=await db.prepare("SELECT id,role_code,standard_selling_rate_cents,effective_date,version,status"+(privileged?",internal_cost_rate_cents,min_selling_rate_cents,annual_loaded_cost_cents":"")+" FROM rticore_enterprise_rate_cards WHERE tenant_id=? AND legal_entity_id=?"+(privileged?'':" AND status='approved' AND effective_date<=CURRENT_DATE")+" ORDER BY role_code,effective_date DESC,version DESC LIMIT 201").bind(TENANT,entity).all();
   const profiles=await db.prepare("SELECT id,service_id,version,activities,status FROM rticore_catalog_activity_profiles WHERE tenant_id=? AND legal_entity_id=?"+(privileged?'':" AND status='approved'")+" ORDER BY version DESC,id LIMIT 201").bind(TENANT,entity).all();
   const matrices=await db.prepare("SELECT id,matrix_code,label,version,factor_bps,status FROM rticore_catalog_complexity WHERE tenant_id=? AND legal_entity_id=?"+(privileged?'':" AND status='approved'")+" ORDER BY matrix_code,version DESC LIMIT 201").bind(TENANT,entity).all();
   // Pricing evidence is available only to explicitly assigned Finance makers/checkers.
-  const snapshots=privileged?await db.prepare("SELECT id,service_id,profile_id,complexity_id,opportunity_id,quantity,pricing_method,billable_mandays_tenths,nonbillable_mandays_tenths,direct_cost_cents,loaded_cost_cents,net_price_cents,calculation_sha256,status FROM rticore_catalog_pricing_snapshots WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 201").bind(TENANT,entity).all():{results:[]};
-  const bindings=privileged?await db.prepare("SELECT id,snapshot_id,boq_id,boq_version,boq_edit_seq,price_cents,status FROM rticore_catalog_boq_bindings WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 201").bind(TENANT,entity).all():{results:[]};
-  return erpReply({success:true,boq_bindings:bindings.results.slice(0,200),activity_profiles:profiles.results.slice(0,200),complexity_matrices:matrices.results.slice(0,200),pricing_snapshots:snapshots.results.slice(0,200),workflow_truncated:[profiles,matrices,snapshots,bindings].some(x=>x.results.length>200),services:services.results.slice(0,200),rate_cards:rates.results.slice(0,200),truncated:services.results.length>200||rates.results.length>200,cost_basis_visible:privileged,can_make:finance?.can_make===true,can_approve:finance?.can_approve===true,reference:{categories:ENTERPRISE_SERVICE_CATEGORIES,activity_phases:STANDARD_ACTIVITY_PHASES,resource_roles:ENTERPRISE_RESOURCE_ROLES,complexity_tiers:COMPLEXITY_TIER_BPS}});
+  const snapshots=privileged?await db.prepare("SELECT id,service_id,profile_id,complexity_id,opportunity_id,quantity,pricing_method,billable_mandays_tenths,nonbillable_mandays_tenths,direct_cost_cents,loaded_cost_cents,net_price_cents,calculation_sha256,status FROM rticore_catalog_pricing_snapshots WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 201").bind(TENANT,entity).all():{results:[],success:true};
+  const bindings=privileged?await db.prepare("SELECT id,snapshot_id,boq_id,boq_version,boq_edit_seq,price_cents,status FROM rticore_catalog_boq_bindings WHERE tenant_id=? AND legal_entity_id=? ORDER BY created_at DESC LIMIT 201").bind(TENANT,entity).all():{results:[],success:true};
+  erpAssert([services,rates,profiles,matrices,snapshots,bindings].every(x=>x.success),'Register service catalog tidak tersedia',503);
+  return erpReply({success:true,boq_bindings:bindings.results.slice(0,200),activity_profiles:profiles.results.slice(0,200),complexity_matrices:matrices.results.slice(0,200),pricing_snapshots:snapshots.results.slice(0,200),workflow_truncated:[profiles,matrices,snapshots,bindings].some(x=>x.results.length>200),services:services.results.slice(0,200),rate_cards:rates.results.slice(0,200),truncated:services.results.length>200||rates.results.length>200,cost_basis_visible:privileged,can_make:privileged&&finance?.can_make===true,can_approve:privileged&&finance?.can_approve===true,reference:{categories:ENTERPRISE_SERVICE_CATEGORIES,activity_phases:STANDARD_ACTIVITY_PHASES,resource_roles:ENTERPRISE_RESOURCE_ROLES,complexity_tiers:COMPLEXITY_TIER_BPS}});
  }catch(e){return erpError(e);}
 }
 export async function POST(req:Request){
@@ -57,8 +60,13 @@ export async function POST(req:Request){
     erpAssert(erpText(v.matrix_code,3,64)&&erpText(v.label,3,160)&&int(v.version,1,1000000)&&int(v.factor_bps,5000,40000),'Complexity tidak valid');
     data={matrix_code:v.matrix_code,label:v.label,version:v.version,factor_bps:v.factor_bps};
    }else if(v.action==='create_pricing_snapshot'){
-    erpAssert([v.service_id,v.profile_id,v.complexity_id,v.opportunity_id].every(erpId)&&int(v.quantity,1,1000)&&['target_margin','cost_plus'].includes(String(v.pricing_method))&&int(v.overhead_bps,0,6000)&&int(v.risk_bps,0,5000)&&int(v.target_bps,0,8500)&&int(v.minimum_margin_bps,0,8500),'Pricing snapshot tidak valid');
-    data=Object.fromEntries(['service_id','profile_id','complexity_id','opportunity_id','quantity','pricing_method','overhead_bps','risk_bps','target_bps','minimum_margin_bps'].map(k=>[k,v[k]]));
+    erpAssert([v.service_id,v.profile_id,v.complexity_id,v.opportunity_id].every(erpId)&&int(v.quantity,1,1000)&&['target_margin','cost_plus','mandays_based','emergency_service','fixed_price','time_and_material','subscription','retainer','tiered','volume_discount','bundle','value_based'].includes(String(v.pricing_method))&&int(v.overhead_bps,0,6000)&&int(v.risk_bps,0,5000)&&int(v.target_bps,0,8500)&&int(v.minimum_margin_bps,0,8500),'Pricing snapshot tidak valid');
+    erpAssert(v.pricing_method==='fixed_price'?int(v.fixed_price_cents,1,899999999999999):v.fixed_price_cents===undefined||v.fixed_price_cents===null,'Fixed price input tidak valid');
+    erpAssert(['subscription','retainer'].includes(String(v.pricing_method))?int(v.contract_months,1,60)&&int(v.monthly_fee_cents,1,899999999999999)&&Number(v.contract_months)*Number(v.monthly_fee_cents)<900000000000000:(v.contract_months==null&&v.monthly_fee_cents==null),'Recurring pricing input tidak valid');
+    erpAssert(['tiered','volume_discount'].includes(String(v.pricing_method))?int(v.discount_threshold,2,1000)&&int(v.discount_bps,1,8000):(v.discount_threshold==null&&v.discount_bps==null),'Discount pricing input tidak valid');
+    erpAssert(v.pricing_method==='bundle'?int(v.bundle_discount_bps,0,8000):v.bundle_discount_bps==null,'Bundle pricing input tidak valid');
+    erpAssert(v.pricing_method==='value_based'?int(v.customer_value_cents,1,899999999999999)&&int(v.value_capture_bps,1,10000)&&typeof v.value_rationale==='string'&&v.value_rationale.trim().length>=12&&v.value_rationale.trim().length<=1000:v.customer_value_cents==null&&v.value_capture_bps==null&&v.value_rationale==null,'Value pricing input tidak valid');
+    data=Object.fromEntries(['service_id','profile_id','complexity_id','opportunity_id','quantity','pricing_method','overhead_bps','risk_bps','target_bps','minimum_margin_bps','fixed_price_cents','contract_months','monthly_fee_cents','discount_threshold','discount_bps','bundle_discount_bps','customer_value_cents','value_capture_bps','value_rationale'].map(k=>[k,v[k]]));
    }else{erpAssert(erpId(v.id)&&erpText(v.notes,12,1000),'Approval tidak valid');id=v.id;data={notes:v.notes};}
    const r=await a.identity.db.prepare('SELECT rticore_catalog_workflow_command(?,?,?,?,?,CAST(? AS jsonb)) AS result').bind(TENANT,v.legal_entity_id,a.identity.email,String(v.action),id,JSON.stringify(data)).first<{result:unknown}>();
    erpAssert(r,'Workflow tidak tersedia',503);return erpReply({success:true,result:r.result},String(v.action).startsWith('create_')?201:200);

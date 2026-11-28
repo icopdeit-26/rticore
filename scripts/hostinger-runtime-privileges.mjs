@@ -13,3 +13,13 @@ export async function assertRuntimeLeastPrivilege(client){
  if(rows.length!==1||!keys.every(k=>rows[0][k]===false))throw new Error('Runtime database privilege certification failed');
  return true;
 }
+
+// A cron must target its explicitly approved database and authenticated login.
+// This check performs SELECT only and must precede advisory locks or mutations.
+export async function assertCronDatabaseIdentity(client,expectedDatabase,expectedRole){
+ if(typeof expectedDatabase!=='string'||!expectedDatabase.trim()||typeof expectedRole!=='string'||!expectedRole.trim())throw Error('Explicit cron database identity required');
+ const {rows}=await client.query('SELECT current_database() AS db, current_user AS role, session_user AS login_role');
+ if(rows.length!==1||rows[0].db!==expectedDatabase||rows[0].role!==expectedRole||rows[0].login_role!==expectedRole)throw Error('Cron database identity mismatch');
+ await assertRuntimeLeastPrivilege(client);
+ return true;
+}

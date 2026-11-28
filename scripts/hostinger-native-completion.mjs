@@ -6,11 +6,32 @@ export const REQUIRED_NATIVE_COMMANDS=[
  'rticore_catalog_boq_binding_command(text,text,text,text,text,jsonb)',
  'rticore_catalog_bind_priced_contract(text,text,text,text,text,text,text)',
  'rticore_fg_historical_allocation_candidates(text,text,text)',
+ 'rticore_fg_missing_outbox_candidates(text,text,text)',
+ 'rticore_fg_expiry_due(text,text,text,integer)',
  'rticore_fg_historical_allocation_review(text,text,text,text,text,text,text)',
  'rticore_reserve_ai_request(text,text,text,text)',
  'rticore_native_job_claim(text,text,text,text)',
  'rticore_native_job_finish(text,text,text,text,text,boolean)',
  'rticore_native_recovery_command(text,text,text,text,text,text,text)',
+ 'rticore_native_dfir_append(text,text,text,text,text,text,text,text,text,integer)',
+ 'rticore_native_dfir_actor(text,text,text,text)',
+ 'rticore_native_soc_actor(text,text,text,text)',
+ 'rticore_native_vapt_actor(text,text,text,text)',
+ 'rticore_native_vapt_finding_guard()',
+ 'rticore_native_vapt_finding_audit()',
+ 'rticore_native_cti_grc_actor(text,text,text,text)',
+ 'rticore_native_cti_grc_guard()',
+ 'rticore_native_fg_service_guard()',
+ 'rticore_native_fg_service_audit()',
+ 'rticore_native_fg_portal_wallet_valid(text,text,text,text)',
+ 'rticore_native_fg_portal_allowed(text,text,text,text)',
+ 'rticore_native_fg_portal_grant_guard()',
+ 'rticore_native_fg_portal_submission_guard()',
+ 'rticore_native_backup_drill_guard()',
+ 'rticore_native_fg_portal_revoke_sessions()',
+ 'rticore_native_fg_portal_binding_guard()',
+ 'rticore_native_fg_service_acceptance_link()',
+ 'rticore_native_cti_grc_lifecycle_guard()',
  'cams_review_command(text,text,text,text,text,text,bigint,text)'
 ];
 // Same signature can survive a stale migration; compare exact stored function body.
@@ -18,7 +39,8 @@ export const NATIVE_REVIEW_DEFINITIONS=[
  ['0075_flexguard_historical_review_guard.sql','rticore_fg_historical_allocation_review(text,text,text,text,text,text,text)','plpgsql','v','search_path=public, pg_catalog'],
  ['0076_flexguard_acknowledgement_guard.sql','rticore_fg_independent_posting(text,text,text,text)','sql','i','search_path=pg_catalog'],
  ['0076_flexguard_acknowledgement_guard.sql','rticore_fg_dock(text,text,text,text,text,text,text,text)','plpgsql','v','search_path=public, pg_catalog'],
- ['0076_flexguard_acknowledgement_guard.sql','rticore_fg_event_guard()','plpgsql','v','search_path=public, pg_catalog']
+ ['0076_flexguard_acknowledgement_guard.sql','rticore_fg_event_guard()','plpgsql','v','search_path=public, pg_catalog'],
+ ['0093_native_pricing_bundle_value.sql','rticore_catalog_workflow_command(text,text,text,text,text,jsonb)','plpgsql','v','search_path=public, pg_catalog']
 ];
 const normalizeBody=s=>s.replace(/\r\n/g,'\n').trim();
 export function expectedReviewDefinitions(root=process.cwd()){
@@ -26,9 +48,9 @@ export function expectedReviewDefinitions(root=process.cwd()){
   const source=readFileSync(resolve(root,'deployment/hostinger/migrations',file),'utf8');
   const name=signature.split('(')[0];
   const start=source.indexOf('CREATE OR REPLACE FUNCTION '+name+'(');
-  const match=start<0?null:source.slice(start).match(/ AS \$fg\$([\s\S]*?)\$fg\$;/);
-  if(!match||!match[1].trim())throw Error('Native review migration source missing: '+signature);
-  return {signature,body:normalizeBody(match[1]),language,volatility,security_definer:false,config:[config]};
+  const match=start<0?null:source.slice(start).match(/ AS (\$[A-Za-z_][A-Za-z0-9_]*\$)([\s\S]*?)\1;/);
+  if(!match||!match[2].trim())throw Error('Native review migration source missing: '+signature);
+  return {signature,body:normalizeBody(match[2]),language,volatility,security_definer:false,config:[config]};
  });
 }
 export async function checkNativeCompletion(client){
@@ -38,7 +60,7 @@ export async function checkNativeCompletion(client){
  if(rows.rows.length!==1||['boq','budget_index','feature_requests','feature_pending_index','jobs','jobs_due_index','job_recovery','recovery_pending_index','recovery_once_index','recovery_guard','feature_guard','journal_guard','workflow_guard'].some(k=>rows.rows[0][k]!==true))throw Error('Native migration object inventory incomplete');
  const expected=expectedReviewDefinitions();
  const actual=await client.query("SELECT x.signature,p.prosrc AS body,l.lanname AS language,p.prosecdef AS security_definer,p.provolatile AS volatility,p.proconfig AS config FROM unnest($1::text[]) x(signature) LEFT JOIN pg_proc p ON p.oid=to_regprocedure('public.'||x.signature) LEFT JOIN pg_language l ON l.oid=p.prolang",[expected.map(d=>d.signature)]);
- if(actual.rows.length!==expected.length||expected.some(e=>!actual.rows.some(d=>d.signature===e.signature&&typeof d.body==='string'&&normalizeBody(d.body)===e.body&&d.language===e.language&&d.security_definer===false&&d.volatility===e.volatility&&JSON.stringify(d.config)===JSON.stringify(e.config))))throw Error('Native review migration 0075–0076 definition mismatch');
+ if(actual.rows.length!==expected.length||expected.some(e=>!actual.rows.some(d=>d.signature===e.signature&&typeof d.body==='string'&&normalizeBody(d.body)===e.body&&d.language===e.language&&d.security_definer===false&&d.volatility===e.volatility&&JSON.stringify(d.config)===JSON.stringify(e.config))))throw Error('Native review or pricing migration definition mismatch');
  return {scope:'read_only_object_presence',source_manifest:nativeMigrationManifest(),applied_ledger_verified:false};
 }
 

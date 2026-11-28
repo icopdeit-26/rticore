@@ -29,8 +29,9 @@ test('Governance menu: Member delivery/timesheets/Vault; Leader adds read-only F
  const {navigationForRole,canOpenRoute,firstAccessibleHref}=navigation();
  for(const r of ['governance_leader','governance_member'])assert.equal(firstAccessibleHref(r),'/sales/delivery',r+' landing');
  const routes=r=>Array.from(navigationForRole(r).flatMap(g=>g.items.map(i=>i.href)));
- assert.deepEqual(routes('governance_member'),['/sales/delivery','/psa/timesheets','/sales/documents']);
- assert.deepEqual(routes('governance_leader'),['/sales/feasibility','/sales/delivery','/psa/timesheets','/sales/documents']);
+ assert.deepEqual(routes('governance_member'),['/sales/delivery','/psa/timesheets','/sales/documents','/erp/technical-registers']);
+ assert.deepEqual(routes('governance_leader'),['/sales/feasibility','/sales/delivery','/psa/timesheets','/sales/documents','/erp/technical-registers']);
+ for(const role of ['governance_leader','governance_member'])assert.equal(canOpenRoute(role,'/erp/technical-registers'),true,role+' scoped technical workspace');
  for(const href of ['/boq','/sales/pipeline','/customers','/sales/billing','/approvals','/erp/cyber-operations','/settings/system'])
   for(const r of ['governance_leader','governance_member'])assert.equal(canOpenRoute(r,href),false,r+' '+href);
  for(const file of ['src/lib/boq-domain.ts','src/lib/boq-auth.ts','src/lib/sales-access.ts','scripts/rticore-local-setup.mjs','scripts/generate-postgres-triggers.mjs','rticore_postgresql_schema.sql'])
@@ -90,6 +91,7 @@ test('authorizeBoQ allow-list: Governance reaches only its APIs; Feasibility for
  assert.deepEqual(Array.from(GOVERNANCE_FAMILIES),['GRC','ISO 27001 / ISMS']);
  for(const p of ['/api/sales/identity','/api/sales','/api/sales/service-operations','/api/psa/timesheets','/api/sales/document-vault/'])
   for(const r of ['governance_leader','governance_member'])assert.equal(allowed(p,r),true,r+' '+p);
+ for(const role of ['governance_leader','governance_member'])assert.equal(allowed('/api/erp/technical-registers',role),true,role+' dedicated endpoint');
  assert.equal(allowed('/api/sales/feasibility','governance_leader'),true);
  assert.equal(allowed('/api/sales/feasibility','governance_member'),false);
  for(const p of ['/api/sales/approval-queue','/api/boq','/api/boq/export','/api/sales/award','/api/sales/flexguard','/api/erp/cyber-cases','/api/admin/users'])

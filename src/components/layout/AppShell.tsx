@@ -21,6 +21,7 @@ const APPROVAL_QUEUE_ROLES=['admin','sales','presales','finance','approver','leg
 export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false})=>{
   const pathname=usePathname();
   const isLoginPage=pathname==='/login';
+  const isCustomerPortal=pathname==='/portal/flexguard'||pathname==='/portal/flexguard/login';
   const [session,setSession]=useState<Session>({status:'checking',identity:null});
   const [pendingApprovalsCount,setPendingApprovalsCount]=useState<number|null>(null);
   const [desktopMenuOpen,setDesktopMenuOpen]=useState(true);
@@ -49,7 +50,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
     else setMobileMenuOpen(false);
   },[]);
   useEffect(()=>{
-    if(isLoginPage||(nativeBusiness&&pathname==='/'))return; // Login and server-side native entry have no shell identity request.
+    if(isLoginPage||isCustomerPortal||(nativeBusiness&&pathname==='/'))return; // Login and server-side native entry have no shell identity request.
     const controller=new AbortController();
     fetch('/api/sales/identity',{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal})
       .then(async res=>{
@@ -62,10 +63,10 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
       })
       .catch(()=>{if(!controller.signal.aborted)setSession({status:'denied',identity:null});});
     return ()=>controller.abort();
-  },[isLoginPage,nativeBusiness,pathname]);
+  },[isLoginPage,isCustomerPortal,nativeBusiness,pathname]);
   // The bell count is real, role-scoped D1 data, or null when not verified. Never assume zero on failure.
   // Only roles the approval-queue API serves ask for it; others would get a 403 on every page.
-  const queueRole=session.status==='ready'&&APPROVAL_QUEUE_ROLES.includes(session.identity?.role??'');
+  const queueRole=!isCustomerPortal&&session.status==='ready'&&APPROVAL_QUEUE_ROLES.includes(session.identity?.role??'');
   useEffect(()=>{
     if(!queueRole){setPendingApprovalsCount(null);return;}
     const controller=new AbortController();
@@ -84,10 +85,10 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
   },[queueRole]);
   const role=session.status==='ready'?session.identity?.role??null:null;
   // The sign-in page has its own minimal layout (no authenticated header or navigation).
-  if(isLoginPage||(nativeBusiness&&pathname==='/'))return <>{children}</>;
+  if(isLoginPage||isCustomerPortal||(nativeBusiness&&pathname==='/'))return <>{children}</>;
   if(nativeBusiness&&session.status!=='ready')return <main className="mx-auto max-w-md p-8"><p role="status">{session.status==='checking'?'Memverifikasi sesi…':'Layanan identitas belum tersedia.'}</p><Link href="/login" className="mt-3 block underline">Buka login RTICORE</Link></main>;
   return (
-    <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#f5f7fa] text-slate-900">
+    <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#fafafa] text-slate-900">
       <Navbar role={role} assignedRole={session.identity?.assignedRole??null} rolePreview={session.identity?.rolePreview===true} email={session.identity?.email??null} pendingApprovalsCount={pendingApprovalsCount} onToggleMenu={onToggleMenu} desktopMenuOpen={desktopMenuOpen} mobileMenuOpen={mobileMenuOpen}/>
       {session.status!=='ready' ? <div role="status" className="no-print border-b border-teal-100/60 bg-teal-50/70 px-4 py-1.5 text-center text-[10px] font-medium tracking-wide text-teal-800">
         {session.status==='checking'?'Memverifikasi sesi pengguna…':
@@ -98,7 +99,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
       </div>}
       <div className="flex min-w-0 flex-1 overflow-hidden print:block print:overflow-visible">
         {role&&<Sidebar role={role} desktopOpen={desktopMenuOpen} mobileOpen={mobileMenuOpen} onClose={onCloseMenu}/>}
-        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 overflow-x-clip overflow-y-auto px-3 pb-28 pt-0 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8 print:max-w-none print:overflow-visible print:p-0">
+        <main className="mx-auto w-full min-w-0 max-w-[1800px] flex-1 overflow-x-clip overflow-y-auto px-3 pb-28 pt-4 sm:px-6 sm:pb-6 lg:px-5 lg:pb-8 print:max-w-none print:overflow-visible print:p-0">
           {role&&<AIWorkbench/>}
           {children}
         </main>

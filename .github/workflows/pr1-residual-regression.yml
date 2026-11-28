@@ -1,9 +1,10 @@
 name: PR1 residual inventory and native regression
 on:
   push:
-    branches: ['integration/v6-erp-finance-20261127']
+    branches: [main, 'integration/v6-erp-finance-20261127']
   pull_request:
     branches: [main, 'integration/v6-erp-finance-20261127']
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

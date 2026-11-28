@@ -1,0 +1,29 @@
+name: Batch D enterprise development regression
+on:
+  push:
+    branches: [main, 'feature/v7-batch-d-enterprise-development']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cyber-delivery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run test:defense-team
+      - run: npm run test:erp
+      - run: npm run test:service-operations
+      - run: npm run test:psa-timesheets
+
+      - run: node --test tests/native-operations-center.test.mjs

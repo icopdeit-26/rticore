@@ -30,7 +30,7 @@ export const GOVERNANCE_TASKS:readonly string[]=['grc_assessment','grc_gap','grc
  * Every listed handler still checks the role and the allocated project itself.
  */
 // approval-queue is not listed: its handler answers 403 for project-scoped roles (no queue count).
-const GOVERNANCE_API:readonly string[]=['/api/sales/identity','/api/sales','/api/sales/service-operations','/api/psa/timesheets','/api/sales/document-vault'];
+const GOVERNANCE_API:readonly string[]=['/api/sales/identity','/api/sales','/api/sales/service-operations','/api/psa/timesheets','/api/sales/document-vault','/api/erp/technical-registers'];
 const LEADER_API:readonly string[]=['/api/sales/feasibility'];
 export function governanceRouteAllowed(path:string,role:string):boolean{
  if(!isGovernanceRole(role))return true;

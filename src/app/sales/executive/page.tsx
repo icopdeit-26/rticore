@@ -18,14 +18,14 @@ type Dashboard={
 };
 const money=(v:number|null)=>v===null?'Belum ditetapkan':'Rp '+v.toLocaleString('id-ID',{maximumFractionDigits:2});
 const pct=(v:number|null)=>v===null?'—':v.toLocaleString('id-ID',{maximumFractionDigits:2})+'%';
-const input='w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100';
+const input='w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100';
 async function api(url:string,options?:RequestInit):Promise<Dashboard|{success:boolean;version?:number}>{
  const r=await fetch(url,{cache:'no-store',credentials:'same-origin',...options});
  const j=await r.json();if(!r.ok||!j.success)throw Error(j.message||'Gagal memuat transaksi database');
  return j;
 }
 function Metric({label,value,help}:{label:string;value:string;help:string}){
- return <article className="group min-w-0 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_3px_16px_-8px_rgba(15,44,54,0.12)] transition hover:border-teal-200 hover:shadow-md motion-reduce:transition-none"><div className="mb-5 flex items-center justify-between gap-2"><p className="text-xs font-medium text-slate-500">{label}</p><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700"><BarChart3 className="h-4 w-4" aria-hidden="true"/></span></div><p className={'break-words font-semibold tracking-tight text-slate-900 '+(value==='Belum ditetapkan'?'text-xl':'text-2xl sm:text-[28px]')}>{value}</p><p className="mt-3 border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-500">{help}</p></article>;
+ return <article className="group min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-amber-200 hover:shadow-md motion-reduce:transition-none"><div className="mb-3 flex items-center justify-between gap-2"><p className="text-xs font-medium text-slate-500">{label}</p><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><BarChart3 className="h-4 w-4" aria-hidden="true"/></span></div><p className={'break-words font-semibold tracking-tight text-slate-900 '+(value==='Belum ditetapkan'?'text-xl':'text-xl sm:text-2xl')}>{value}</p><p className="mt-2 border-t border-slate-100 pt-2 text-[11px] leading-relaxed text-slate-500">{help}</p></article>;
 }
 export default function ExecutiveSalesPage(){
  const [period,setPeriod]=useState(()=>new Date(Date.now()+7*3600000).toISOString().slice(0,7));
@@ -63,18 +63,18 @@ export default function ExecutiveSalesPage(){
  };
  const t=data?.totals;
  const maxRevenue=Math.max(1,...(data?.by_service||[]).map(x=>Math.abs(x.revenue_idr)));
- return <main className="mx-auto max-w-7xl min-w-0 space-y-5 pb-24">
-  <header className="relative overflow-hidden rounded-[24px] border border-teal-900/10 bg-[#102c36] p-6 text-white sm:p-8">
-   <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-28 h-80 w-80 rounded-full border-[45px] border-teal-200/[0.05]"/>
+ return <main className="mx-auto max-w-[1800px] min-w-0 space-y-4 pb-24">
+  <header className="relative isolate overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm sm:p-7">
+   <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-36 -z-10 h-96 w-96 rotate-[-20deg] rounded-full border-[48px] border-amber-100/70"/>
    <div className="flex flex-wrap items-start justify-between gap-4">
-    <div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-teal-200">RTICORE / Executive overview</p>
-     <h1 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Executive Sales Dashboard</h1>
-     <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">Gambaran bisnis yang lebih jelas. Pantau target, pipeline, dan realisasi penjualan dalam satu tempat.</p></div>
-    <div className="flex items-center gap-2 rounded-full border border-teal-200/20 bg-teal-200/5 px-3 py-2 text-[11px] text-teal-100"><Activity className="h-3.5 w-3.5" aria-hidden="true"/>Data transaksi · {data?.role||'—'}</div>
+    <div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-amber-800">RTICORE / Executive overview</p>
+     <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Executive Sales Dashboard</h1>
+     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Gambaran bisnis yang lebih jelas. Pantau target, pipeline, dan realisasi penjualan dalam satu tempat.</p></div>
+    <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"><Activity className="h-3.5 w-3.5" aria-hidden="true"/>Data transaksi · {data?.role||'—'}</div>
    </div>
-   <nav aria-label="Analisis terkait" className="relative mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-5">
+   <nav aria-label="Analisis terkait" className="relative mt-4 flex flex-wrap gap-2 pt-2">
     {[['/sales/forecast','Forecast Detail'],['/sales/pipeline','Opportunity'],['/sales/revenue','Revenue Register'],['/sales/activities','Sales Activities']].map(([url,label])=>
-     <Link key={url} href={url} className="flex min-h-9 items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-teal-300">{label} <ArrowUpRight className="h-3.5 w-3.5 text-teal-200" aria-hidden="true"/></Link>)}
+     <Link key={url} href={url} className="flex min-h-9 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-amber-300">{label} <ArrowUpRight className="h-3.5 w-3.5 text-amber-800" aria-hidden="true"/></Link>)}
    </nav>
   </header>
   <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200/80 bg-white p-5">
@@ -82,24 +82,26 @@ export default function ExecutiveSalesPage(){
    {data&&data.role!=='sales'&&<label className="min-w-0 w-full sm:min-w-44 sm:flex-1 text-xs font-bold text-slate-700 sm:max-w-64">Sales owner<select aria-label="Filter Sales" className={input+' mt-1'} value={owner} onChange={e=>setOwner(e.target.value)}>
     <option value="">Seluruh Sales</option>{data.by_owner.map(x=><option key={x.owner} value={x.owner}>{x.owner}</option>)}</select></label>}
    <button type="button" onClick={()=>setRefresh(n=>n+1)} disabled={loading||busy} className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold disabled:opacity-50"><RefreshCcw className="h-4 w-4"/>Refresh</button>
-   {data&&<a href={'/api/sales/executive'+query+'&format=csv'} className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-xs font-bold text-white"><Download className="h-4 w-4"/>Export CSV</a>}
+   {data&&<a href={'/api/sales/executive'+query+'&format=csv'} className="flex items-center gap-2 rounded-xl bg-amber-800 px-4 py-2.5 text-xs font-bold text-white"><Download className="h-4 w-4"/>Export CSV</a>}
   </div>
   {error&&<p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{error}</p>}
   {notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</p>}
-  {data&&<FinanceWorkspaceGuide role={data.role} currentStation="Executive Dashboard" defaultOpen={data.role==='finance'}/>}
+  
   {loading&&<p role="status" className="rounded-xl border bg-white p-6 text-sm text-slate-600">Mengambil laporan dari database…</p>}
   {data&&t&&!loading&&<>
    <section aria-label="Ringkasan eksekutif">
-    <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900"><Target className="h-5 w-5 text-teal-700"/>Target vs Realisasi</h2>
+    <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900"><Target className="h-5 w-5 text-amber-700"/>Target vs Realisasi</h2>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <Metric label="Target Bulanan" value={money(t.target_idr)} help={t.target_defined+' dari '+t.target_required+' Sales memiliki target terdaftar'}/>
      <Metric label="Booked Sales" value={money(t.booked_idr)} help="PO terverifikasi · Closed Won bulan pelaporan · sebelum PPN"/>
      <Metric label="Pencapaian Target" value={pct(t.attainment_pct)} help={t.target_idr===null?'Tidak dihitung sebelum seluruh target Sales diatur':'Selisih target − realisasi: '+money(t.target_gap_idr)}/>
      <Metric label="Revenue Diakui" value={money(t.recognized_revenue_idr)} help="Register transaksi approved · GL/Invoice/BAST"/>
     </div>
-    {t.attainment_pct!==null&&<div className="mt-3 rounded-xl border bg-white p-4"><div className="mb-2 flex justify-between text-xs font-semibold"><span>Progress target bulan ini</span><span>{pct(t.attainment_pct)}</span></div><div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-600" style={{width:Math.min(100,Math.max(0,t.attainment_pct))+'%'}}/></div></div>}
+    {t.attainment_pct!==null&&<div className="mt-3 rounded-xl border bg-white p-4"><div className="mb-2 flex justify-between text-xs font-semibold"><span>Progress target bulan ini</span><span>{pct(t.attainment_pct)}</span></div><div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-amber-600" style={{width:Math.min(100,Math.max(0,t.attainment_pct))+'%'}}/></div></div>}
    </section>
-   <section><h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><TrendingUp className="h-5 w-5 text-teal-700"/>Pipeline & Conversion</h2>
+   <section aria-label="Akses cepat" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-3 font-semibold">Akses Cepat</h2><div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{[['/sales/pipeline','Opportunity'],['/sales/revenue','Revenue Register'],['/sales/activities','Sales Activities'],['/sales/forecast','Lihat Forecast']].map(([href,label])=><Link key={href} href={href} className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs font-semibold text-amber-900 hover:bg-amber-100">{label}<ArrowUpRight className="h-4 w-4" aria-hidden="true"/></Link>)}</div></section>
+   {data&&<FinanceWorkspaceGuide role={data.role} currentStation="Executive Dashboard" defaultOpen={data.role==='finance'}/>}
+   <section><h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><TrendingUp className="h-5 w-5 text-amber-700"/>Pipeline & Conversion</h2>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <Metric label="Open Pipeline" value={money(t.open_pipeline_idr)} help={t.open_deals_period+' peluang dengan target close periode ini'}/>
      <Metric label="Weighted Pipeline" value={money(t.weighted_pipeline_idr)} help="Probabilitas tahap Sales pada modul Forecast"/>
@@ -108,11 +110,11 @@ export default function ExecutiveSalesPage(){
     </div>
    </section>
    <div className="grid gap-4 lg:grid-cols-2">
-    <section className="space-y-4 rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4 text-teal-700"/>Pipeline per Stage</h2>
-     {data.by_stage.filter(s=>s.pipeline>0).map(x=><div key={x.label}><div className="mb-1 flex flex-wrap justify-between gap-2 text-xs"><span>{x.label} · {x.count} deal</span><b>{money(x.pipeline)}</b></div><div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-600" style={{width:Math.min(100,x.pipeline/Math.max(t.open_pipeline_idr,1)*100)+'%'}}/></div></div>)}
+    <section className="space-y-4 rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4 text-amber-700"/>Pipeline per Stage</h2>
+     {data.by_stage.filter(s=>s.pipeline>0).map(x=><div key={x.label}><div className="mb-1 flex flex-wrap justify-between gap-2 text-xs"><span>{x.label} · {x.count} deal</span><b>{money(x.pipeline)}</b></div><div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full bg-amber-600" style={{width:Math.min(100,x.pipeline/Math.max(t.open_pipeline_idr,1)*100)+'%'}}/></div></div>)}
      {!data.by_stage.some(s=>s.pipeline>0)&&<p className="text-sm text-slate-500">Belum ada forecast untuk periode ini.</p>}
     </section>
-    <section className="space-y-3 rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-teal-700"/>Deal Aging (Semua Open)</h2>
+    <section className="space-y-3 rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-amber-700"/>Deal Aging (Semua Open)</h2>
      <p className="text-xs text-slate-500">Snapshot saat dashboard dibuka · {t.open_all} deal aktif</p>
      {data.aging.map(b=><div key={b.label} className="flex items-center justify-between gap-2 border-b pb-2 text-xs"><span className="font-semibold">{b.label} · {b.count} deal</span><span className="tabular-nums">{money(b.value_idr)}</span></div>)}
      {data.oldest_open.length>0&&<details><summary className="cursor-pointer text-xs font-bold text-blue-800">Lihat deal paling lama</summary><div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{data.oldest_open.map(x=><p key={x.id} className="flex flex-wrap justify-between gap-2 border-b pb-2 text-xs"><Link href={'/sales/pipeline?opportunity_id='+encodeURIComponent(x.id)} className="text-blue-800 underline">{x.title}</Link><span>{x.age_days} hari</span></p>)}</div></details>}
@@ -120,7 +122,7 @@ export default function ExecutiveSalesPage(){
    </div>
    <div className="grid gap-4 lg:grid-cols-2">
     <section className="space-y-3 rounded-2xl border bg-white p-5"><h2 className="font-semibold">Revenue per Service</h2>
-     {data.by_service.map(x=><div key={x.service} className="space-y-1"><div className="flex justify-between gap-2 text-xs"><span className="font-semibold">{x.service}</span><b className="tabular-nums">{money(x.revenue_idr)}</b></div><div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full bg-cyan-600" style={{width:Math.abs(x.revenue_idr)/maxRevenue*100+'%'}}/></div><p className="text-[11px] text-slate-500">Booked {money(x.booked_idr)} · {x.won_count} Won</p></div>)}
+     {data.by_service.map(x=><div key={x.service} className="space-y-1"><div className="flex justify-between gap-2 text-xs"><span className="font-semibold">{x.service}</span><b className="tabular-nums">{money(x.revenue_idr)}</b></div><div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full bg-amber-700" style={{width:Math.abs(x.revenue_idr)/maxRevenue*100+'%'}}/></div><p className="text-[11px] text-slate-500">Booked {money(x.booked_idr)} · {x.won_count} Won</p></div>)}
      {!data.by_service.length&&<p className="text-sm text-slate-500">Belum ada data Revenue di database.</p>}
     </section>
     <section className="space-y-3 rounded-2xl border bg-white p-5"><h2 className="font-semibold">Win / Loss & Aktivitas</h2>
@@ -142,7 +144,7 @@ export default function ExecutiveSalesPage(){
      <label className="text-xs font-bold">Target (IDR sebelum PPN)<input aria-label="Nominal target Sales" className={input+' mt-1'} type="number" min="1" max="99999999999999" step="1" required value={targetAmount} onChange={e=>setTargetAmount(e.target.value)}/></label>
      <label className="text-xs font-bold sm:col-span-2">Alasan target/revisi (minimal 12 karakter)<textarea aria-label="Alasan perubahan target" className={input+' mt-1'} minLength={12} maxLength={1000} rows={2} required value={targetReason} onChange={e=>setTargetReason(e.target.value)}/></label>
     </div>
-    <button type="submit" disabled={busy||!targetOwner} className="rounded-xl bg-teal-700 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">{busy?'Menyimpan…':'Simpan Target ke Database'}</button>
+    <button type="submit" disabled={busy||!targetOwner} className="rounded-xl bg-amber-800 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">{busy?'Menyimpan…':'Simpan Target ke Database'}</button>
    </form>}
    {!!data.issues.length&&<section className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="mb-3 font-semibold text-amber-950">Data Quality Gaps · {t.data_gaps}</h2><div className="max-h-72 space-y-2 overflow-y-auto">{data.issues.map((x,i)=><p key={x.id+'-'+i} className="text-xs text-amber-950">{x.title}: {x.reason}</p>)}</div></section>}
    <details className="rounded-2xl border bg-white p-5"><summary className="cursor-pointer text-sm font-bold">Definisi KPI & sumber data database</summary><div className="mt-3 space-y-2">{Object.entries(data.notes).map(([k,v])=><p key={k} className="text-xs leading-relaxed text-slate-600"><b className="capitalize">{k}:</b> {v}</p>)}</div></details>
