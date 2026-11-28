@@ -65,8 +65,11 @@ test('FlexGuard rejects ambiguous scope before database access and joins portal 
 
 test('native scheduler rejects privileged connection before mutation and rolls back expired lease before commit',async()=>{
  const source=fs.readFileSync('scripts/native-operations-worker.mjs','utf8');
- const compiled=ts.transpileModule(source,{fileName:'native-operations-worker.mjs',reportDiagnostics:true,compilerOptions:{allowJs:true,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}});
- assert.equal((compiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error).length,0);
+ // Use a synthetic CommonJS filename for the VM harness; .mjs forces ESM emit.
+ // The production worker remains native ESM and all privilege/lease assertions remain intact.
+ const compiled=ts.transpileModule(source,{fileName:'native-operations-worker.fixture.cts',reportDiagnostics:true,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}});
+ const errors=(compiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error);
+ assert.equal(errors.length,0,errors.map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')).join('\n'));
  const code='(async()=>{\n'+compiled.outputText+'\n})()';
  async function run({privileged=false,expired=false,failedFinish=false}={}){
   const queries=[],logs=[];let claim=0,closed=false,privilegeChecked=false;
