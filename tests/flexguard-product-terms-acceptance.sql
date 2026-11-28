@@ -152,7 +152,10 @@ BEGIN
  INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,notes,idempotency_key) VALUES('portal-sub-ci','defendit360','fg-terms-a',wid,customer,'service_request','Synthetic customer request','portal-submission-0001');
  INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,request_id,request_version,notes,idempotency_key) VALUES('portal-quote-ci','defendit360','fg-terms-a',wid,customer,'quote_acceptance','service-ci',2,'Synthetic customer scope acceptance','portal-submission-0002');
  IF (SELECT status FROM rticore_native_fg_service_request WHERE id='service-ci')<>'scope_quoted' OR (SELECT count(*) FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid)<>ledger_before THEN RAISE EXCEPTION 'PORTAL_UNEXPECTED_MUTATION'; END IF;
+ INSERT INTO rticore_native_fg_portal_credential(email,password_hash,totp_cipher,enrolled_at) VALUES(customer,'synthetic-not-a-usable-password-hash','synthetic-not-a-usable-totp',now());
+ INSERT INTO rticore_native_fg_portal_session(token_hash,email,expires_at) VALUES(repeat('e',64),customer,now()+interval '1 hour');
  UPDATE rticore_native_fg_portal_grant SET status='revoked',revoked_by=checker,revoked_at=now(),revocation_notes='Synthetic access revocation' WHERE id='portal-grant-ci';
+ IF EXISTS(SELECT 1 FROM rticore_native_fg_portal_session WHERE email=customer) OR NOT EXISTS(SELECT 1 FROM rticore_native_fg_portal_audit WHERE email=customer AND action='revoke') THEN RAISE EXCEPTION 'PORTAL_SESSION_REVOCATION_FAILED'; END IF;
  IF rticore_native_fg_portal_allowed('defendit360','fg-terms-a',wid,customer) THEN RAISE EXCEPTION 'PORTAL_REVOKE_FAILED'; END IF;
  BEGIN
  INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,notes,idempotency_key) VALUES('portal-revoked-ci','defendit360','fg-terms-a',wid,customer,'service_request','Synthetic revoked customer request','portal-submission-0003');
