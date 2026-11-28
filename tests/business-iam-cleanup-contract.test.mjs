@@ -10,6 +10,6 @@ test('cleanup contract retains default-disabled gate, TLS, separate role and bou
  assert.match(script,/RTICORE_IAM_CLEANUP_DATABASE_URL/);
  const lock=script.indexOf('pg_try_advisory_lock('),skip=script.indexOf('already-running'),del=script.indexOf('DELETE FROM rticore_iam_sessions');
  assert.ok(lock>=0&&lock<skip&&skip<del);
- assert.match(script,/LIMIT 500/);
+ assert.match(script,/LIMIT 500\) AND \(expires_at<=now\(\) OR last_seen<=now\(\)-interval '30 minutes'\)/);
  assert.match(script,/finally\{await client\?\.end\(/);
 });

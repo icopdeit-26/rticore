@@ -9,7 +9,7 @@ try{
  await client.connect();
  const lock=await client.query("SELECT pg_try_advisory_lock(74201954) AS acquired");
  if(!lock.rows[0]?.acquired){console.log(JSON.stringify({job:"iam-session-cleanup",skipped:"already-running"}));}else{
- const result=await client.query("DELETE FROM rticore_iam_sessions WHERE token_hash IN (SELECT token_hash FROM rticore_iam_sessions WHERE expires_at<=now() OR last_seen<=now()-interval '30 minutes' LIMIT 500)");
+ const result=await client.query("DELETE FROM rticore_iam_sessions WHERE token_hash IN (SELECT token_hash FROM rticore_iam_sessions WHERE expires_at<=now() OR last_seen<=now()-interval '30 minutes' LIMIT 500) AND (expires_at<=now() OR last_seen<=now()-interval '30 minutes')");
  console.log(JSON.stringify({job:'iam-session-cleanup',removed:result.rowCount}));
  }
 }catch{console.error('IAM cleanup failed or not enabled.');process.exitCode=1;}

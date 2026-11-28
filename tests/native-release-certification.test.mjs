@@ -99,10 +99,11 @@ test('PR1 closure requires exact reviewed dispositions and independent evidence 
  const files=[{path:'src/native.ts',source:old,target:current,disposition:'semantic-review'},{path:'src/legacy.ts',source:old,target:null,disposition:'native-port-review'},...Array.from({length:153},(_,i)=>({path:'docs/legacy-'+i+'.md',source:old,target:null,disposition:'historical-reference'}))];
  const inventoryBytes=Buffer.from(JSON.stringify({source,files}));
  const entry=(path,bytes)=>({ref:{path,sha256:createHash('sha256').update(bytes).digest('hex')},bytes});
- const trace=entry('review-trace.json',Buffer.from('synthetic comparison evidence'));
+ const trace=entry('review-trace.json',Buffer.from(JSON.stringify({schema:'rticore-pr1-file-review-v1',release_sha:sha,path:'src/native.ts',source_sha:old,current_sha:current,reviewer_subject:'reviewer',disposition:'reconciled',findings:'synthetic fixture',verification:'synthetic fixture test'})));
+ const trace2=entry('legacy-trace.json',Buffer.from(JSON.stringify({schema:'rticore-pr1-file-review-v1',release_sha:sha,path:'src/legacy.ts',source_sha:old,current_sha:null,reviewer_subject:'reviewer',disposition:'native_equivalent',findings:'synthetic fixture',verification:'synthetic fixture test'})));
  const row={path:'src/native.ts',source_sha:old,current_sha:current,disposition:'reconciled',rationale:'synthetic fixture',reviewer_subject:'reviewer',evidence:[trace.ref]};
- const record={schema:'rticore-pr1-residual-disposition-v1',release_sha:sha,source_sha:source,inventory_sha256:createHash('sha256').update(inventoryBytes).digest('hex'),files:[row,{...row,path:'src/legacy.ts',current_sha:null,disposition:'native_equivalent'}]};
- const run=(v=record,overrides={})=>assertResidualDisposition({inventoryBytes,currentSha:p=>p==='src/native.ts'?current:null,sha,signoffs:[{subject:'reviewer',decision:'APPROVED',release_sha:sha}],verified:[trace,entry('disposition.json',Buffer.from(JSON.stringify(v)))],...overrides});
+ const record={schema:'rticore-pr1-residual-disposition-v1',release_sha:sha,source_sha:source,inventory_sha256:createHash('sha256').update(inventoryBytes).digest('hex'),files:[row,{...row,path:'src/legacy.ts',current_sha:null,disposition:'native_equivalent',evidence:[trace2.ref]}]};
+ const run=(v=record,overrides={})=>assertResidualDisposition({inventoryBytes,currentSha:p=>p==='src/native.ts'?current:null,sha,signoffs:[{subject:'reviewer',decision:'APPROVED',release_sha:sha}],verified:[trace,trace2,entry('disposition.json',Buffer.from(JSON.stringify(v)))],...overrides});
  assert.deepEqual(run(),{reviewed:2});
  assert.throws(()=>run(record,{verified:[trace]}),/PR1_RESIDUAL_DISPOSITION_REQUIRED/);
  assert.throws(()=>run({...record,release_sha:old}),/PR1_RESIDUAL_DISPOSITION_STALE/);
@@ -113,5 +114,8 @@ test('PR1 closure requires exact reviewed dispositions and independent evidence 
  assert.throws(()=>run({...record,files:[{...row,current_sha:old},record.files[1]]}),/PR1_RESIDUAL_REVIEW_INVALID/);
  assert.throws(()=>run({...record,files:[{...row,evidence:[]},record.files[1]]}),/PR1_RESIDUAL_TRACE_REQUIRED/);
  assert.throws(()=>run(record,{signoffs:[]}),/PR1_RESIDUAL_REVIEW_INVALID/);
+ assert.throws(()=>run({...record,files:[row,{...record.files[1],evidence:[trace.ref]}]}),/PR1_RESIDUAL_FILE_TRACE_REQUIRED/);
+ const altered=files.map((f,i)=>i===2?{...f,disposition:'identical'}:f);
+ assert.throws(()=>run(record,{inventoryBytes:Buffer.from(JSON.stringify({source,files:altered}))}),/PR1_INVENTORY_CLASSIFICATION_INVALID/);
  assert.throws(()=>run(record,{currentSha:p=>p==='src/native.ts'?old:null}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
 });

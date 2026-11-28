@@ -2,12 +2,12 @@ import type {D1DB} from './boq-auth';
 import {base32,decryptSeed,hashPassword,newToken,readSessionCookie,tokenHash,totpStep,validEmail,validPassword,validToken,verifyPassword} from './business-iam-crypto';
 type Credential={email:string;password_hash:string|null;totp_cipher:string};
 export async function rateAllowed(db:D1DB,kind:string,identity:string){
- // Bounded bucket count, no attacker-created unlimited email rows. Fixed windows are atomic across instances.
+ // Bounded bucket count. Use PostgreSQL time across instances; delayed requests cannot reset a newer window.
  const bucket=kind+':'+tokenHash(identity).slice(0,3);
- const sql='INSERT INTO rticore_iam_rate(bucket,window_id,attempts) VALUES(?,?,1) ON CONFLICT(bucket) DO UPDATE SET attempts=CASE WHEN rticore_iam_rate.window_id=excluded.window_id THEN rticore_iam_rate.attempts+1 ELSE 1 END,window_id=excluded.window_id WHERE rticore_iam_rate.window_id<>excluded.window_id OR rticore_iam_rate.attempts<? RETURNING attempts';
- const global=await db.prepare(sql).bind('global',Math.floor(Date.now()/60000),120).first();
+ const sql='INSERT INTO rticore_iam_rate(bucket,window_id,attempts) VALUES(?,floor(extract(epoch from statement_timestamp())/CAST(? AS bigint))::bigint,1) ON CONFLICT(bucket) DO UPDATE SET attempts=CASE WHEN rticore_iam_rate.window_id=excluded.window_id THEN rticore_iam_rate.attempts+1 ELSE 1 END,window_id=excluded.window_id WHERE rticore_iam_rate.window_id<excluded.window_id OR (rticore_iam_rate.window_id=excluded.window_id AND rticore_iam_rate.attempts<?) RETURNING attempts';
+ const global=await db.prepare(sql).bind('global',60,120).first();
  if(!global)return false;
- return !!await db.prepare(sql).bind(bucket,Math.floor(Date.now()/900000),5).first();
+ return !!await db.prepare(sql).bind(bucket,900,5).first();
 }
 const credentialSQL='SELECT c.email,c.password_hash,c.totp_cipher FROM rticore_iam_credentials c JOIN rticore_members m ON m.email=c.email AND m.active=1 ';
 export async function enrollmentDetails(db:D1DB,token:unknown){

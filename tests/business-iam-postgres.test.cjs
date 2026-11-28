@@ -63,5 +63,12 @@ test('isolated PostgreSQL enrollment, concurrent TOTP replay, session revocation
  assert.deepEqual((await pool.query('SELECT action FROM rticore_iam_audit ORDER BY id')).rows.map(x=>x.action),['enrolled','login','logout','revoke','invite','invite','enrolled','login']);
  for(let i=0;i<5;i++)assert.equal(await iam.rateAllowed(db,'test','identity'),true);
  assert.equal(await iam.rateAllowed(db,'test','identity'),false);
+ const bucket='test:'+crypto.tokenHash('identity').slice(0,3);
+ await pool.query("UPDATE rticore_iam_rate SET window_id=floor(extract(epoch from statement_timestamp())/900)::bigint+1 WHERE bucket=$1",[bucket]);
+ assert.equal(await iam.rateAllowed(db,'test','identity'),false);
+ assert.equal((await pool.query('SELECT attempts FROM rticore_iam_rate WHERE bucket=$1',[bucket])).rows[0].attempts,5);
+ await pool.query("UPDATE rticore_iam_rate SET window_id=floor(extract(epoch from statement_timestamp())/900)::bigint-1 WHERE bucket=$1",[bucket]);
+ assert.equal(await iam.rateAllowed(db,'test','identity'),true);
+ assert.equal((await pool.query('SELECT attempts FROM rticore_iam_rate WHERE bucket=$1',[bucket])).rows[0].attempts,1);
  }finally{delete process.env.RTICORE_IAM_ENCRYPTION_KEY;await pool?.end();await root.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');await root.end();fs.rmSync(dir,{recursive:true,force:true});}
 });

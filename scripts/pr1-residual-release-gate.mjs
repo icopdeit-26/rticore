@@ -15,6 +15,8 @@ export function assertResidualDisposition({inventoryBytes,currentSha,sha,verifie
  const unresolved=[];
  for(const f of inventory.files){
   fail(nonempty(f.path)&&!isAbsolute(f.path)&&!f.path.split('/').some(p=>p==='..'||p==='.')&&sha40(f.source),'PR1_INVENTORY_PATH_INVALID');
+  fail(f.target===null||sha40(f.target),'PR1_INVENTORY_TARGET_INVALID');
+  fail(f.disposition===(f.source===f.target?'identical':f.target===null?(f.path.startsWith('docs/')?'historical-reference':'native-port-review'):'semantic-review'),'PR1_INVENTORY_CLASSIFICATION_INVALID');
   const current=currentSha(f.path);
   if(retired.has(f.path)){fail(current===null,'PR1_LEGACY_MIGRATION_RESTORED');continue;}
   if(current===f.source)continue;
@@ -31,6 +33,8 @@ export function assertResidualDisposition({inventoryBytes,currentSha,sha,verifie
   const row=record.files.find(x=>x.path===f.path);
   fail(row&&row.source_sha===f.source&&row.current_sha===f.current&&['reconciled','native_equivalent','intentionally_retired'].includes(row.disposition)&&!(row.disposition==='reconciled'&&f.current===null)&&nonempty(row.rationale)&&nonempty(row.reviewer_subject)&&signoffs.some(s=>s.subject===row.reviewer_subject&&s.decision==='APPROVED'&&s.release_sha===sha),'PR1_RESIDUAL_REVIEW_INVALID_'+f.path);
   fail(Array.isArray(row.evidence)&&row.evidence.length>0&&row.evidence.every(ref=>verified.some(v=>v.ref.path!==item.ref.path&&v.ref.sha256!==item.ref.sha256&&v.ref.path===ref.path&&v.ref.sha256===ref.sha256&&v.bytes.length>0)),'PR1_RESIDUAL_TRACE_REQUIRED_'+f.path);
+  // Generic artifacts do not establish file-level review.
+  fail(row.evidence.some(ref=>verified.some(v=>{if(v.ref.path!==ref.path||v.ref.sha256!==ref.sha256)return false;let t;try{t=JSON.parse(v.bytes.toString('utf8'));}catch{return false;}return t?.schema==='rticore-pr1-file-review-v1'&&t.release_sha===sha&&t.source_sha===f.source&&t.current_sha===f.current&&t.path===f.path&&t.reviewer_subject===row.reviewer_subject&&t.disposition===row.disposition&&nonempty(t.findings)&&nonempty(t.verification);})),'PR1_RESIDUAL_FILE_TRACE_REQUIRED_'+f.path);
  }
  return {reviewed:unresolved.length};
 }
