@@ -29,6 +29,26 @@ export async function GET(req:Request){
    const v=row[k];erpAssert((typeof v==='string'&&/^\d+$/.test(v))||typeof v==='number','Invalid aggregate',503);
    const n=Number(v);erpAssert(Number.isSafeInteger(n)&&n>=0,'Invalid aggregate',503);metrics[k]=n;
   }
+  // Opt-in management view preserves the existing operations-only contract.
+  if(params.get('view')==='commercial'){
+   erpAssert(params.getAll('view').length===1,'View ambigu');
+   const commercial=await db.prepare(`WITH scope AS (
+    SELECT u.tenant_id,u.id FROM rticore_erp_org_units u WHERE u.tenant_id=? AND u.id=? AND u.kind='legal_entity' AND u.active=1
+    AND rticore_fg_actor_role(u.tenant_id,u.id,?)=?
+   ) SELECT s.id,
+    (SELECT count(DISTINCT o.id)::text FROM rticore_sales_opportunities o JOIN rticore_erp_opportunity_scopes x ON x.tenant_id=o.tenant_id AND x.opportunity_id=o.id WHERE x.tenant_id=s.tenant_id AND x.legal_entity_id=s.id AND x.status='approved') AS opportunities,
+    (SELECT count(DISTINCT o.id)::text FROM rticore_sales_opportunities o JOIN rticore_erp_opportunity_scopes x ON x.tenant_id=o.tenant_id AND x.opportunity_id=o.id WHERE x.tenant_id=s.tenant_id AND x.legal_entity_id=s.id AND x.status='approved' AND o.stage='closed_won') AS won,
+    (SELECT count(*)::text FROM rticore_catalog_pricing_snapshots p WHERE p.tenant_id=s.tenant_id AND p.legal_entity_id=s.id AND p.status='approved') AS approved_pricing_snapshots
+    FROM scope s`).bind(TENANT,entity,email,role).first<Record<string,unknown>>();
+   erpAssert(commercial,'Legal entity di luar scope',403);
+   const commercial_metrics:Record<string,number>={};
+   for(const k of ['opportunities','won','approved_pricing_snapshots']){
+    const v=commercial[k];erpAssert((typeof v==='string'&&/^\\d+$/.test(v))||typeof v==='number','Invalid aggregate',503);
+    const n=Number(v);erpAssert(Number.isSafeInteger(n)&&n>=0,'Invalid aggregate',503);commercial_metrics[k]=n;
+   }
+   erpAssert(commercial_metrics.won<=commercial_metrics.opportunities,'Invalid aggregate',503);
+   return erpReply({success:true,legal_entity_id:entity,scope:'native_commercial_counts',commercial_metrics,read_only:true,automatic_posting:false});
+  }
   return erpReply({success:true,legal_entity_id:entity,scope:'native_operations_only',metrics,read_only:true,automatic_posting:false});
  }catch(e){return erpError(e);}
 }
