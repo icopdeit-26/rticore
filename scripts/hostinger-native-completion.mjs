@@ -8,6 +8,7 @@ export const REQUIRED_NATIVE_COMMANDS=[
  'rticore_reserve_ai_request(text,text,text,text)',
  'rticore_native_job_claim(text,text,text,text)',
  'rticore_native_job_finish(text,text,text,text,text,boolean)',
+ 'rticore_native_recovery_command(text,text,text,text,text,text,text)',
  'cams_review_command(text,text,text,text,text,text,bigint,text)'
 ];
 export async function checkNativeCompletion(client){
