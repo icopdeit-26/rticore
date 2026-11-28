@@ -88,7 +88,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
   if(isLoginPage||isCustomerPortal||(nativeBusiness&&pathname==='/'))return <>{children}</>;
   if(nativeBusiness&&session.status!=='ready')return <main className="mx-auto max-w-md p-8"><p role="status">{session.status==='checking'?'Memverifikasi sesi…':'Layanan identitas belum tersedia.'}</p><Link href="/login" className="mt-3 block underline">Buka login RTICORE</Link></main>;
   return (
-    <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#f5f7fa] text-slate-900">
+    <div className="flex min-h-screen min-w-0 max-w-full flex-col bg-[#fafafa] text-slate-900">
       <Navbar role={role} assignedRole={session.identity?.assignedRole??null} rolePreview={session.identity?.rolePreview===true} email={session.identity?.email??null} pendingApprovalsCount={pendingApprovalsCount} onToggleMenu={onToggleMenu} desktopMenuOpen={desktopMenuOpen} mobileMenuOpen={mobileMenuOpen}/>
       {session.status!=='ready' ? <div role="status" className="no-print border-b border-teal-100/60 bg-teal-50/70 px-4 py-1.5 text-center text-[10px] font-medium tracking-wide text-teal-800">
         {session.status==='checking'?'Memverifikasi sesi pengguna…':
@@ -99,7 +99,7 @@ export const AppShell:React.FC<AppShellProps> = ({children,nativeBusiness=false}
       </div>}
       <div className="flex min-w-0 flex-1 overflow-hidden print:block print:overflow-visible">
         {role&&<Sidebar role={role} desktopOpen={desktopMenuOpen} mobileOpen={mobileMenuOpen} onClose={onCloseMenu}/>}
-        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 overflow-x-clip overflow-y-auto px-3 pb-28 pt-0 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8 print:max-w-none print:overflow-visible print:p-0">
+        <main className="mx-auto w-full min-w-0 max-w-[1800px] flex-1 overflow-x-clip overflow-y-auto px-3 pb-28 pt-4 sm:px-6 sm:pb-6 lg:px-5 lg:pb-8 print:max-w-none print:overflow-visible print:p-0">
           {role&&<AIWorkbench/>}
           {children}
         </main>
