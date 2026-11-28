@@ -60,6 +60,7 @@ q -f tests/cams-native-draft-acceptance.sql
 q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
 q -f tests/native-feature-governance-acceptance.sql
+q -f tests/native-operations-queue-acceptance.sql
 ai_concurrency original
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
 q -f tests/flexguard-product-terms-acceptance.sql
@@ -100,6 +101,7 @@ q -f tests/cams-native-draft-acceptance.sql
 q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
 q -f tests/native-feature-governance-acceptance.sql
+q -f tests/native-operations-queue-acceptance.sql
 ai_concurrency restored
 q -f tests/flexguard-product-terms-acceptance.sql
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
