@@ -27,6 +27,8 @@ ai_concurrency() {
 dir=deployment/hostinger/migrations
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+mkdir -p artifacts/wave09
+node scripts/native-migration-manifest.mjs > artifacts/wave09/native-migration-manifest.json
 node scripts/native-migration-manifest.mjs --paths >"$tmp/native-paths"
 q -f "$dir/0053_finance_vendor_bank_entity_scope.sql"
 # Reproduce a legacy cross-entity period reference on the real pre-0054 schema.
@@ -61,6 +63,11 @@ q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
 q -f tests/native-feature-governance-acceptance.sql
 q -f tests/native-operations-queue-acceptance.sql
+q -f tests/native-backup-drill-acceptance.sql
+q -f tests/native-dfir-custody-acceptance.sql
+q -f tests/native-soc-sla-acceptance.sql
+q -f tests/native-vapt-engagement-acceptance.sql
+q -f tests/native-cti-grc-acceptance.sql
 node --test tests/native-preflight-postgres.test.mjs
 ai_concurrency original
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
@@ -71,13 +78,41 @@ mkdir -p artifacts/wave09
 fingerprint() {
  local target="$1" table count hash
  : >"$target"
- for table in rticore_members rticore_erp_org_units rticore_sales_ai_audit rticore_delivery_projects rticore_billing_invoices rticore_gl_journals rticore_gl_lines rticore_finance_journal_workflows rticore_operations_events rticore_cams_finance_inbox rticore_iam_credentials rticore_iam_sessions rticore_flexguard_enterprise_ledger; do
+ # Enumerate application tables from the actual source/restored database, not a partial fixed list.
+ local tables
+ tables="$(q -Atc "SELECT tablename FROM pg_tables WHERE schemaname='public' AND (left(tablename,8)='rticore_' OR left(tablename,5)='cams_') ORDER BY tablename COLLATE \"C\"")"
+ [[ -n "$tables" ]]
+ while IFS= read -r table; do
+  [[ "$table" =~ ^(rticore_|cams_)[a-z0-9_]+$ ]]
   count="$(q -Atc "SELECT count(*) FROM public.$table")"
   hash="$(q -Atc "SELECT row_to_json(t)::text FROM public.$table t ORDER BY row_to_json(t)::text COLLATE \"C\"" | sha256sum | cut -d ' ' -f1)"
   printf '%s\t%s\t%s\n' "$table" "$count" "$hash" >>"$target"
- done
+ done <<< "$tables"
+}
+# Verify sequence state independently: matching table rows alone cannot detect
+# a reset identity sequence and subsequent duplicate-key errors.
+sequence_fingerprint() {
+ local target="$1" sequence state
+ : >"$target"
+ local sequences
+ sequences="$(q -Atc "SELECT sequencename FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename COLLATE \"C\"")"
+ [[ -n "$sequences" ]]
+ while IFS= read -r sequence; do
+  [[ "$sequence" =~ ^[a-z_][a-z0-9_]*$ ]]
+  state="$(q -Atc "SELECT last_value::text || ':' || is_called::text FROM public.$sequence")"
+  [[ "$state" =~ ^-?[0-9]+:(true|false)$ ]]
+  printf '%s\t%s\n' "$sequence" "$state" >>"$target"
+ done <<< "$sequences"
+}
+schema_fingerprint() {
+ # pg_dump may emit a random psql restrict key; strip only those two metacommands.
+ # Ownership and ACLs are deliberately excluded, as this is a logical restore.
+ pg_dump --schema-only --no-owner --no-privileges | sed -E '/^\\(un)?restrict [^[:space:]]+$/d' >"$1"
+ [[ -s "$1" ]]
 }
 fingerprint "$tmp/before.tsv"
+sequence_fingerprint "$tmp/sequences-before.tsv"
+schema_fingerprint "$tmp/schema-before.sql"
 start="$(date +%s%3N)"
 pg_dump --format=custom --file="$tmp/rticore.dump"
 backup_ms=$(( $(date +%s%3N) - start ))
@@ -89,12 +124,18 @@ pg_restore --exit-on-error --no-owner --no-privileges --dbname=cams_docking_rest
 restore_ms=$(( $(date +%s%3N) - start ))
 export PGDATABASE=cams_docking_restore_ci
 fingerprint "$tmp/after.tsv"
+sequence_fingerprint "$tmp/sequences-after.tsv"
+schema_fingerprint "$tmp/schema-after.sql"
 # Compare deterministic row counts and content digests before any post-restore writes.
 diff -u "$tmp/before.tsv" "$tmp/after.tsv"
+diff -u "$tmp/sequences-before.tsv" "$tmp/sequences-after.tsv"
+diff -u "$tmp/schema-before.sql" "$tmp/schema-after.sql"
 [[ "$(q -Atc "SELECT count(*) FROM rticore_gl_journals j JOIN rticore_finance_journal_workflows w ON w.tenant_id=j.tenant_id AND w.journal_id=j.id WHERE j.source_key='OUTBOX-JRN-recovery' AND j.status='posted' AND j.reviewed_by='cams-recovery-check@example.invalid' AND j.posted_by='cams-recovery-post@example.invalid' AND w.lifecycle_stage='posted'")" == 1 ]]
 [[ "$(q -Atc "SELECT count(*) FROM rticore_operations_events e JOIN rticore_gl_journals j ON j.tenant_id=e.tenant_id AND j.id=e.entity_id WHERE j.source_key='OUTBOX-JRN-recovery' AND e.action IN ('CAMS_JOURNAL_APPROVED','CAMS_JOURNAL_POSTED')")" == 2 ]]
 cp "$tmp/before.tsv" artifacts/wave09/restore-table-digests.tsv
-node -e 'const [backupMs,restoreMs,bytes,hash,sha]=process.argv.slice(1);const fs=require("node:fs");fs.writeFileSync("artifacts/wave09/restore-evidence.json",JSON.stringify({scope:"disposable_logical_restore",source_sha:sha,backup_ms:Number(backupMs),restore_ms:Number(restoreMs),backup_bytes:Number(bytes),backup_sha256:hash,compared_tables:13,row_content_match:true,posted_journal_and_audit_match:true,production_rto_rpo_certified:false,privilege_restore_verified:false},null,2)+"\n")' "$backup_ms" "$restore_ms" "$backup_bytes" "$backup_hash" "$(git rev-parse HEAD)"
+cp "$tmp/sequences-before.tsv" artifacts/wave09/restore-sequence-state.tsv
+schema_hash="$(sha256sum "$tmp/schema-before.sql" | cut -d ' ' -f1)"
+node -e 'const [backupMs,restoreMs,bytes,hash,sha,tableCount,sequenceCount,schemaHash]=process.argv.slice(1);const fs=require("node:fs");fs.writeFileSync("artifacts/wave09/restore-evidence.json",JSON.stringify({scope:"disposable_logical_restore",source_sha:sha,backup_ms:Number(backupMs),restore_ms:Number(restoreMs),backup_bytes:Number(bytes),backup_sha256:hash,compared_tables:Number(tableCount),row_content_match:true,compared_sequences:Number(sequenceCount),sequence_state_match:true,schema_definition_match:true,schema_sha256:schemaHash,posted_journal_and_audit_match:true,production_rto_rpo_certified:false,privilege_restore_verified:false},null,2)+"\n")' "$backup_ms" "$restore_ms" "$backup_bytes" "$backup_hash" "$(git rev-parse HEAD)" "$(wc -l < "$tmp/before.tsv")" "$(wc -l < "$tmp/sequences-before.tsv")" "$schema_hash"
 [[ "$(q -Atc "SELECT count(*) FROM rticore_erp_org_units WHERE id IN ('p0-rehearsal-a','p0-rehearsal-b')")" == 2 ]]
 [[ "$(q -Atc "SELECT count(*) FROM pg_constraint WHERE conname LIKE 'p0\\_%\\_entity\\_fk' AND contype='f' AND convalidated")" == 16 ]]
 [[ "$(q -Atc "SELECT to_regclass('public.rticore_iam_credentials') IS NOT NULL AND to_regclass('public.rticore_iam_sessions') IS NOT NULL")" == t ]]
@@ -103,6 +144,11 @@ q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
 q -f tests/native-feature-governance-acceptance.sql
 q -f tests/native-operations-queue-acceptance.sql
+q -f tests/native-backup-drill-acceptance.sql
+q -f tests/native-dfir-custody-acceptance.sql
+q -f tests/native-soc-sla-acceptance.sql
+q -f tests/native-vapt-engagement-acceptance.sql
+q -f tests/native-cti-grc-acceptance.sql
 node --test tests/native-preflight-postgres.test.mjs
 ai_concurrency restored
 q -f tests/flexguard-product-terms-acceptance.sql

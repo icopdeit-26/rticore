@@ -1,4 +1,5 @@
 'use client';
+import BackupDrills from './BackupDrills';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 
 type Job={id:string;kind:string;status:string;attempts:number;max_attempts:number;due_at:string;last_reason:string|null;created_at:string};
@@ -49,6 +50,7 @@ export default function OperationsCenter(){
   </form>
   {error&&<p role="alert" className="rounded border border-red-500 p-3 text-sm">{error}</p>}
   {result&&<section aria-live="polite" className="space-y-4">
+   <BackupDrills key={loadedEntity} entity={loadedEntity} role={result.role}/>
    <p className="text-sm">Scope: {loadedEntity}{result.truncated?' — hasil dibatasi 200 baris per register.':''}</p>
    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{['queued','running','succeeded','dead_letter'].map(status=><div key={status} className="rounded-lg border p-3"><p className="text-sm">{status}</p><p className="text-xl font-bold">{result.jobs.filter(j=>j.status===status).length}</p></div>)}</div>
    <section className="overflow-x-auto rounded-lg border p-3"><h2 className="mb-3 font-semibold">Native job queue (hasil dimuat)</h2>

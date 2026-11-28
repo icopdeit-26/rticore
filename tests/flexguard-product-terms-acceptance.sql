@@ -119,6 +119,49 @@ BEGIN
  r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
  IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
 END $fg$;
+-- A-R11: prove evidence-backed workflow and no automatic ledger mutation on the live disposable fixture.
+DO $service$
+DECLARE wid text; rsv text; maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid'; ledger_before bigint;
+BEGIN
+ SELECT id INTO STRICT wid FROM rticore_flexguard_wallets WHERE contract_id='fg-ci-contract' AND status='active';
+ SELECT count(*) INTO ledger_before FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid;
+ INSERT INTO rticore_native_fg_service_request(id,tenant_id,legal_entity_id,wallet_id,project_id,contract_id,customer_id,request_code,title,scope_summary,created_by,last_actor,last_notes,last_document_id,last_document_sha256) VALUES('service-ci','defendit360','fg-terms-a',wid,'fg-ci-project','fg-ci-contract','fg-ci-customer','SR-001','Synthetic service request','Synthetic service request scope',maker,maker,'Synthetic initial request','fg-ci-doc',repeat('b',64));
+ UPDATE rticore_native_fg_service_request SET status='scope_quoted',version=2,quoted_credits=2,last_actor=maker,last_notes='Synthetic service quote' WHERE id='service-ci';
+ BEGIN
+ UPDATE rticore_native_fg_service_request SET status='scope_approved',version=3,last_actor=maker,last_notes='Synthetic self approval' WHERE id='service-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_SERVICE_APPROVAL_INVALID' THEN RAISE; END IF; END;
+ BEGIN
+ UPDATE rticore_native_fg_service_request SET status='scope_approved',version=3,last_actor=checker,last_notes='Synthetic missing customer approval evidence' WHERE id='service-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_SERVICE_APPROVAL_INVALID' THEN RAISE; END IF; END;
+ IF (SELECT count(*) FROM rticore_native_fg_service_event WHERE request_id='service-ci')<>2 OR (SELECT count(*) FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid)<>ledger_before THEN RAISE EXCEPTION 'FLEXGUARD_SERVICE_UNEXPECTED_MUTATION'; END IF;
+END $service$;
+-- Portal grant and inbox tests, isolated from internal IAM and financial mutation.
+DO $portal$
+DECLARE wid text; maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid'; customer constant text:='portal-customer@example.invalid'; ledger_before bigint;
+BEGIN
+ SELECT id INTO STRICT wid FROM rticore_flexguard_wallets WHERE contract_id='fg-ci-contract' AND status='active';
+ SELECT count(*) INTO ledger_before FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid;
+ INSERT INTO rticore_native_fg_portal_account(email) VALUES(customer);
+ INSERT INTO rticore_native_fg_portal_grant(id,tenant_id,legal_entity_id,wallet_id,email,customer_id,reason,requested_by) VALUES('portal-grant-ci','defendit360','fg-terms-a',wid,customer,'fg-ci-customer','Synthetic customer identity reviewed',maker);
+ IF rticore_native_fg_portal_allowed('defendit360','fg-terms-a',wid,customer) THEN RAISE EXCEPTION 'PORTAL_PENDING_ACCESS'; END IF;
+ BEGIN
+ UPDATE rticore_native_fg_portal_grant SET status='approved',reviewed_by=maker,reviewed_at=now(),review_notes='Synthetic self approval' WHERE id='portal-grant-ci';
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_REVIEW_INVALID' THEN RAISE; END IF; END;
+ UPDATE rticore_native_fg_portal_grant SET status='approved',reviewed_by=checker,reviewed_at=now(),review_notes='Synthetic independent customer approval' WHERE id='portal-grant-ci';
+ IF NOT rticore_native_fg_portal_allowed('defendit360','fg-terms-a',wid,customer) OR rticore_native_fg_portal_allowed('defendit360','fg-terms-b',wid,customer) THEN RAISE EXCEPTION 'PORTAL_SCOPE_INVALID'; END IF;
+ INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,notes,idempotency_key) VALUES('portal-sub-ci','defendit360','fg-terms-a',wid,customer,'service_request','Synthetic customer request','portal-submission-0001');
+ INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,request_id,request_version,notes,idempotency_key) VALUES('portal-quote-ci','defendit360','fg-terms-a',wid,customer,'quote_acceptance','service-ci',2,'Synthetic customer scope acceptance','portal-submission-0002');
+ IF (SELECT status FROM rticore_native_fg_service_request WHERE id='service-ci')<>'scope_quoted' OR (SELECT count(*) FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid)<>ledger_before THEN RAISE EXCEPTION 'PORTAL_UNEXPECTED_MUTATION'; END IF;
+ INSERT INTO rticore_native_fg_portal_credential(email,password_hash,totp_cipher,enrolled_at) VALUES(customer,'synthetic-not-a-usable-password-hash','synthetic-not-a-usable-totp',now());
+ INSERT INTO rticore_native_fg_portal_session(token_hash,email,expires_at) VALUES(repeat('e',64),customer,now()+interval '1 hour');
+ UPDATE rticore_native_fg_portal_grant SET status='revoked',revoked_by=checker,revoked_at=now(),revocation_notes='Synthetic access revocation' WHERE id='portal-grant-ci';
+ IF EXISTS(SELECT 1 FROM rticore_native_fg_portal_session WHERE email=customer) OR NOT EXISTS(SELECT 1 FROM rticore_native_fg_portal_audit WHERE email=customer AND action='revoke') THEN RAISE EXCEPTION 'PORTAL_SESSION_REVOCATION_FAILED'; END IF;
+ IF rticore_native_fg_portal_allowed('defendit360','fg-terms-a',wid,customer) THEN RAISE EXCEPTION 'PORTAL_REVOKE_FAILED'; END IF;
+ BEGIN
+ INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,notes,idempotency_key) VALUES('portal-revoked-ci','defendit360','fg-terms-a',wid,customer,'service_request','Synthetic revoked customer request','portal-submission-0003');
+ RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_ACCESS_DENIED' THEN RAISE; END IF; END;
+END $portal$;
+
 -- Continue the SAME positive PSA consumption fixture through actual GL docking.
 -- The AR journal represents the already approved and paid invoice, not a second invoice.
 INSERT INTO rticore_members(email,role,active,created_by)

@@ -25,7 +25,15 @@
         "0073_native_operations_queue.sql",
         "0074_native_job_recovery.sql",
         "0075_flexguard_historical_review_guard.sql",
-        "0076_flexguard_acknowledgement_guard.sql"
+        "0076_flexguard_acknowledgement_guard.sql",
+        "0077_native_dfir_custody.sql",
+        "0078_native_soc_sla.sql",
+        "0079_native_vapt_engagement.sql",
+        "0080_native_vapt_findings.sql",
+        "0081_native_cti_grc_registers.sql",
+        "0082_native_flexguard_service_request.sql",
+        "0083_native_flexguard_portal.sql",
+        "0084_native_backup_drill.sql"
       ]
     },
     {
