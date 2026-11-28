@@ -1,9 +1,10 @@
 name: Batch D enterprise development regression
 on:
   push:
-    branches: ['feature/v7-batch-d-enterprise-development']
+    branches: [main, 'feature/v7-batch-d-enterprise-development']
   pull_request:
-    branches: [main, 'integration/v7-critical-remediation-20261128']
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
