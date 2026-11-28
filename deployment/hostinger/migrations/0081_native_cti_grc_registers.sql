@@ -99,6 +99,7 @@ BEGIN
  END IF;
  IF NOT EXISTS(SELECT 1 FROM rticore_document_library d WHERE d.tenant_id=NEW.tenant_id AND d.id=NEW.document_id AND d.opportunity_id=p.opportunity_id AND d.kind='supporting' AND lower(d.sha256)=NEW.document_sha256 AND (d.retention_until IS NULL OR d.retention_until>=CURRENT_DATE::text OR d.legal_hold=1)) THEN RAISE EXCEPTION 'CTI_GRC_EVIDENCE_INVALID'; END IF;
  IF TG_TABLE_NAME='rticore_native_cti_ioc' THEN
+  IF NOT EXISTS(SELECT 1 FROM rticore_native_cti_case c WHERE c.tenant_id=NEW.tenant_id AND c.legal_entity_id=NEW.legal_entity_id AND c.project_id=NEW.project_id AND c.id=NEW.case_id AND (c.tlp<>'TLP:RED' OR lower(c.created_by)=lower(NEW.created_by))) THEN RAISE EXCEPTION 'CTI_CASE_SCOPE_INVALID'; END IF;
   IF NEW.ioc_type IN ('ipv4','ipv6') THEN
    BEGIN ip:=NEW.indicator_value::inet; EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'CTI_IOC_INVALID'; END;
    IF (NEW.ioc_type='ipv4' AND (family(ip)<>4 OR masklen(ip)<>32)) OR (NEW.ioc_type='ipv6' AND (family(ip)<>6 OR masklen(ip)<>128)) THEN RAISE EXCEPTION 'CTI_IOC_INVALID'; END IF;
@@ -114,12 +115,16 @@ BEGIN
  END IF;
  NEW.created_at:=clock_timestamp();RETURN NEW;
 END $g$;
-DO $g$
-DECLARE t text;
-BEGIN
- FOREACH t IN ARRAY ARRAY['rticore_native_cti_case','rticore_native_cti_ioc','rticore_native_grc_engagement','rticore_native_grc_risk','rticore_native_grc_control','rticore_native_grc_control_test'] LOOP
-  EXECUTE format('DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON %I',t);
-  EXECUTE format('CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard()',t);
- END LOOP;
-END $g$;
+DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON rticore_native_cti_case;
+CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_cti_case FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard();
+DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON rticore_native_cti_ioc;
+CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_cti_ioc FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard();
+DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON rticore_native_grc_engagement;
+CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_grc_engagement FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard();
+DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON rticore_native_grc_risk;
+CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_grc_risk FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard();
+DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON rticore_native_grc_control;
+CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_grc_control FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard();
+DROP TRIGGER IF EXISTS rticore_native_cti_grc_guard ON rticore_native_grc_control_test;
+CREATE TRIGGER rticore_native_cti_grc_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_grc_control_test FOR EACH ROW EXECUTE FUNCTION rticore_native_cti_grc_guard();
 COMMIT;

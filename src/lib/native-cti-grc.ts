@@ -31,7 +31,8 @@ export async function nativeGrcRead(a:BoQIdentity,project:string){
  const allowed=kinds.filter(k=>k.startsWith('cti_')===cti);
  const registers:Record<string,unknown[]>= {};let truncated=false;
  for(const k of allowed){
-  const rows=await a.db.prepare('SELECT * FROM rticore_native_'+k+' WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,project).all();
+  const redFilter=k==='cti_case'?" AND (tlp<>'TLP:RED' OR lower(created_by)=?)":k==='cti_ioc'?" AND EXISTS(SELECT 1 FROM rticore_native_cti_case c WHERE c.tenant_id=rticore_native_cti_ioc.tenant_id AND c.legal_entity_id=rticore_native_cti_ioc.legal_entity_id AND c.project_id=rticore_native_cti_ioc.project_id AND c.id=rticore_native_cti_ioc.case_id AND (c.tlp<>'TLP:RED' OR lower(c.created_by)=?))":'';
+  const rows=await a.db.prepare('SELECT * FROM rticore_native_'+k+' WHERE tenant_id=? AND legal_entity_id=? AND project_id=?'+redFilter+' ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,project,...(redFilter?[a.email.toLowerCase()]:[])).all();
   registers[k]=rows.results.slice(0,200);truncated ||= rows.results.length>200;
  }
  return erpReply({success:true,role:a.role,registers,truncated,scope:cti?'cti':'grc'});
