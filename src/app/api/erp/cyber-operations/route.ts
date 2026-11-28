@@ -73,6 +73,9 @@ export async function POST(req:Request){
    const unit=await erpProjectUnit(db,c.project_id);await erpGrant(a.identity,'cyber_ops',unit);
    erpAssert(c.status==='open'&&DEFENSE_CASE_KINDS.includes(c.kind),'Hanya case SOC/DFIR berstatus open yang dapat ditugaskan',409);
    erpAssert(!x||v.assignment_version===x.version,'Versi penugasan berubah; muat ulang',409);
+   // The parent case must remain open at the transaction boundary, not only at the pre-read.
+   const openCaseGuard="EXISTS(SELECT 1 FROM rticore_cyber_cases WHERE tenant_id=? AND id=? AND version=? AND status='open')";
+   const caseArgs=[TENANT,c.id,c.version];
    if(v.action==='assign'){
     erpAssert(TRIAGE.includes(role),'Penugasan investigasi hanya oleh Defense Team Leader atau Admin',403);
     const assignee=typeof v.assignee_email==='string'?v.assignee_email.trim().toLowerCase():'';
@@ -84,7 +87,7 @@ export async function POST(req:Request){
     const write=x
      ?db.prepare("UPDATE rticore_cyber_case_assignments SET assignee_email=?,assigned_by=?,status='assigned',version=version+1,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND case_id=?").bind(assignee,email,TENANT,c.id)
      :db.prepare('INSERT INTO rticore_cyber_case_assignments(tenant_id,case_id,assignee_email,assigned_by) VALUES(?,?,?,?)').bind(TENANT,c.id,assignee,email);
-    await erpAtom(a.identity,x?"EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=?)":"NOT EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND ?=0)",[TENANT,c.id,x?x.version:0],[write],'cyber',c.id,x?'CASE_REASSIGN':'CASE_ASSIGN',{assignee_email:assignee});
+    await erpAtom(a.identity,openCaseGuard+" AND "+(x?"EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=? AND status IN ('assigned','returned'))":"NOT EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=?)"),[...caseArgs,TENANT,c.id,...(x?[x.version]:[])],[write],'cyber',c.id,x?'CASE_REASSIGN':'CASE_ASSIGN',{assignee_email:assignee});
     return erpReply({success:true},x?200:201);
    }
    erpAssert(x,'Case belum ditugaskan',409);
@@ -93,12 +96,12 @@ export async function POST(req:Request){
     erpAssert(['assigned','returned'].includes(x.status),'Investigasi sudah disubmit',409);
     erpAssert(erpText(v.notes,12,2000)&&erpId(v.document_id),'Catatan investigasi dan dokumen bukti asli Vault wajib');
     await supportingOriginal(db,v.document_id as string,c.opportunity_id);
-    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=? AND status IN ('assigned','returned') AND lower(assignee_email)=?)",[TENANT,c.id,x.version,email],[db.prepare("UPDATE rticore_cyber_case_assignments SET status='submitted',version=version+1,investigation_notes=?,evidence_document_id=?,submitted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND case_id=?").bind((v.notes as string).trim(),v.document_id as string,TENANT,c.id)],'cyber',c.id,'CASE_SUBMIT',{document_id:v.document_id});
+    await erpAtom(a.identity,openCaseGuard+" AND EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=? AND status IN ('assigned','returned') AND lower(assignee_email)=?)",[...caseArgs,TENANT,c.id,x.version,email],[db.prepare("UPDATE rticore_cyber_case_assignments SET status='submitted',version=version+1,investigation_notes=?,evidence_document_id=?,submitted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND case_id=?").bind((v.notes as string).trim(),v.document_id as string,TENANT,c.id)],'cyber',c.id,'CASE_SUBMIT',{document_id:v.document_id});
     return erpReply({success:true});
    }
    erpAssert(TRIAGE.includes(role)&&x.assignee_email.toLowerCase()!==email,'Pengembalian investigasi oleh Defense Team Leader lain dari analis',403);
    erpAssert(x.status==='submitted'&&erpText(v.notes,12,800),'Investigasi harus berstatus submitted dan alasan pengembalian wajib',409);
-   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=? AND status='submitted')",[TENANT,c.id,x.version],[db.prepare("UPDATE rticore_cyber_case_assignments SET status='returned',version=version+1,assigned_by=?,leader_notes=?,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND case_id=?").bind(email,(v.notes as string).trim(),TENANT,c.id)],'cyber',c.id,'CASE_RETURN',{});
+   await erpAtom(a.identity,openCaseGuard+" AND EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=? AND status='submitted' AND lower(assignee_email)!=?)",[...caseArgs,TENANT,c.id,x.version,email],[db.prepare("UPDATE rticore_cyber_case_assignments SET status='returned',version=version+1,assigned_by=?,leader_notes=?,updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND case_id=?").bind(email,(v.notes as string).trim(),TENANT,c.id)],'cyber',c.id,'CASE_RETURN',{});
    return erpReply({success:true});
   }
   if(v.action==='review'||v.action==='close'){
