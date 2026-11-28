@@ -37,7 +37,7 @@ try {
    if(job.job_kind==='flexguard_retry')await db.query('SELECT * FROM rticore_fg_retry_due($1,$2,$3,$4,25)',[...args,env.RTICORE_FG_MAINTENANCE_PERIOD||null]);
    else if(job.job_kind==='flexguard_expiry')await db.query('SELECT * FROM rticore_fg_expiry_due($1,$2,$3,25)',args);
    else throw Error('Unsupported job kind');
-   const done=(await db.query('SELECT rticore_native_job_finish($1,$2,$3,$4,$5,true) AS ok FROM rticore_native_jobs WHERE tenant_id=$1 AND legal_entity_id=$2 AND id=$4 AND lease_token=$5 AND status='running' AND lease_until>clock_timestamp()',[...args,job.job_id,token])).rows[0];
+   const done=(await db.query("SELECT rticore_native_job_finish($1,$2,$3,$4,$5,true) AS ok FROM rticore_native_jobs WHERE tenant_id=$1 AND legal_entity_id=$2 AND id=$4 AND lease_token=$5 AND status='running' AND lease_until>clock_timestamp()",[...args,job.job_id,token])).rows[0];
    if(done?.ok!==true)throw Error('Job finish rejected');
    await db.query('COMMIT');outcomes.push('succeeded');
   }catch{
