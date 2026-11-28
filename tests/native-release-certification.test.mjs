@@ -1,12 +1,18 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {checkNativeCompletion,REQUIRED_NATIVE_COMMANDS,assertNativeMfaEnrollment} from '../scripts/hostinger-native-completion.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {checkNativeCompletion,REQUIRED_NATIVE_COMMANDS,assertNativeMfaEnrollment,expectedReviewDefinitions} from '../scripts/hostinger-native-completion.mjs';
 import {verifyNativeReceipt,NATIVE_GATES} from '../scripts/native-release-certification.mjs';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {generateKeyPairSync,sign} from 'node:crypto';
 test('latest native command preflight is read-only and fails closed on missing inventory',async()=>{
  const commands=REQUIRED_NATIVE_COMMANDS.map(signature=>({signature,present:true}));
  const objects={boq:true,budget_index:true,feature_requests:true,feature_pending_index:true,jobs:true,jobs_due_index:true,job_recovery:true,recovery_pending_index:true,recovery_once_index:true,recovery_guard:true,feature_guard:true,journal_guard:true,workflow_guard:true};
- const run=(a,b)=>checkNativeCompletion({query:async(sql,args)=>{assert.match(sql,/^SELECT/);return {rows:args?a:[b]};}});
+ const definitions=expectedReviewDefinitions();
+ const run=(a,b,d=definitions)=>checkNativeCompletion({query:async(sql,args)=>{assert.match(sql,/^SELECT/);return {rows:sql.includes('p.prosrc AS body')?d:args?a:[b]};}});
  assert.equal((await run(commands,objects)).applied_ledger_verified,false);
  await assert.rejects(run(commands.slice(1),objects),/command inventory incomplete/);
+ await assert.rejects(run(commands,objects,definitions.slice(1)),/definition mismatch/);
+ for(const field of ['body','language','volatility','security_definer','config']){
+  const bad=definitions.map((d,i)=>i===0?{...d,[field]:null}:d);
+  await assert.rejects(run(commands,objects,bad),/definition mismatch/);
+ }
  for(const key of Object.keys(objects)) await assert.rejects(run(commands,{...objects,[key]:false}),/object inventory incomplete/);
  for(const signature of ['rticore_native_job_claim(text,text,text,text)','rticore_native_job_finish(text,text,text,text,text,boolean)']){
   assert.ok(REQUIRED_NATIVE_COMMANDS.includes(signature));
