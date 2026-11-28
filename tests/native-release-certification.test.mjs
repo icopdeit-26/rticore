@@ -1,3 +1,6 @@
+import {buildNativeReviewRegister} from '../scripts/native-uat-review-register.mjs';
+import {financeGroups} from '../scripts/wave09-uat-evidence.mjs';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';import assert from 'node:assert/strict';import {checkNativeCompletion,REQUIRED_NATIVE_COMMANDS,assertNativeMfaEnrollment,expectedReviewDefinitions} from '../scripts/hostinger-native-completion.mjs';
 import {verifyNativeReceipt,NATIVE_GATES,assertIndividualEvidence} from '../scripts/native-release-certification.mjs';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {generateKeyPairSync,sign,createHash} from 'node:crypto';
@@ -53,6 +56,9 @@ test('individual native UAT evidence rejects generic, replayed and mismatched re
  const caseEntry=(v=record)=>entry('case.json',Buffer.from(JSON.stringify(v)));
  const run=(overrides={})=>assertIndividualEvidence({test:t,definition,roster,signoffs,verified:[trace,caseEntry()],...overrides});
  assert.doesNotThrow(()=>run());
+ const usedTraces=new Set();
+ assert.doesNotThrow(()=>run({usedTraces}));
+ assert.throws(()=>run({usedTraces}),/UAT_CASE_TRACE_REUSED/);
  assert.throws(()=>run({verified:[trace]}),/UAT_CASE_RECORD_REQUIRED/);
  assert.throws(()=>run({verified:[trace,caseEntry(),caseEntry()]}),/UAT_CASE_RECORD_REQUIRED/);
  assert.throws(()=>run({definition:{...definition,id:'ERP-GL-002'}}),/UAT_CASE_RECORD_REQUIRED/);
@@ -65,4 +71,20 @@ test('individual native UAT evidence rejects generic, replayed and mismatched re
  assert.throws(()=>run({roster:[{subject:'tester',role:'admin'}]}),/UAT_ACTOR_ROLE_MISMATCH/);
  assert.throws(()=>run({signoffs:[]}),/UAT_DEFINITION_APPROVAL_REQUIRED/);
  assert.throws(()=>run({definition:{...definition,approved_by:'tester'}}),/UAT_DEFINITION_APPROVAL_REQUIRED/);
+});
+
+test('native review register preserves 420 original cases and 520 Finance planning slots without fake approval',()=>{
+ const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+ const legacy=JSON.parse(read('docs/RTICORE_UAT_210_CATALOG.json')).cases,erp=JSON.parse(read('docs/RTICORE_ERP_UAT_210_CATALOG.json')).cases;
+ const groups=financeGroups(read('tests/rti-finance-uat-520.test.cjs'));
+ const r=buildNativeReviewRegister(legacy,erp,groups,'a'.repeat(40));
+ assert.equal(r.erp_definitions.length,420);
+ assert.equal(r.finance_definitions.length,520);
+ assert.equal(r.release,'HOLD');
+ assert.equal(r.erp_individual_pass+r.finance_individual_pass,0);
+ assert.ok(r.erp_definitions.every(d=>d.approved_by===null&&d.actor_role===null&&d.status==='REVIEW_REQUIRED'&&d.source_sha256===createHash('sha256').update(JSON.stringify(d.original)).digest('hex')));
+ assert.ok(r.finance_definitions.every(d=>d.approved_by===null&&d.scenario===null&&d.status==='UNMAPPED_NOT_RUN'));
+ assert.match(r.erp_definitions.find(d=>d.id==='P00-003').expected,/RPO\/RTO/);
+ assert.throws(()=>buildNativeReviewRegister(legacy.slice(1),erp,groups,'a'.repeat(40)),/ERP_CATALOG_DRIFT/);
+ assert.throws(()=>buildNativeReviewRegister(legacy,erp,groups.slice(1),'a'.repeat(40)),/FINANCE_CATALOG_DRIFT/);
 });
