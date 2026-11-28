@@ -58,7 +58,7 @@ export async function GET(req:Request){
 export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
-  erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
   if(v.action==='open'){
    erpAssert(OPENERS.includes(role),'Case hanya dibuat oleh operator bergrant',403);
    erpAssert(erpId(v.project_id)&&erpText(v.external_ref,3,120)&&erpText(v.title,8,240)&&['vapt_finding','soc_incident','dfir_incident'].includes(String(v.kind))&&['critical','high','medium','low','informational'].includes(String(v.severity))&&['confidential','restricted'].includes(String(v.classification)),'Metadata keamanan tidak valid');
@@ -115,7 +115,7 @@ export async function POST(req:Request){
     const doc=erpId(v.document_id)?v.document_id as string:x?.evidence_document_id||null;
     erpAssert(typeof v.approve==='boolean'&&erpText(v.notes,12,800)&&doc,'QA dan dokumen bukti asli wajib');
     await supportingOriginal(db,doc as string,c.opportunity_id);
-    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_cyber_cases WHERE tenant_id=? AND id=? AND version=? AND status='open' AND lower(created_by)!=?)",[TENANT,c.id,c.version,email],[db.prepare('UPDATE rticore_cyber_cases SET status=?,version=version+1,reviewer_email=?,review_notes=?,evidence_document_id=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'reviewed':'rejected',email,v.notes as string,doc,TENANT,c.id)],'cyber',c.id,'CASE_REVIEW',{approved:v.approve,document_id:doc});return erpReply({success:true});
+    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_cyber_cases WHERE tenant_id=? AND id=? AND version=? AND status='open' AND lower(created_by)!=?) AND "+(x?"EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=? AND version=? AND status='submitted' AND lower(assignee_email)!=?)":"NOT EXISTS(SELECT 1 FROM rticore_cyber_case_assignments WHERE tenant_id=? AND case_id=?)"),[TENANT,c.id,c.version,email,...(x?[TENANT,c.id,x.version,email]:[TENANT,c.id])],[db.prepare('UPDATE rticore_cyber_cases SET status=?,version=version+1,reviewer_email=?,review_notes=?,evidence_document_id=?,reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?').bind(v.approve?'reviewed':'rejected',email,v.notes as string,doc,TENANT,c.id)],'cyber',c.id,'CASE_REVIEW',{approved:v.approve,document_id:doc});return erpReply({success:true});
    }
    erpAssert(CLOSERS.includes(role)&&c.status==='reviewed'&&c.reviewer_email!==null&&c.reviewer_email.toLowerCase()!==email,'Penutupan perlu review independen',403);
    await supportingOriginal(db,c.evidence_document_id as string,c.opportunity_id);
