@@ -25,5 +25,7 @@ test('native release refuses missing authority, legacy Cloudflare receipt and un
   Object.assign(payload,{schema_version:2,cams_release_sha:'b'.repeat(40),target:'hostinger_business_web_hosting',origin:'https://rticore.store',database_engine:'postgres',auth_method:'native_business_totp',ai_provider:'openai',issued_at:new Date().toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),gates:NATIVE_GATES.map(id=>({id,status:'BLOCKED'}))});
   save();assert.throws(check,/GATE_NOT_PASS_exact_sha_ci/);
   payload.gates=[];save();assert.throws(check,/INCOMPLETE_NATIVE_GATES/);
+  payload.expires_at='invalid';save();assert.throws(check,/STALE_NATIVE_RECEIPT/);
+  payload.issued_at=new Date(Date.now()+60000).toISOString();payload.expires_at=new Date(Date.now()+120000).toISOString();save();assert.throws(check,/STALE_NATIVE_RECEIPT/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
