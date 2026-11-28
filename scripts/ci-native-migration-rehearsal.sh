@@ -61,6 +61,7 @@ q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
 q -f tests/native-feature-governance-acceptance.sql
 q -f tests/native-operations-queue-acceptance.sql
+q -f tests/native-backup-drill-acceptance.sql
 q -f tests/native-dfir-custody-acceptance.sql
 q -f tests/native-soc-sla-acceptance.sql
 q -f tests/native-vapt-engagement-acceptance.sql
@@ -107,6 +108,7 @@ q -f tests/cams-independent-review-acceptance.sql
 q -f tests/native-ai-budget-acceptance.sql
 q -f tests/native-feature-governance-acceptance.sql
 q -f tests/native-operations-queue-acceptance.sql
+q -f tests/native-backup-drill-acceptance.sql
 q -f tests/native-dfir-custody-acceptance.sql
 q -f tests/native-soc-sla-acceptance.sql
 q -f tests/native-vapt-engagement-acceptance.sql

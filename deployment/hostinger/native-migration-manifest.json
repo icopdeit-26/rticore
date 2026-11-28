@@ -32,7 +32,8 @@
         "0080_native_vapt_findings.sql",
         "0081_native_cti_grc_registers.sql",
         "0082_native_flexguard_service_request.sql",
-        "0083_native_flexguard_portal.sql"
+        "0083_native_flexguard_portal.sql",
+        "0084_native_backup_drill.sql"
       ]
     },
     {

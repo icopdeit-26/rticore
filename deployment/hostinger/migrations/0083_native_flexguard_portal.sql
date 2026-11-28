@@ -93,4 +93,14 @@ BEGIN
 END $p$;
 DROP TRIGGER IF EXISTS rticore_native_fg_portal_submission_guard ON rticore_native_fg_portal_submission;
 CREATE TRIGGER rticore_native_fg_portal_submission_guard BEFORE INSERT OR UPDATE OR DELETE ON rticore_native_fg_portal_submission FOR EACH ROW EXECUTE FUNCTION rticore_native_fg_portal_submission_guard();
+CREATE OR REPLACE FUNCTION rticore_native_fg_portal_revoke_sessions() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_catalog AS $p$
+BEGIN
+ IF OLD.status='approved' AND NEW.status='revoked' THEN
+  DELETE FROM rticore_native_fg_portal_session WHERE email=NEW.email;
+  INSERT INTO rticore_native_fg_portal_audit(email,action) VALUES(NEW.email,'revoke');
+ END IF;
+ RETURN NEW;
+END $p$;
+DROP TRIGGER IF EXISTS rticore_native_fg_portal_revoke_sessions ON rticore_native_fg_portal_grant;
+CREATE TRIGGER rticore_native_fg_portal_revoke_sessions AFTER UPDATE ON rticore_native_fg_portal_grant FOR EACH ROW EXECUTE FUNCTION rticore_native_fg_portal_revoke_sessions();
 COMMIT;

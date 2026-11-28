@@ -30,8 +30,6 @@ const D1_ROUTES = new Set([
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
   '/api/business-auth',
-  '/api/portal/flexguard',
-  '/api/portal/flexguard/auth',
   // Public minimal probes; no business data or mutation access.
   '/api/health/live',
   '/api/health/ready',
@@ -40,6 +38,7 @@ const D1_ROUTES = new Set([
 ]);
 
 export function isEnabledD1ApiRoute(path: string): boolean {
+  if(path==='/api/portal/flexguard'||path==='/api/portal/flexguard/auth')return process.env.RTICORE_RUNTIME==='hostinger'&&process.env.RTICORE_AUTH_MODE==='business'&&process.env.RTICORE_FLEXGUARD_ENTERPRISE_ENABLED==='1'&&process.env.RTICORE_FLEXGUARD_PORTAL_ENABLED==='1';
   return D1_ROUTES.has(path) || path.startsWith('/api/finance/') || path.startsWith('/api/erp/') || path.startsWith('/api/boq/') || path.startsWith('/api/sales/');
 }
 
