@@ -112,3 +112,20 @@ test('ERP grant is inactive until the same staff member has independently approv
   await expect(h.call('erp/ledger','GET','finance',null,'?legal_entity_id='+legal),200);
  }finally{h.close();}
 });
+
+test('P0 inactive legal entity revokes previously approved ERP scope and grants',async()=>{
+ const h=fixture(45);try{
+  await org(h);grant(h,users.finance,'finance_gl');
+  const core=h.load('src/lib/erp-core.ts');const actor={db:h,email:users.finance,role:'finance',rolePreview:false};
+  await core.erpGrant(actor,'finance_gl',legal);
+  h.sql.prepare('UPDATE rticore_erp_org_units SET active=0 WHERE id=?').run(legal);
+  await assert.rejects(core.erpGrant(actor,'finance_gl',legal),e=>e.status===403);
+ }finally{h.close();}
+});
+test('P0 ERP atomic mutation rejects role preview before any database write',async()=>{
+ const h=fixture(45);try{
+  const core=h.load('src/lib/erp-core.ts');
+  const actor={db:h,email:users.admin,role:'finance',assignedRole:'admin',rolePreview:true};
+  await assert.rejects(core.erpAtom(actor,'1=1',[],[],'org','preview-test','PREVIEW_TEST',{}),e=>e.status===403);
+ }finally{h.close();}
+});

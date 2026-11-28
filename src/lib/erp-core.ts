@@ -20,10 +20,10 @@ export async function erpGrant(a:BoQIdentity,capability:string,unitId?:string){
  // Every grant must have a separately approved employee-unit affiliation.
  // Recursively accept grants for the employee's unit or its ancestors.
  const q=await a.db.prepare(`WITH RECURSIVE scoped_units(unit_id) AS (
-  SELECT s.unit_id FROM rticore_erp_staff_org s WHERE s.tenant_id=? AND lower(s.email)=? AND s.status='approved'
-  UNION ALL
-  SELECT u.parent_id FROM rticore_erp_org_units u JOIN scoped_units x ON x.unit_id=u.id
-   WHERE u.tenant_id=? AND u.parent_id IS NOT NULL
+  SELECT s.unit_id FROM rticore_erp_staff_org s JOIN rticore_erp_org_units start_unit ON start_unit.tenant_id=s.tenant_id AND start_unit.id=s.unit_id AND start_unit.active=1 WHERE s.tenant_id=? AND lower(s.email)=? AND s.status='approved'
+  UNION
+  SELECT u.parent_id FROM rticore_erp_org_units u JOIN scoped_units x ON x.unit_id=u.id JOIN rticore_erp_org_units parent_unit ON parent_unit.tenant_id=u.tenant_id AND parent_unit.id=u.parent_id AND parent_unit.active=1
+   WHERE u.tenant_id=? AND u.active=1 AND u.parent_id IS NOT NULL
  )
  SELECT g.id FROM rticore_erp_capability_grants g JOIN rticore_members m ON lower(m.email)=lower(g.email) JOIN rticore_erp_role_capability_matrix pol ON pol.role=m.role AND pol.capability=g.capability AND pol.allowed=1
  WHERE g.tenant_id=? AND lower(g.email)=? AND g.capability=? AND g.status='approved' AND m.active=1
@@ -32,15 +32,16 @@ export async function erpGrant(a:BoQIdentity,capability:string,unitId?:string){
  if(!q)throw new ERPError('Akses ERP memerlukan penempatan staff dan grant legal-unit yang disetujui secara independen',403);
 }
 export async function erpProjectUnit(db:D1DB,id:string){
- const row=await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_project_scopes s JOIN rticore_delivery_projects p ON p.id=s.project_id AND p.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.project_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
+ const row=await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_project_scopes s JOIN rticore_delivery_projects p ON p.id=s.project_id AND p.tenant_id=s.tenant_id JOIN rticore_erp_org_units u ON u.tenant_id=s.tenant_id AND u.id=s.legal_entity_id AND u.kind='legal_entity' AND u.active=1 WHERE s.tenant_id=? AND s.project_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
  if(!row)throw new ERPError('Legal entity proyek belum disetujui',409);
  return row.legal_entity_id;
 }
 export async function erpOpportunityUnit(db:D1DB,id:string){
- const row=await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_opportunity_scopes s WHERE s.tenant_id=? AND s.opportunity_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
+ const row=await db.prepare("SELECT s.legal_entity_id FROM rticore_erp_opportunity_scopes s JOIN rticore_erp_org_units u ON u.tenant_id=s.tenant_id AND u.id=s.legal_entity_id AND u.kind='legal_entity' AND u.active=1 WHERE s.tenant_id=? AND s.opportunity_id=? AND s.status='approved'").bind(TENANT,id).first<{legal_entity_id:string}>();
  if(!row)throw new ERPError('Legal entity Opportunity belum disetujui',409);
  return row.legal_entity_id;
 }
 export async function erpAtom(a:BoQIdentity,guard:string,args:(string|number|null)[],writes:ReturnType<D1DB['prepare']>[],area:string,id:string,action:string,data:unknown){
+ erpAssert(!a.rolePreview,'Role preview tidak diizinkan mengubah transaksi ERP',403);
  await atomicSales(a.db,guard,args,[...writes,operationEvent(a.db,area,id,action,a.email,data)]);
 }
