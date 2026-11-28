@@ -9,15 +9,18 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   erpAssert(enabled(),'Historical review release gate belum aktif',503);erpAssert(!a.identity.rolePreview&&['finance','approver'].includes(a.identity.role),'Akses ditolak',403);
-  const entity=new URL(req.url).searchParams.get('legal_entity_id');erpAssert(erpId(entity),'Legal entity wajib');
-  const mode=new URL(req.url).searchParams.get('mode')??'allocation';
+  const query=new URL(req.url).searchParams,entity=query.get('legal_entity_id');
+  erpAssert(query.getAll('legal_entity_id').length===1&&query.getAll('mode').length<=1&&[...query.keys()].every(k=>['legal_entity_id','mode'].includes(k))&&erpId(entity),'Scope historical review tidak valid');
+  const mode=query.get('mode')??'allocation';
   erpAssert(['allocation','missing_outbox'].includes(mode),'Mode review tidak valid');
   if(mode==='missing_outbox'){
    const result=await a.identity.db.prepare('SELECT * FROM rticore_fg_missing_outbox_candidates(?,?,?) ORDER BY ledger_id LIMIT 201').bind(TENANT,entity,a.identity.email).all();
-   return erpReply({success:true,candidates:result.results.slice(0,200),truncated:result.results.length>200,metadata_only:true,recovery_authorized:false});
+   erpAssert(result.success,'Register missing outbox tidak tersedia',503);
+   return erpReply({success:true,legal_entity_id:entity,mode,candidates:result.results.slice(0,200),truncated:result.results.length>200,metadata_only:true,recovery_authorized:false});
   }
   const rows=await a.identity.db.prepare('SELECT * FROM rticore_fg_historical_allocation_candidates(?,?,?) ORDER BY lot_id LIMIT 201').bind(TENANT,entity,a.identity.email).all();
-  return erpReply({success:true,candidates:rows.results.slice(0,200),truncated:rows.results.length>200,metadata_only:true});
+  erpAssert(rows.success,'Register historical allocation tidak tersedia',503);
+  return erpReply({success:true,legal_entity_id:entity,mode,candidates:rows.results.slice(0,200),truncated:rows.results.length>200,metadata_only:true,recovery_authorized:false});
  }catch(e){if(String(e).includes('FLEXGUARD_ACCESS_DENIED'))return erpReply({success:false,message:'Akses ditolak'},403);return erpError(e);}
 }
 export async function POST(req:Request){

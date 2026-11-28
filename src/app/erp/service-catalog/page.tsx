@@ -37,13 +37,13 @@ export default function ServiceCatalogPage(){
  const today=new Date().toISOString().slice(0,10);
  // Advisory preview mirrors 0068-v1 integer rounding; only the database can create a canonical snapshot.
  function preview(){
-  if(!finance||!canMake||tab!=='pricing_snapshots')return null;
+  if(!finance||!canMake||tab!=='pricing_snapshots'||data.truncated===true||data.workflow_truncated===true)return null;
   try{
    const service=approved('services','lifecycle_status').find(x=>x.id===fields.service_id);
    const profile=approved('activity_profiles').find(x=>x.id===fields.profile_id&&x.service_id===fields.service_id);
    const matrix=approved('complexity_matrices').find(x=>x.id===fields.complexity_id);
-   if(!service||!profile||!matrix||!Array.isArray(profile.activities))return null;
-   const integer=(v:unknown,min:number,max:number)=>{const n=Number(v);if(!Number.isSafeInteger(n)||n<min||n>max)throw Error('Invalid input');return BigInt(n);};
+   if(!service||!profile||!matrix||!Array.isArray(profile.activities)||typeof service.effective_date!=='string'||service.effective_date.slice(0,10)>today||profile.activities.length<1||profile.activities.length>60)return null;
+   const integer=(v:unknown,min:number,max:number)=>{if(typeof v!=='number'&&(typeof v!=='string'||!/^\d+$/.test(v)))throw Error('Invalid input');const n=Number(v);if(!Number.isSafeInteger(n)||n<min||n>max)throw Error('Invalid input');return BigInt(n);};
    const round=(n:bigint,d:bigint)=>(n*2n+d)/(2n*d);
    const ceil=(n:bigint,d:bigint)=>(n+d-1n)/d;
    const q=integer(fields.quantity??1,1,1000),factor=integer(matrix.factor_bps,5000,40000);
@@ -78,7 +78,7 @@ export default function ServiceCatalogPage(){
  {loading?<p role="status">Memuat data...</p>:entity&&Object.keys(data).length>0&&<>
  {(data.truncated===true||data.workflow_truncated===true)&&<p role="status" className="text-sm text-amber-800">Hasil dibatasi 200 record per register. Jangan gunakan sebagai inventaris lengkap.</p>}
  <div className="overflow-auto rounded-xl border bg-white p-4"><h2 className="mb-3 font-bold">{config.label} ({records.length})</h2>{records.length===0?<p className="text-sm text-slate-600">Belum ada data yang dapat diakses.</p>:<table className="w-full text-left text-sm"><thead><tr><th className="p-2">Record</th><th className="p-2">ID</th><th className="p-2">Status</th><th className="p-2">Nilai / effort</th></tr></thead><tbody>{records.map(r=><tr key={s(r.id)} className="border-t"><td className="p-2">{s(r.service_name||r.role_code||r.label||r.service_id||r.opportunity_id)}</td><td className="break-all p-2">{s(r.id)}</td><td className="p-2">{s(r[config.status])}</td><td className="p-2">{tab==='rate_cards'?money(r.standard_selling_rate_cents):tab==='pricing_snapshots'?money(r.net_price_cents)+' · '+s(r.billable_mandays_tenths)+' /10 MD':tab==='complexity_matrices'?s(r.factor_bps)+' bps':tab==='activity_profiles'?String(Array.isArray(r.activities)?r.activities.length:0)+' aktivitas':s(r.standard_mandays_tenths)+' /10 MD'}</td></tr>)}</tbody></table>}</div>
- {finance&&canMake&&tab==='pricing_snapshots'&&<section className="rounded-lg border p-4"><h2 className="font-semibold">Advisory pricing simulation</h2><p className="text-sm">Preview from currently loaded approved records only. Not an approved quotation; database recalculates and validates on save.</p>{estimate?<dl className="grid grid-cols-2 gap-2"><dt>Direct cost</dt><dd>{money(estimate.direct)}</dd><dt>Loaded cost</dt><dd>{money(estimate.loaded)}</dd><dt>Estimated net price</dt><dd>{money(estimate.net)}</dd><dt>Billable / nonbillable mandays</dt><dd>{estimate.billable/10} / {estimate.nonbillable/10}</dd></dl>:<p>Select approved service, profile and complexity with valid rate cards and effort.</p>}</section>}
+ {finance&&canMake&&tab==='pricing_snapshots'&&<section className="rounded-lg border p-4"><h2 className="font-semibold">Advisory pricing simulation</h2><p className="text-sm">Preview from currently loaded approved records only. Not an approved quotation; database recalculates and validates on save.</p>{estimate?<dl className="grid grid-cols-2 gap-2"><dt>Direct cost</dt><dd>{money(estimate.direct)}</dd><dt>Loaded cost</dt><dd>{money(estimate.loaded)}</dd><dt>Estimated net price</dt><dd>{money(estimate.net)}</dd><dt>Billable / nonbillable mandays</dt><dd>{estimate.billable/10} / {estimate.nonbillable/10}</dd></dl>:<p>Select approved, effective service, profile and complexity with valid rate cards and effort. Preview is withheld when register data is truncated.</p>}</section>}
  {finance&&tab==='pricing_snapshots'&&<PricingEvidence key={entity} entity={entity} ids={records.map(r=>s(r.id))}/>}
  {finance&&<div className="grid gap-4 lg:grid-cols-2">
  <form onSubmit={create} className="space-y-3 rounded-xl border bg-white p-4"><h2 className="font-bold">Buat draft · {config.label}</h2>

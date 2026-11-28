@@ -1,15 +1,16 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
-function fixture(name,{role='finance',preview=false,enabled=true,authenticated=true,row=null,rows=[]}={}){
+function fixture(name,{role='finance',preview=false,enabled=true,authenticated=true,row=null,rows=[],failed=false}={}){
  const source=fs.readFileSync('src/app/api/erp/'+name+'/route.ts','utf8'),exp={},queries=[];
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
- const db={prepare:sql=>({bind:(...args)=>{queries.push({sql,args});return {first:async()=>row,all:async()=>({success:true,results:rows})};}})};
- vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:'hostinger',RTICORE_SERVICE_CATALOG_ENABLED:enabled?'1':'0'}},require:n=>{
+ const db={prepare:sql=>({bind:(...args)=>{queries.push({sql,args});return {first:async()=>row,all:async()=>({success:!failed,results:rows})};}})};
+ vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:'hostinger',RTICORE_SERVICE_CATALOG_ENABLED:enabled?'1':'0',RTICORE_HISTORICAL_REVIEW_ENABLED:enabled?'1':'0'}},require:n=>{
   if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>authenticated?{ok:true,identity:{db,email:'review@example.invalid',role,rolePreview:preview}}:{ok:false,response:{status:401}}};
   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+  if(n==='@/lib/bounded-json')return {};
   if(n==='@/lib/erp-core')return {erpAssert:(ok,m,status=422)=>{if(!ok)throw Object.assign(Error(m),{status});},erpId:x=>typeof x==='string'&&x.length>0,erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503})};
   throw Error(n);
  }});
- return {queries,run:()=>exp.GET({url:'https://example.invalid/api/erp/'+name+'?legal_entity_id=entity-a&snapshot_id=snapshot-a'}),exp};
+ return {queries,run:()=>exp.GET({url:'https://example.invalid/api/erp/'+name+'?legal_entity_id=entity-a'+(name==='pricing-engine'?'&snapshot_id=snapshot-a':'')}),get:q=>exp.GET({url:'https://example.invalid/api/erp/'+name+'?'+q}),exp};
 }
 test('pricing evidence checks runtime, role, scoped Finance grant and exact stored digest',async()=>{
  for(const [opts,status] of [[{authenticated:false},401],[{role:'sales'},403],[{preview:true},403],[{enabled:false},503],[{},403],[{row:{digest_valid:false}},409]])assert.equal((await fixture('pricing-engine',opts).run()).status,status);
@@ -157,4 +158,31 @@ test('native CTI/GRC rejects foreign lifecycle, self-review and stale transition
  const control={project_id:'project-a',record_kind:'grc_control_test',control_id:'control-a',test_type:'design',assessment_status:'effective',test_notes:'Independent control review',document_id:'doc-a'};
  for(const parent of [null,{created_by:'REVIEW@example.invalid'}]){const f=runFixture({parent});await assert.rejects(()=>f.write(control),e=>e.status===403);assert.deepEqual(f.counts(),{evidenceReads:0,mutations:0});}
  const independent=runFixture();assert.equal((await independent.write(control)).status,201);assert.deepEqual(independent.counts(),{evidenceReads:1,mutations:1});
+});
+
+test('finance docking exact event lookup is entity scoped and fails closed',async()=>{
+ const f=fixture('finance-docking-bridge',{rows:[{scope_id:'entity-a',id:'event-a',digest_valid:true}]});
+ const r=await f.get('legal_entity_id=entity-a&event_id=event-a');assert.equal(r.status,200);assert.equal(r.body.event_id,'event-a');assert.deepEqual(f.queries[0].args,['defendit360','entity-a','review@example.invalid','finance','review@example.invalid','event-a','event-a']);assert.match(f.queries[0].sql,/x\.legal_entity_id=s\.id/);assert.match(f.queries[0].sql,/x\.id=\?/);
+ for(const q of ['legal_entity_id=entity-a&event_id=a&event_id=b','legal_entity_id=a&legal_entity_id=b','legal_entity_id=entity-a&mode=all','legal_entity_id=entity-a&event_id=']){const invalid=fixture('finance-docking-bridge');assert.equal((await invalid.get(q)).status,422);assert.equal(invalid.queries.length,0);}
+ assert.equal((await fixture('finance-docking-bridge',{rows:[{scope_id:'entity-a',id:null}]}).get('legal_entity_id=entity-a&event_id=foreign')).status,404);
+ assert.equal((await fixture('finance-docking-bridge',{failed:true}).get('legal_entity_id=entity-a&event_id=event-a')).status,503);
+});
+test('FlexGuard historical review denies ambiguous selectors and failed reads, never authorizes recovery',async()=>{
+ for(const mode of ['allocation','missing_outbox']){
+  const valid=fixture('flexguard-historical-review',{rows:[{id:'candidate-a'}]});const r=await valid.get('legal_entity_id=entity-a&mode='+mode);assert.equal(r.status,200);assert.equal(r.body.mode,mode);assert.equal(r.body.legal_entity_id,'entity-a');assert.equal(r.body.recovery_authorized,false);assert.equal(r.body.metadata_only,true);assert.deepEqual(valid.queries[0].args,['defendit360','entity-a','review@example.invalid']);assert.doesNotMatch(valid.queries[0].sql,/\b(INSERT|UPDATE|DELETE)\b/);
+  assert.equal((await fixture('flexguard-historical-review',{failed:true}).get('legal_entity_id=entity-a&mode='+mode)).status,503);
+ }
+ for(const q of ['legal_entity_id=a&legal_entity_id=b','legal_entity_id=entity-a&mode=allocation&mode=missing_outbox','legal_entity_id=entity-a&mode=invalid','legal_entity_id=entity-a&wallet_id=wallet-a']){const invalid=fixture('flexguard-historical-review');assert.equal((await invalid.get(q)).status,422);assert.equal(invalid.queries.length,0);}
+ for(const [opts,status] of [[{authenticated:false},401],[{preview:true},403],[{role:'sales'},403],[{enabled:false},503]])assert.equal((await fixture('flexguard-historical-review',opts).get('legal_entity_id=entity-a')).status,status);
+});
+test('advisory pricing withholds incomplete registers and invalid or future service inputs',()=>{
+ const source=fs.readFileSync('src/app/erp/service-catalog/page.tsx','utf8');
+ const start=source.indexOf(' function preview(){'),end=source.indexOf(' const estimate=preview();',start);assert.ok(start>=0&&end>start);
+ const run=vm.runInNewContext('(function(context){const {finance,canMake,tab,data,fields,today,approved}=context;'+ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return preview();})',{});
+ const service={id:'svc',effective_date:'2026-01-01',min_mandays_tenths:5,max_mandays_tenths:100};
+ const records={services:[service],activity_profiles:[{id:'profile',service_id:'svc',activities:[{resource_role:'analyst',resource_count:1,hours_hundredths:800,billable:true}]}],complexity_matrices:[{id:'matrix',factor_bps:10000}],rate_cards:[{role_code:'analyst',effective_date:'2026-01-01',version:1,internal_cost_rate_cents:10000,min_selling_rate_cents:15000}]};
+ const context={finance:true,canMake:true,tab:'pricing_snapshots',data:{},fields:{service_id:'svc',profile_id:'profile',complexity_id:'matrix'},today:'2026-11-28',approved:k=>records[k]};
+ assert.ok(run(context)?.net>=15000);
+ for(const patch of [{data:{truncated:true}},{data:{workflow_truncated:true}},{fields:{...context.fields,quantity:''}},{fields:{...context.fields,quantity:false}}])assert.equal(run({...context,...patch}),null);
+ service.effective_date='2027-01-01';assert.equal(run(context),null);
 });
