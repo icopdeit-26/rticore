@@ -95,8 +95,8 @@ test('native review register preserves 420 original cases and 520 proposed Finan
 
 import {assertResidualDisposition,gitBlobSha} from '../scripts/pr1-residual-release-gate.mjs';
 test('PR1 closure requires exact reviewed dispositions and independent evidence for every unresolved file',()=>{
- const sha='a'.repeat(40),source='57b0c3230623b8f122359df13eabe305d60a4e55',old='b'.repeat(40),current=gitBlobSha(Buffer.from('native implementation'));
- const files=[{path:'src/native.ts',source:old,target:current,disposition:'semantic-review'},{path:'src/legacy.ts',source:old,target:null,disposition:'native-port-review'},...Array.from({length:138},(_,i)=>({path:'docs/legacy-'+i+'.md',source:old,target:null,disposition:'historical-reference'}))];
+ const sha='a'.repeat(40),source='d9219ab257843cb21f2714b6937a8b1263a7fbae',old='b'.repeat(40),current=gitBlobSha(Buffer.from('native implementation'));
+ const files=[{path:'src/native.ts',source:old,target:current,disposition:'semantic-review'},{path:'src/legacy.ts',source:old,target:null,disposition:'native-port-review'},...Array.from({length:153},(_,i)=>({path:'docs/legacy-'+i+'.md',source:old,target:null,disposition:'historical-reference'}))];
  const inventoryBytes=Buffer.from(JSON.stringify({source,files}));
  const entry=(path,bytes)=>({ref:{path,sha256:createHash('sha256').update(bytes).digest('hex')},bytes});
  const trace=entry('review-trace.json',Buffer.from('synthetic comparison evidence'));
@@ -107,6 +107,8 @@ test('PR1 closure requires exact reviewed dispositions and independent evidence 
  assert.throws(()=>run(record,{verified:[trace]}),/PR1_RESIDUAL_DISPOSITION_REQUIRED/);
  assert.throws(()=>run({...record,release_sha:old}),/PR1_RESIDUAL_DISPOSITION_STALE/);
  assert.throws(()=>run({...record,files:[row]}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
+ assert.throws(()=>run(record,{currentSha:p=>p==='src/native.ts'||p==='docs/legacy-0.md'?current:null}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
+ assert.throws(()=>run(record,{inventoryBytes:Buffer.from(JSON.stringify({source:'57b0c3230623b8f122359df13eabe305d60a4e55',files}))}),/PR1_INVENTORY_INVALID/);
  assert.throws(()=>run({...record,files:[row,row]}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
  assert.throws(()=>run({...record,files:[{...row,current_sha:old},record.files[1]]}),/PR1_RESIDUAL_REVIEW_INVALID/);
  assert.throws(()=>run({...record,files:[{...row,evidence:[]},record.files[1]]}),/PR1_RESIDUAL_TRACE_REQUIRED/);

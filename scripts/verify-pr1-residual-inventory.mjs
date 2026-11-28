@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {nativeMigrationManifest} from './native-migration-manifest.mjs';
 const git=(args)=>execFileSync('git',args,{encoding:'utf8',maxBuffer:32*1024*1024});
 const m=JSON.parse(readFileSync('docs/release/pr1-residual-inventory.json','utf8'));
-assert.equal(m.files.length,140);
+assert.equal(m.files.length,155);
+assert.equal(m.source,'d9219ab257843cb21f2714b6937a8b1263a7fbae');
 assert.equal(new Set(m.files.map(x=>x.path)).size,m.files.length);
 const valid=/^[a-f0-9]{40}$/;
 assert.match(m.source,valid); assert.match(m.baseline,valid);
@@ -23,7 +24,7 @@ const files=m.files.map(f=>{
  const current=tracked.get(f.path);
  const sha=current?.type==='blob'?current.sha:null;
  if(f.disposition==='identical')assert.equal(sha,f.source,'Previously identical file drift: '+f.path);
- const status=sha===f.source?'source-identical':retired.includes(f.path)?'legacy-migration-excluded':f.disposition==='historical-reference'?'historical-reference':sha===null?'native-port-review-required':'semantic-review-required';
+ const status=sha===f.source?'source-identical':retired.includes(f.path)?'legacy-migration-excluded':f.disposition==='historical-reference'&&sha===null?'historical-reference':sha===null?'native-port-review-required':'semantic-review-required';
  return {path:f.path,source_sha:f.source,baseline_sha:f.target,current_sha:sha,status,changed_since_baseline:sha!==f.target};
 });
 const migrations=nativeMigrationManifest();

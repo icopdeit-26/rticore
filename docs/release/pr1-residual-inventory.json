@@ -1,30 +1,36 @@
 {
-  "source": "57b0c3230623b8f122359df13eabe305d60a4e55",
-  "baseline": "c22cd4176824570669a6b49390c1105fedf5632d",
-  "scope": "PR1 compare file inventory; not functional certification",
+  "source": "d9219ab257843cb21f2714b6937a8b1263a7fbae",
+  "baseline": "1310c506425328eb11f7c3bdbd498d4688ac9161",
+  "scope": "All 155 changed paths from PR #1 at pinned source HEAD; source/target Git blobs, not independent semantic disposition.",
   "files": [
     {
       "path": ".gitattributes",
       "source": "6992534871d833d8bb4b51fc6df70b5698d9d1cc",
-      "target": "ab4f9f0deab5fcfb31ee5c448cd9206a5c06a40b",
-      "disposition": "semantic-review"
+      "target": "6992534871d833d8bb4b51fc6df70b5698d9d1cc",
+      "disposition": "identical"
     },
     {
       "path": ".github/workflows/campaign-browser-uat.yml",
-      "source": "b9baabdac9a7efcc27e4cdd42a7cab60a6bf2554",
+      "source": "a24dbe471a9317601938b43fda6893ca7a5b1b95",
       "target": "c65c4072558fc05648a8f545d47068f86b72884e",
       "disposition": "semantic-review"
     },
     {
       "path": ".github/workflows/hostinger-candidate-ci.yml",
-      "source": "33b8adaa66e010640996ecbaade1e423dac2e5e2",
+      "source": "9eeff098bcd768d7da9c3ea29a4c8109cf85a9f8",
       "target": null,
       "disposition": "native-port-review"
     },
     {
       "path": ".github/workflows/hostinger-node22-build.yml",
-      "source": "96668dd7c3e362b83c66364c9a7ee5cae4b2eba1",
+      "source": "a79847177ba73ec9022b958810320fe992ac5808",
       "target": "b1021283427a13546d419b66260a036495c9bb56",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/quotation-ui-ci.yml",
+      "source": "83ce17ce5dce8e18070adfa77f5519789af7eccd",
+      "target": "3c2d238d49a43e3761303ea0d533b139d6330323",
       "disposition": "semantic-review"
     },
     {
@@ -34,15 +40,99 @@
       "disposition": "semantic-review"
     },
     {
+      "path": ".github/workflows/rticore-automated-functional-gate.yml",
+      "source": "c471b82e644f3cc867cfced7398b91628a75611f",
+      "target": "22958c77a29349a380fe172928e4912313dd6e33",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-bid-readiness-ci.yml",
+      "source": "5049a51feee1893830cfb3011b9069a54f75cfb1",
+      "target": "c28dbc8740acf3c39367f68987e61696b98dee34",
+      "disposition": "semantic-review"
+    },
+    {
       "path": ".github/workflows/rticore-branding-ci.yml",
-      "source": "1dec185305b22a9b779b24758d9f9aed294af280",
+      "source": "7364a531c98663682518eb00cd5e87ffd03604a4",
       "target": "f01615c06e8c59debd9ce86f9b30c88aa53c90c4",
       "disposition": "semantic-review"
     },
     {
+      "path": ".github/workflows/rticore-chat-composer-hotfix-uat.yml",
+      "source": "c5db8c05ef9314b454abd0a768e3689b2796b214",
+      "target": "a132be70bf72120d02055abe6095daacf8f0f55d",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-customer-delivery-ci.yml",
+      "source": "a12a6e5b936660681045e363b8abf21815a36c0c",
+      "target": "e738a72743ca394b04966d1494232dfdc155fb75",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-erp-integration-ci.yml",
+      "source": "11b9dec2dba06048a78267c3556bdcaf89d788d7",
+      "target": "11b9dec2dba06048a78267c3556bdcaf89d788d7",
+      "disposition": "identical"
+    },
+    {
+      "path": ".github/workflows/rticore-erp-pr96-reconcile-ci.yml",
+      "source": "2e079bd5090ab07b313d5945a4391874017cb0d1",
+      "target": "2e079bd5090ab07b313d5945a4391874017cb0d1",
+      "disposition": "identical"
+    },
+    {
       "path": ".github/workflows/rticore-erp-uat-catalog-ci.yml",
-      "source": "106db3afa3c6fa4d6b07ddd1f73c22bc5f4ec6b9",
+      "source": "7567f6927a171a1f62cac65d7a84fab1f494266c",
       "target": "2230c677cff38dc336fad72a4e5b79d2e060c39b",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-executive-dashboard-ci.yml",
+      "source": "d8c53a14316e85fac518cd845fbb40829747a8d5",
+      "target": "d8c53a14316e85fac518cd845fbb40829747a8d5",
+      "disposition": "identical"
+    },
+    {
+      "path": ".github/workflows/rticore-modules-13-15-ci.yml",
+      "source": "48bf49f6f677d1a464d082c0a0eb61a45d9ecb4b",
+      "target": "35a86efb48747c1b3ddc17cc995c566b999994c8",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-negative-enterprise-matrix-ci.yml",
+      "source": "3726d91666c023c5ae7d6a6ef9760c7679c4fb05",
+      "target": "3726d91666c023c5ae7d6a6ef9760c7679c4fb05",
+      "disposition": "identical"
+    },
+    {
+      "path": ".github/workflows/rticore-p1-p2-integration-ci.yml",
+      "source": "69ae9c14adfe57aed25f4c08ffa6a2fd413f6919",
+      "target": "7b2e1d02b42bbc2824bfbdc6aeeda90a6d3f5d90",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/rticore-positive-all-roles-ci.yml",
+      "source": "4c3708cac93b8f840710ea1c6e507cc11e11a22f",
+      "target": "4c3708cac93b8f840710ea1c6e507cc11e11a22f",
+      "disposition": "identical"
+    },
+    {
+      "path": ".github/workflows/rticore-production-workflow-guard.yml",
+      "source": "7958407eca77f24fdafe698415e90bb59bcd6390",
+      "target": "7958407eca77f24fdafe698415e90bb59bcd6390",
+      "disposition": "identical"
+    },
+    {
+      "path": ".github/workflows/rticore-sales-activity-orchestration-ci.yml",
+      "source": "114c0d3e4c0ea2c7e0b7ace5ca85c7043741fa1a",
+      "target": "4e37c416984af8b016c8bf3b23c24eed46c2d946",
+      "disposition": "semantic-review"
+    },
+    {
+      "path": ".github/workflows/sales-multirole-uat-ci.yml",
+      "source": "e528194a71f3b68975c5618ad95c730e0ec40f9c",
+      "target": "4515e835e8663ace61d6ccf98e807d78f200a07a",
       "disposition": "semantic-review"
     },
     {
@@ -372,7 +462,7 @@
     {
       "path": "package.json",
       "source": "0e4c4c1610bc3b71adff4e684de39aafc984aa0e",
-      "target": "489e0fb7211f86c7fc79469a9d674fd945e34d5e",
+      "target": "2febb34e64c83f14bee721e2175778388bc8de4d",
       "disposition": "semantic-review"
     },
     {
@@ -390,7 +480,7 @@
     {
       "path": "scripts/finance-historical-reconciliation.mjs",
       "source": "e07502bddce9d6513a8666a9ffb7c1ed9aa31272",
-      "target": "1f536c66cc575f08f1c86f20f8dca9222151f742",
+      "target": "4d17e35590d7b9b5d15fc024de3e3c0841c7aa54",
       "disposition": "semantic-review"
     },
     {
@@ -414,7 +504,7 @@
     {
       "path": "scripts/hostinger-preflight.mjs",
       "source": "5f7bc1090d5ab7e0d8045fe0534c5ac6ff2ca3a6",
-      "target": "9a2a8b3424e774c2156ba79a1e68dba3d8b4ec4e",
+      "target": "ef1f8cb0765b1d1788b2ec1463d5aee962ea6cca",
       "disposition": "semantic-review"
     },
     {
@@ -456,8 +546,8 @@
     {
       "path": "src/app/api/admin/feature-flags/route.ts",
       "source": "7e17a0bf6bfb022c1b2879a415aac6f61e6e3140",
-      "target": null,
-      "disposition": "native-port-review"
+      "target": "4b22b049adf50d7e0eb3e3323bca5c0736246d6b",
+      "disposition": "semantic-review"
     },
     {
       "path": "src/app/api/erp/cyber-delivery/route.ts",
@@ -492,14 +582,14 @@
     {
       "path": "src/app/api/erp/flexguard-enterprise/route.ts",
       "source": "370b351921efd7ce594060be55d24d0c7f2ab0e0",
-      "target": "4de71a8701b84068e7d2de8ce9d59554907df100",
+      "target": "551b43ca4dbbdc9bd2c27e3010e141a49e5b9b93",
       "disposition": "semantic-review"
     },
     {
       "path": "src/app/api/erp/operations-jobs/route.ts",
       "source": "5894f391ae87845bcd583169f6346920482bad67",
-      "target": null,
-      "disposition": "native-port-review"
+      "target": "746aaf1cfe067c2a7f8d28fa4200fb02971ac94d",
+      "disposition": "semantic-review"
     },
     {
       "path": "src/app/api/erp/pricing-engine/route.ts",
@@ -546,8 +636,8 @@
     {
       "path": "src/app/api/portal/flexguard/route.ts",
       "source": "0676a4f28b2190a77a67b1268ff52de0139f444d",
-      "target": null,
-      "disposition": "native-port-review"
+      "target": "523859b9bfacc445cc9bd46800e3154fec6a6c4c",
+      "disposition": "semantic-review"
     },
     {
       "path": "src/app/api/psa/timesheets/route.ts",
@@ -582,14 +672,14 @@
     {
       "path": "src/app/erp/flexguard-enterprise/page.tsx",
       "source": "0cc8bb89ec690d6fc7fc834c690af09569d0d085",
-      "target": "77105a594084fdee0491be6f38a19d426e202aa9",
+      "target": "bed16441a8c670df0c1b63067cd6e2efb4a6f280",
       "disposition": "semantic-review"
     },
     {
       "path": "src/app/erp/operations-center/page.tsx",
       "source": "70ba2076db8c1fd349777bf886d155a38afc02c6",
-      "target": null,
-      "disposition": "native-port-review"
+      "target": "8d08d709f19d54c65b99191f5b67c162ec3d5b88",
+      "disposition": "semantic-review"
     },
     {
       "path": "src/app/erp/pricing-simulator/page.tsx",
@@ -612,8 +702,8 @@
     {
       "path": "src/app/portal/flexguard/page.tsx",
       "source": "8ebb97cf87b03992276f0884f9fce54064e05e7f",
-      "target": null,
-      "disposition": "native-port-review"
+      "target": "51bb856be3caddcc1bd91cc84e51b058bb429824",
+      "disposition": "semantic-review"
     },
     {
       "path": "src/components/auth/LogoutButton.tsx",
@@ -672,7 +762,7 @@
     {
       "path": "src/lib/governance-team.ts",
       "source": "c6e7ec9412220b945ecd7ae4ec3bc1bdd97b3046",
-      "target": "b9b7e20ce54d4b09b018ba57bf9c17bde6030be2",
+      "target": "7d0d0c95bd24e26eb6ee4c14aa0600ca29aee562",
       "disposition": "semantic-review"
     },
     {
@@ -690,13 +780,13 @@
     {
       "path": "src/lib/native-session.ts",
       "source": "04bef1f4cb5dee328f913a18f4d7851d11e700f2",
-      "target": "e08d85ce01ee291b44aa87439d5497e4486c4b68",
+      "target": "5ee681bf72e3152d59352398dbd25ba0f522f995",
       "disposition": "semantic-review"
     },
     {
       "path": "src/lib/offense-team.ts",
       "source": "12325f83fea53412a8bf063aaebbe5c840f4d124",
-      "target": "d141133c32ee2e476f002945f25654e8330e1fc5",
+      "target": "ecc8b63e1d1dfe87648b5d7682ba3218a4a89912",
       "disposition": "semantic-review"
     },
     {
@@ -714,7 +804,7 @@
     {
       "path": "src/middleware.ts",
       "source": "75d68bd7e6774c5a43f540b8fa1898e0b8f9b7bf",
-      "target": "2fbfab52d3d3db3a50ea4acb1a49ff2589c810be",
+      "target": "a7b0f29be811df18f36bb1f688b4764f29e6c9fe",
       "disposition": "semantic-review"
     },
     {
@@ -738,7 +828,7 @@
     {
       "path": "tests/finance-historical-reconciliation.test.mjs",
       "source": "5d3a3791caddac0bce203a1daaf20ab914814ea6",
-      "target": "18e34c8a2abe08acaae39f6d4ea0cda200564e95",
+      "target": "39e8437123438f24c25d8f65218bc71b69a75d83",
       "disposition": "semantic-review"
     },
     {
@@ -786,7 +876,7 @@
     {
       "path": "tests/middleware-route-gate.test.cjs",
       "source": "0f65e233f90a6ebfbd5cdd67d1d69e64f78b01a1",
-      "target": "c20f67bfc1c324f96f3df9db16bbaf10b7fa2409",
+      "target": "ffeaca6a578c28fe4671250d6f5da4fa3a775ee9",
       "disposition": "semantic-review"
     },
     {
@@ -798,7 +888,7 @@
     {
       "path": "tests/native-session.test.mjs",
       "source": "e561e1b6c075169004608a781bdbe9e017f53f24",
-      "target": "6e5626b4efb9f6842d94bfbbac3762b1bd888213",
+      "target": "fa9189ad9e7c0a75f42179dc0df64e1963629b4b",
       "disposition": "semantic-review"
     },
     {
@@ -810,7 +900,7 @@
     {
       "path": "tests/rticore-access-entrypoints.test.cjs",
       "source": "6ca83742d8908e19a1c4357cb1c92cbd45511a9c",
-      "target": "6ec90de230d3dd94659cb0db3610361c05e81483",
+      "target": "dbe98f94f94da72ecabf6881622231660aa7c0cb",
       "disposition": "semantic-review"
     },
     {

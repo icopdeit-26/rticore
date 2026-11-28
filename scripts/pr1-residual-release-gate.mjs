@@ -2,7 +2,7 @@
 import {readFileSync,realpathSync} from 'node:fs';
 import {resolve,relative,isAbsolute} from 'node:path';
 import {createHash} from 'node:crypto';
-const source='57b0c3230623b8f122359df13eabe305d60a4e55';
+const source='d9219ab257843cb21f2714b6937a8b1263a7fbae';
 const retired=new Set(['migrations/0053_enterprise_service_catalog_pricing.sql','migrations/0054_flexguard_enterprise_suite.sql','migrations/0055_enterprise_cyber_grc_cti_bi_ops.sql','migrations/0056_vapt_dfir_soc_sla_enterprise.sql']);
 const fail=(ok,code)=>{if(!ok)throw Error(code)};
 const sha40=s=>typeof s==='string'&&/^[a-f0-9]{40}$/.test(s);
@@ -11,14 +11,14 @@ const digest=b=>createHash('sha256').update(b).digest('hex');
 export function gitBlobSha(bytes){return createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex')}
 export function assertResidualDisposition({inventoryBytes,currentSha,sha,verified,signoffs}){
  const inventory=JSON.parse(inventoryBytes.toString('utf8'));
- fail(inventory.source===source&&Array.isArray(inventory.files)&&inventory.files.length===140&&new Set(inventory.files.map(f=>f.path)).size===140,'PR1_INVENTORY_INVALID');
+ fail(inventory.source===source&&Array.isArray(inventory.files)&&inventory.files.length===155&&new Set(inventory.files.map(f=>f.path)).size===155,'PR1_INVENTORY_INVALID');
  const unresolved=[];
  for(const f of inventory.files){
   fail(nonempty(f.path)&&!isAbsolute(f.path)&&!f.path.split('/').some(p=>p==='..'||p==='.')&&sha40(f.source),'PR1_INVENTORY_PATH_INVALID');
   const current=currentSha(f.path);
   if(retired.has(f.path)){fail(current===null,'PR1_LEGACY_MIGRATION_RESTORED');continue;}
   if(current===f.source)continue;
-  if(f.disposition==='historical-reference'&&f.path.startsWith('docs/')&&f.target===null)continue;
+  if(f.disposition==='historical-reference'&&f.path.startsWith('docs/')&&f.target===null&&current===null)continue;
   unresolved.push({...f,current});
  }
  const records=[];
