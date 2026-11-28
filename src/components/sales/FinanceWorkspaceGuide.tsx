@@ -354,6 +354,13 @@ export const FINANCE_ROLE_CATALOG: FinanceMenuSection[] = [
         ],
       },
       {
+        label: 'Operations Center',
+        href: '/erp/operations-center',
+        badge: 'Read-only native operations',
+        functions: 'Pemantauan antrean maintenance dan percobaan integrasi Finance berdasarkan legal entity yang diotorisasi.',
+        features: ['Status job dan percobaan retry terakhir', 'Tidak melakukan posting, retry atau expiry otomatis'],
+      },
+      {
         label: 'Treasury & Payments',
         href: '/erp/treasury',
         badge: 'Rekening Bank, Instruksi Bayar & Rekonsiliasi',
