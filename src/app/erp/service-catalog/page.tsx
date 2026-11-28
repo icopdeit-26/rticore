@@ -35,6 +35,40 @@ export default function ServiceCatalogPage(){
  const opt=(items:Row[],label:string)=>items.map(x=>({value:s(x.id),label:s(x[label])+' · '+s(x.id)}));
  async function post(payload:Row){if(busy||!entity)return;setBusy(true);setError('');setNotice('');try{const res=await fetch('/api/erp/service-catalog',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,legal_entity_id:entity})});const d=await res.json();if(!res.ok||!d.success)throw Error(d.message||'Transaksi ditolak');setNotice('Status '+s(d.result?.status)+' · '+s(d.result?.id));setRefresh(x=>x+1);setApprovalId('');setNotes('');}catch(e){setError(e instanceof Error?e.message:'Transaksi gagal');}finally{setBusy(false);}}
  const today=new Date().toISOString().slice(0,10);
+ // Advisory preview mirrors 0068-v1 integer rounding; only the database can create a canonical snapshot.
+ function preview(){
+  if(!finance||!canMake||tab!=='pricing_snapshots')return null;
+  try{
+   const service=approved('services','lifecycle_status').find(x=>x.id===fields.service_id);
+   const profile=approved('activity_profiles').find(x=>x.id===fields.profile_id&&x.service_id===fields.service_id);
+   const matrix=approved('complexity_matrices').find(x=>x.id===fields.complexity_id);
+   if(!service||!profile||!matrix||!Array.isArray(profile.activities))return null;
+   const integer=(v:unknown,min:number,max:number)=>{const n=Number(v);if(!Number.isSafeInteger(n)||n<min||n>max)throw Error('Invalid input');return BigInt(n);};
+   const round=(n:bigint,d:bigint)=>(n*2n+d)/(2n*d);
+   const ceil=(n:bigint,d:bigint)=>(n+d-1n)/d;
+   const q=integer(fields.quantity??1,1,1000),factor=integer(matrix.factor_bps,5000,40000);
+   const overhead=integer(fields.overhead_bps??1000,0,6000),risk=integer(fields.risk_bps??500,0,5000),target=integer(fields.target_bps??3500,0,8500),minimum=integer(fields.minimum_margin_bps??2000,0,8500);
+   const method=fields.pricing_method??'target_margin';if(method!=='target_margin'&&method!=='cost_plus')return null;
+   let direct=0n,floor=0n,billable=0n,nonbillable=0n;
+   for(const activity of profile.activities as Row[]){
+    const cards=approved('rate_cards').filter(x=>x.role_code===activity.resource_role&&String(x.effective_date).slice(0,10)<=today).sort((a,b)=>String(b.effective_date).localeCompare(String(a.effective_date))||Number(b.version)-Number(a.version));
+    const rate=cards[0];if(!rate)return null;
+    const md=ceil(round(q*integer(activity.resource_count,1,50)*integer(activity.hours_hundredths,1,100000)*factor,10000n)*10n,800n);
+    if(activity.billable===true)billable+=md;else nonbillable+=md;
+    direct+=round(md*integer(rate.internal_cost_rate_cents,1,Number.MAX_SAFE_INTEGER),10n);
+    floor+=ceil(md*integer(rate.min_selling_rate_cents,1,Number.MAX_SAFE_INTEGER),10n);
+   }
+   if(billable<=0n||direct<=0n||billable+nonbillable<integer(service.min_mandays_tenths,0,100000)||billable+nonbillable>integer(service.max_mandays_tenths,0,100000))return null;
+   const loaded=direct+round(direct*overhead,10000n)+round(direct*risk,10000n);
+   const base=method==='target_margin'?ceil(loaded*10000n,10000n-target):ceil(loaded*(10000n+target),10000n);
+   const minPrice=ceil(loaded*10000n,10000n-minimum);
+   const net=[base,minPrice,floor].reduce((a,b)=>a>b?a:b);
+   if(net>=900000000000000n)return null;
+   return {direct:Number(direct),loaded:Number(loaded),net:Number(net),billable:Number(billable),nonbillable:Number(nonbillable)};
+  }catch{return null;}
+ }
+ const estimate=preview();
+
  function create(e:FormEvent){e.preventDefault();const defaults:Record<Tab,Row>={services:{complexity_level:'standard',min_mandays_tenths:10,standard_mandays_tenths:20,max_mandays_tenths:100,effective_date:today,service_version:1},rate_cards:{monthly_compensation_cents:0,benefit_allocation_cents:0,employer_contrib_cents:0,allocated_expense_cents:0,available_working_days:240,target_utilization_bps:7500,target_margin_bps:4000,min_margin_bps:2000,effective_date:today,version:1},activity_profiles:{version:1},complexity_matrices:{version:1,factor_bps:10000},pricing_snapshots:{quantity:1,pricing_method:'target_margin',overhead_bps:1000,risk_bps:500,target_bps:3500,minimum_margin_bps:2000}};void post({action:config.create,...defaults[tab],...fields,...(tab==='activity_profiles'?{activities}:{})});}
  return <section className="mx-auto max-w-7xl space-y-5 py-5">
  <header className="rounded-xl border bg-white p-5"><p className="text-xs font-semibold uppercase text-indigo-700">Commercial · Service catalog</p><h1 className="text-2xl font-bold">Service Catalog & Pricing Workspace</h1><p className="mt-2 text-sm text-slate-600">Master layanan, rate card, profil aktivitas, complexity dan pricing snapshot. Semua draft memerlukan approval independen. Harga snapshot sebelum pajak; belum merupakan quotation atau transaksi Finance.</p></header>
@@ -44,6 +78,7 @@ export default function ServiceCatalogPage(){
  {loading?<p role="status">Memuat data...</p>:entity&&Object.keys(data).length>0&&<>
  {(data.truncated===true||data.workflow_truncated===true)&&<p role="status" className="text-sm text-amber-800">Hasil dibatasi 200 record per register. Jangan gunakan sebagai inventaris lengkap.</p>}
  <div className="overflow-auto rounded-xl border bg-white p-4"><h2 className="mb-3 font-bold">{config.label} ({records.length})</h2>{records.length===0?<p className="text-sm text-slate-600">Belum ada data yang dapat diakses.</p>:<table className="w-full text-left text-sm"><thead><tr><th className="p-2">Record</th><th className="p-2">ID</th><th className="p-2">Status</th><th className="p-2">Nilai / effort</th></tr></thead><tbody>{records.map(r=><tr key={s(r.id)} className="border-t"><td className="p-2">{s(r.service_name||r.role_code||r.label||r.service_id||r.opportunity_id)}</td><td className="break-all p-2">{s(r.id)}</td><td className="p-2">{s(r[config.status])}</td><td className="p-2">{tab==='rate_cards'?money(r.standard_selling_rate_cents):tab==='pricing_snapshots'?money(r.net_price_cents)+' · '+s(r.billable_mandays_tenths)+' /10 MD':tab==='complexity_matrices'?s(r.factor_bps)+' bps':tab==='activity_profiles'?String(Array.isArray(r.activities)?r.activities.length:0)+' aktivitas':s(r.standard_mandays_tenths)+' /10 MD'}</td></tr>)}</tbody></table>}</div>
+ {finance&&canMake&&tab==='pricing_snapshots'&&<section className="rounded-lg border p-4"><h2 className="font-semibold">Advisory pricing simulation</h2><p className="text-sm">Preview from currently loaded approved records only. Not an approved quotation; database recalculates and validates on save.</p>{estimate?<dl className="grid grid-cols-2 gap-2"><dt>Direct cost</dt><dd>{money(estimate.direct)}</dd><dt>Loaded cost</dt><dd>{money(estimate.loaded)}</dd><dt>Estimated net price</dt><dd>{money(estimate.net)}</dd><dt>Billable / nonbillable mandays</dt><dd>{estimate.billable/10} / {estimate.nonbillable/10}</dd></dl>:<p>Select approved service, profile and complexity with valid rate cards and effort.</p>}</section>}
  {finance&&tab==='pricing_snapshots'&&<PricingEvidence key={entity} entity={entity} ids={records.map(r=>s(r.id))}/>}
  {finance&&<div className="grid gap-4 lg:grid-cols-2">
  <form onSubmit={create} className="space-y-3 rounded-xl border bg-white p-4"><h2 className="font-bold">Buat draft · {config.label}</h2>
