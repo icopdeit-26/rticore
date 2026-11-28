@@ -45,6 +45,17 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const custodyCase=u.searchParams.get('custody_case_id');
+  if(custodyCase!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native custody required',403);
+   erpAssert(erpId(custodyCase),'Case ID wajib');
+   const {c}=await loadCase(a.identity.db,custodyCase);
+   const entity=await erpProjectUnit(a.identity.db,c.project_id);
+   const permitted=await a.identity.db.prepare('SELECT rticore_native_dfir_actor(?,?,?,?) AS allowed').bind(TENANT,entity,c.id,a.identity.email).first<{allowed:boolean}>();
+   erpAssert(permitted?.allowed===true,'Akses custody ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT evidence_tag,seq,document_id,sha256,action,actor_email,custodian_email,notes,recorded_at FROM rticore_native_dfir_custody WHERE tenant_id=? AND legal_entity_id=? AND case_id=? ORDER BY evidence_tag,seq LIMIT 501').bind(TENANT,entity,c.id).all();
+   return erpReply({success:true,entries:rows.results.slice(0,500),truncated:rows.results.length>500});
+  }
   if(u.searchParams.get('board')==='1'){
    erpAssert(isDefenseRole(a.identity.role)||a.identity.role==='admin','Board SOC Defense hanya untuk Defense Team atau Admin',403);
    return erpReply(await board(a.identity));
@@ -59,6 +70,20 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  if(v.action==='append_custody'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native custody required',503);
+   erpAssert(erpId(v.id)&&erpId(v.document_id)&&erpText(v.evidence_tag,3,64)&&erpText(v.notes,12,800),'Case, dokumen, tag dan catatan wajib');
+   erpAssert(typeof v.custody_action==='string'&&['collected','transferred','analyzed','sealed','archived'].includes(v.custody_action),'Custody action invalid');
+   erpAssert(typeof v.expected_seq==='number'&&Number.isSafeInteger(v.expected_seq)&&v.expected_seq>=0&&v.expected_seq<1000000,'Versi custody wajib');
+   const recipient=v.custody_action==='transferred'?v.recipient_email:null;
+   erpAssert(v.custody_action!=='transferred'||(typeof recipient==='string'&&recipient.includes('@')&&recipient.length<=254),'Recipient wajib');
+   const {c}=await loadCase(db,v.id);const entity=await erpProjectUnit(db,c.project_id);
+   const permitted=await db.prepare('SELECT rticore_native_dfir_actor(?,?,?,?) AS allowed').bind(TENANT,entity,c.id,email).first<{allowed:boolean}>();
+   erpAssert(permitted?.allowed===true,'Akses custody ditolak',403);
+   await supportingOriginal(db,v.document_id,c.opportunity_id);
+   const row=await db.prepare('SELECT rticore_native_dfir_append(?,?,?,?,?,?,?,?,?,CAST(? AS integer)) AS result').bind(TENANT,entity,c.id,email,v.evidence_tag.trim(),v.document_id,v.custody_action,typeof recipient==='string'?recipient.trim().toLowerCase():null,v.notes.trim(),v.expected_seq).first<{result:unknown}>();
+   erpAssert(row,'Custody belum tersedia',503);return erpReply({success:true,result:row.result},201);
+  }
   if(v.action==='open'){
    erpAssert(OPENERS.includes(role),'Case hanya dibuat oleh operator bergrant',403);
    erpAssert(erpId(v.project_id)&&erpText(v.external_ref,3,120)&&erpText(v.title,8,240)&&['vapt_finding','soc_incident','dfir_incident'].includes(String(v.kind))&&['critical','high','medium','low','informational'].includes(String(v.severity))&&['confidential','restricted'].includes(String(v.classification)),'Metadata keamanan tidak valid');
