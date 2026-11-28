@@ -21,7 +21,8 @@
         "0069_catalog_boq_binding.sql",
         "0070_flexguard_historical_review.sql",
         "0071_native_ai_request_budget.sql",
-        "0072_native_feature_governance.sql"
+        "0072_native_feature_governance.sql",
+        "0073_native_operations_queue.sql"
       ]
     },
     {
