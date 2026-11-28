@@ -29,7 +29,8 @@
         "0077_native_dfir_custody.sql",
         "0078_native_soc_sla.sql",
         "0079_native_vapt_engagement.sql",
-        "0080_native_vapt_findings.sql"
+        "0080_native_vapt_findings.sql",
+        "0081_native_cti_grc_registers.sql"
       ]
     },
     {

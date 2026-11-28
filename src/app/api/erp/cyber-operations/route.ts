@@ -1,4 +1,5 @@
-﻿import {authorizeBoQ} from '@/lib/boq-auth';
+﻿import {nativeGrcRead,nativeGrcWrite} from '@/lib/native-cti-grc';
+import {authorizeBoQ} from '@/lib/boq-auth';
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal as vaultOriginal,ServiceError} from '@/lib/service-operations';
 import {TENANT} from '@/lib/sales-workflow';
@@ -45,6 +46,8 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const grcProject=u.searchParams.get('grc_project_id');
+  if(grcProject!==null){erpAssert(erpId(grcProject),'Project ID wajib');return await nativeGrcRead(a.identity,grcProject);}
   const findingProject=u.searchParams.get('finding_project_id');
   if(findingProject!==null){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native VAPT required',403);
@@ -102,6 +105,7 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  if(v.action==='native_cti_grc_register')return await nativeGrcWrite(a.identity,v);
   if(v.action==='register_vapt_finding'||v.action==='transition_vapt_finding'){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native VAPT required',503);
    erpAssert(erpId(v.project_id)&&erpText(v.notes,12,800),'Project dan catatan wajib');

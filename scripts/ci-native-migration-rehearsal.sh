@@ -64,6 +64,7 @@ q -f tests/native-operations-queue-acceptance.sql
 q -f tests/native-dfir-custody-acceptance.sql
 q -f tests/native-soc-sla-acceptance.sql
 q -f tests/native-vapt-engagement-acceptance.sql
+q -f tests/native-cti-grc-acceptance.sql
 node --test tests/native-preflight-postgres.test.mjs
 ai_concurrency original
 [[ "$(q -Atc "SELECT to_regprocedure('public.rticore_fg_psa_submit(text,text,text,text,text,text,text,text,jsonb,text,text)') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.rticore_fg_psa_consumption_evidence'::regclass AND c.contype='p' AND c.convalidated AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['tenant_id','timesheet_id'])")" == t ]]
@@ -109,6 +110,7 @@ q -f tests/native-operations-queue-acceptance.sql
 q -f tests/native-dfir-custody-acceptance.sql
 q -f tests/native-soc-sla-acceptance.sql
 q -f tests/native-vapt-engagement-acceptance.sql
+q -f tests/native-cti-grc-acceptance.sql
 node --test tests/native-preflight-postgres.test.mjs
 ai_concurrency restored
 q -f tests/flexguard-product-terms-acceptance.sql
