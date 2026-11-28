@@ -5,6 +5,7 @@ import {createHash,verify,createPublicKey} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {financeGroups} from './wave09-uat-evidence.mjs';
 import {nativeMigrationManifest} from './native-migration-manifest.mjs';
+import {verifyResidualDisposition} from './pr1-residual-release-gate.mjs';
 export const NATIVE_GATES=['exact_sha_ci','branch_protection','hostinger_staging','postgres_migration_ledger','database_privileges','native_mfa','erp_uat','finance_uat','business_journeys','historical_reconciliation','pricing_contracts','cams_roundtrip','openai_live','authenticated_performance','independent_security','backup_restore_rollback','functional_completion','business_signoff','deployment'];
 const fail=(ok,code)=>{if(!ok)throw Error(code)};
 const hex=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
@@ -92,6 +93,7 @@ export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='be
  const required=['security','finance','operations','release','legal','hr','procurement','cyber_operations'];
  fail(unique(p.signoffs,'kind',required.length)&&new Set(p.signoffs.map(s=>s.subject)).size===required.length,'INDEPENDENT_SIGNOFFS_REQUIRED');
  for(const kind of required){const s=p.signoffs.find(x=>x.kind===kind);fail(s&&s.decision==='APPROVED'&&s.release_sha===sha&&nonempty(s.subject),'SIGNOFF_MISSING_'+kind);proof(s.evidence);}
+ verifyResidualDisposition({root,sha,signoffs:p.signoffs,verified:proof(p.gates.find(g=>g.id==='functional_completion').evidence)});
  fail(p.open_critical===0&&p.open_high===0&&p.open_p0===0,'OPEN_RELEASE_BLOCKERS');
  return {status:'PASS',decision:phase==='before'?'PREDEPLOYMENT_EVIDENCE_VERIFIED':'POSTDEPLOYMENT_EVIDENCE_VERIFIED',release_sha:sha,cams_release_sha:camsSha,erp_individual_pass:420,finance_individual_pass:520,scope:'signed_receipt_and_evidence_bytes_only'};
 }

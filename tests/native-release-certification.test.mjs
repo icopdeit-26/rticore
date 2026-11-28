@@ -92,3 +92,24 @@ test('native review register preserves 420 original cases and 520 proposed Finan
  assert.throws(()=>buildNativeReviewRegister(legacy.slice(1),erp,groups,'a'.repeat(40)),/ERP_CATALOG_DRIFT/);
  assert.throws(()=>buildNativeReviewRegister(legacy,erp,groups.slice(1),'a'.repeat(40)),/FINANCE_CATALOG_DRIFT/);
 });
+
+import {assertResidualDisposition,gitBlobSha} from '../scripts/pr1-residual-release-gate.mjs';
+test('PR1 closure requires exact reviewed dispositions and independent evidence for every unresolved file',()=>{
+ const sha='a'.repeat(40),source='57b0c3230623b8f122359df13eabe305d60a4e55',old='b'.repeat(40),current=gitBlobSha(Buffer.from('native implementation'));
+ const files=[{path:'src/native.ts',source:old,target:current,disposition:'semantic-review'},{path:'src/legacy.ts',source:old,target:null,disposition:'native-port-review'},...Array.from({length:138},(_,i)=>({path:'docs/legacy-'+i+'.md',source:old,target:null,disposition:'historical-reference'}))];
+ const inventoryBytes=Buffer.from(JSON.stringify({source,files}));
+ const entry=(path,bytes)=>({ref:{path,sha256:createHash('sha256').update(bytes).digest('hex')},bytes});
+ const trace=entry('review-trace.json',Buffer.from('synthetic comparison evidence'));
+ const row={path:'src/native.ts',source_sha:old,current_sha:current,disposition:'reconciled',rationale:'synthetic fixture',reviewer_subject:'reviewer',evidence:[trace.ref]};
+ const record={schema:'rticore-pr1-residual-disposition-v1',release_sha:sha,source_sha:source,inventory_sha256:createHash('sha256').update(inventoryBytes).digest('hex'),files:[row,{...row,path:'src/legacy.ts',current_sha:null,disposition:'native_equivalent'}]};
+ const run=(v=record,overrides={})=>assertResidualDisposition({inventoryBytes,currentSha:p=>p==='src/native.ts'?current:null,sha,signoffs:[{subject:'reviewer',decision:'APPROVED',release_sha:sha}],verified:[trace,entry('disposition.json',Buffer.from(JSON.stringify(v)))],...overrides});
+ assert.deepEqual(run(),{reviewed:2});
+ assert.throws(()=>run(record,{verified:[trace]}),/PR1_RESIDUAL_DISPOSITION_REQUIRED/);
+ assert.throws(()=>run({...record,release_sha:old}),/PR1_RESIDUAL_DISPOSITION_STALE/);
+ assert.throws(()=>run({...record,files:[row]}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
+ assert.throws(()=>run({...record,files:[row,row]}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
+ assert.throws(()=>run({...record,files:[{...row,current_sha:old},record.files[1]]}),/PR1_RESIDUAL_REVIEW_INVALID/);
+ assert.throws(()=>run({...record,files:[{...row,evidence:[]},record.files[1]]}),/PR1_RESIDUAL_TRACE_REQUIRED/);
+ assert.throws(()=>run(record,{signoffs:[]}),/PR1_RESIDUAL_REVIEW_INVALID/);
+ assert.throws(()=>run(record,{currentSha:p=>p==='src/native.ts'?old:null}),/PR1_RESIDUAL_DISPOSITION_INCOMPLETE/);
+});
