@@ -92,9 +92,9 @@ test('native scheduler rejects privileged connection before mutation and rolls b
   return {queries,logs,closed,privilegeChecked,error,exitCode:process.exitCode};
  }
  const denied=await run({privileged:true});assert.match(String(denied.error),/privilege certification failed/);assert.equal(denied.privilegeChecked,true);assert.equal(denied.closed,true);assert.ok(!denied.queries.some(x=>x.sql.includes('INSERT')));
- const valid=await run();assert.equal(valid.error,undefined);assert.equal(valid.exitCode,undefined);assert.equal(valid.logs[0].outcomes[0],'succeeded');assert.ok(valid.queries.some(x=>x.sql==='COMMIT'));
+ const valid=await run();assert.equal(valid.error,undefined);assert.equal(valid.exitCode,undefined);assert.equal(valid.logs[0].outcomes[0],'succeeded');assert.equal(valid.logs[0].event,'native_operations_cycle');assert.equal(valid.logs[0].claimed,1);assert.equal(valid.logs[0].counts.succeeded,1);assert.equal(valid.logs[0].idle,false);assert.equal(valid.logs[0].automatic_posting,false);assert.ok(valid.queries.some(x=>x.sql==='COMMIT'));
  for(const failedFinish of [false,true]){
-  const result=await run({expired:true,failedFinish});assert.equal(result.error,undefined);assert.equal(result.exitCode,1);assert.equal(result.closed,true);assert.ok(result.queries.some(x=>x.sql==='ROLLBACK'));assert.ok(!result.queries.some(x=>x.sql==='COMMIT'));assert.equal(result.logs[0].outcomes[0],failedFinish?'lease_lost':'retry_or_dead_letter');
+  const result=await run({expired:true,failedFinish});assert.equal(result.error,undefined);assert.equal(result.exitCode,1);assert.equal(result.closed,true);assert.ok(result.queries.some(x=>x.sql==='ROLLBACK'));assert.ok(!result.queries.some(x=>x.sql==='COMMIT'));assert.equal(result.logs[0].outcomes[0],failedFinish?'lease_lost':'retry_or_dead_letter');assert.equal(result.logs[0].counts[failedFinish?'lease_lost':'retry_or_dead_letter'],1);assert.equal(result.logs[0].counts.succeeded,0);
   assert.match(result.queries.find(x=>x.sql.includes('rticore_native_job_finish')&&x.sql.includes('true)')).sql,/lease_until>clock_timestamp\(\)/);
  }
 });
