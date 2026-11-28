@@ -31,7 +31,8 @@
         "0079_native_vapt_engagement.sql",
         "0080_native_vapt_findings.sql",
         "0081_native_cti_grc_registers.sql",
-        "0082_native_flexguard_service_request.sql"
+        "0082_native_flexguard_service_request.sql",
+        "0083_native_flexguard_portal.sql"
       ]
     },
     {

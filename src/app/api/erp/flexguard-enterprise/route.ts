@@ -1,6 +1,7 @@
 import {authorizeBoQ} from '@/lib/boq-auth';
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal,ServiceError} from '@/lib/service-operations';
+import {validEmail} from '@/lib/business-iam-crypto';
 import {TENANT} from '@/lib/sales-workflow';
 import {erpAssert,erpError,erpId,erpOrigin,erpReply,erpText,erpAtom,ERPError} from '@/lib/erp-core';
 export const dynamic='force-dynamic';
@@ -26,6 +27,11 @@ export async function GET(req:Request){
   }
   const scope=await db.prepare("SELECT w.id FROM rticore_flexguard_wallets w JOIN rticore_service_contracts c ON c.tenant_id=w.tenant_id AND c.id=w.contract_id JOIN rticore_erp_project_scopes p ON p.tenant_id=c.tenant_id AND p.project_id=c.project_id AND p.status='approved' WHERE w.tenant_id=? AND p.legal_entity_id=? AND w.id=?").bind(TENANT,entity,wallet).first();
   erpAssert(scope,'Wallet di luar scope',403);
+  if(u.searchParams.get('portal_admin')==='1'){
+   const rows=await db.prepare('SELECT id,email,customer_id,reason,status,requested_by,reviewed_by,review_notes,revoked_by,revocation_notes FROM rticore_native_fg_portal_grant WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY requested_at DESC LIMIT 200').bind(TENANT,entity,wallet).all();
+   const submissions=await db.prepare('SELECT * FROM rticore_native_fg_portal_submission WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY recorded_at DESC LIMIT 200').bind(TENANT,entity,wallet).all();
+   return erpReply({success:true,role,grants:rows.results,submissions:submissions.results,automatic_posting:false});
+  }
   if(u.searchParams.get('service_requests')==='1'){
    const rows=await db.prepare('SELECT * FROM rticore_native_fg_service_request WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY created_at DESC,id LIMIT 201').bind(TENANT,entity,wallet).all();
    const events=await db.prepare('SELECT * FROM rticore_native_fg_service_event WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? ORDER BY recorded_at DESC LIMIT 501').bind(TENANT,entity,wallet).all();
@@ -49,6 +55,30 @@ export async function POST(req:Request){
   erpAssert(!a.identity.rolePreview,'Role preview ditolak',403);erpOrigin(req);
   const v=await readBoundedJSON(req,8000) as Record<string,unknown>;
   const {db,email}=a.identity;erpAssert(erpId(v.legal_entity_id),'Legal entity wajib');
+  if(v.action==='request_portal_grant'||v.action==='review_portal_grant'||v.action==='revoke_portal_grant'){
+   const {role}=a.identity;const entity=v.legal_entity_id;
+   erpAssert(erpId(v.wallet_id)&&erpText(v.notes,12,800),'Wallet dan catatan wajib');
+   const wallet=v.wallet_id;
+   const grant=await db.prepare('SELECT rticore_fg_actor_role(?,?,?) AS role').bind(TENANT,entity,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses portal governance ditolak',403);
+   if(v.action==='request_portal_grant'){
+    erpAssert(['admin','finance'].includes(role)&&typeof v.customer_email==='string'&&validEmail(v.customer_email.trim().toLowerCase()),'Maker dan customer email wajib',403);
+    const customerEmail=v.customer_email.trim().toLowerCase();
+    const w=await db.prepare("SELECT w.customer_id FROM rticore_flexguard_wallets w WHERE w.tenant_id=? AND w.id=? AND rticore_native_fg_portal_wallet_valid(w.tenant_id,?,w.id,w.customer_id)").bind(TENANT,wallet,entity).first<{customer_id:string}>();
+    erpAssert(w,'Wallet tidak valid',403);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'NOT EXISTS(SELECT 1 FROM rticore_members WHERE lower(email)=?)',[customerEmail],[db.prepare('INSERT INTO rticore_native_fg_portal_account(email) VALUES(?) ON CONFLICT(email) DO NOTHING').bind(customerEmail),db.prepare('INSERT INTO rticore_native_fg_portal_grant(id,tenant_id,legal_entity_id,wallet_id,email,customer_id,reason,requested_by) VALUES(?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,wallet,customerEmail,w.customer_id,v.notes.trim(),email)],'flexguard',id,'PORTAL_GRANT_REQUEST',{wallet_id:wallet});
+    return erpReply({success:true,result:{id,status:'pending'}},201);
+   }
+   erpAssert(erpId(v.id),'Grant ID wajib');
+   if(v.action==='review_portal_grant'){
+    erpAssert(role==='approver'&&typeof v.approve==='boolean','Independent approver wajib',403);
+    await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_fg_portal_grant WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=? AND status='pending' AND lower(requested_by)<>?)",[TENANT,entity,wallet,v.id,email.toLowerCase()],[db.prepare("UPDATE rticore_native_fg_portal_grant SET status=?,reviewed_by=?,reviewed_at=now(),review_notes=? WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=?").bind(v.approve?'approved':'rejected',email,v.notes.trim(),TENANT,entity,wallet,v.id)],'flexguard',v.id,'PORTAL_GRANT_REVIEW',{approved:v.approve});
+    return erpReply({success:true,result:{id:v.id,status:v.approve?'approved':'rejected'}});
+   }
+   erpAssert(['admin','approver'].includes(role),'Revoke denied',403);
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_fg_portal_grant WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=? AND status='approved')",[TENANT,entity,wallet,v.id],[db.prepare("UPDATE rticore_native_fg_portal_grant SET status='revoked',revoked_by=?,revoked_at=now(),revocation_notes=? WHERE tenant_id=? AND legal_entity_id=? AND wallet_id=? AND id=?").bind(email,v.notes.trim(),TENANT,entity,wallet,v.id)],'flexguard',v.id,'PORTAL_GRANT_REVOKE',{wallet_id:wallet});
+   return erpReply({success:true,result:{id:v.id,status:'revoked'}});
+  }
   if(v.action==='create_service_request'||v.action==='transition_service_request'){
    const {role}=a.identity;const entity=v.legal_entity_id;
    erpAssert(erpId(v.wallet_id)&&erpId(v.document_id)&&erpText(v.notes,12,1000),'Wallet, bukti asli dan catatan wajib');

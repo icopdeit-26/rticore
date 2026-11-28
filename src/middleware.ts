@@ -30,6 +30,8 @@ const D1_ROUTES = new Set([
   // Local-mode login; refuses every write unless RTICORE_LOCAL_MODE=1 on localhost.
   '/api/local-auth',
   '/api/business-auth',
+  '/api/portal/flexguard',
+  '/api/portal/flexguard/auth',
   // Public minimal probes; no business data or mutation access.
   '/api/health/live',
   '/api/health/ready',
