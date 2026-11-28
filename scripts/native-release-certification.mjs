@@ -18,7 +18,7 @@ export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='be
  fail(key.asymmetricKeyType==='ed25519'&&typeof e.signature==='string'&&verify(null,Buffer.from(JSON.stringify(p)),key,Buffer.from(e.signature,'base64')),'INVALID_NATIVE_RELEASE_SIGNATURE');
  fail(p.schema_version===2&&p.release_sha===sha&&p.cams_release_sha===camsSha&&p.target==='hostinger_business_web_hosting'&&p.origin==='https://rticore.store'&&p.database_engine==='postgres'&&p.auth_method==='native_business_totp'&&p.ai_provider==='openai','NATIVE_TARGET_OR_SHA_MISMATCH');
  const issued=Date.parse(p.issued_at),expires=Date.parse(p.expires_at);
- fail(Number.isFinite(issued)&&issued<=now&&expires>now&&expires-issued<=86400000,'STALE_NATIVE_RECEIPT');
+ fail(Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires>issued&&expires-issued<=86400000,'STALE_NATIVE_RECEIPT');
  const dir=realpathSync(dirname(resolve(receiptPath)));
  const proof=refs=>{
   fail(Array.isArray(refs)&&refs.length>0,'EVIDENCE_REQUIRED');
@@ -38,7 +38,7 @@ export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='be
   fail(gate.status==='PASS'&&gate.release_sha===sha&&nonempty(gate.reviewer),'GATE_NOT_PASS_'+id);proof(gate.evidence);
  }
  const manifest=nativeMigrationManifest(root);
- fail(unique(p.migrations,'path',manifest.length)&&manifest.every(m=>p.migrations.some(x=>x.path===m.path&&x.sha256===m.sha256&&x.applied===true&&Number.isFinite(Date.parse(x.applied_at))&&Date.parse(x.applied_at)<=now)),'APPLIED_MIGRATION_LEDGER_MISMATCH');
+ fail(unique(p.migrations,'path',manifest.length)&&manifest.every(m=>p.migrations.some(x=>x.path===m.path&&x.sha256===m.sha256&&x.applied===true&&Number.isFinite(Date.parse(x.applied_at))&&Date.parse(x.applied_at)<=issued)),'APPLIED_MIGRATION_LEDGER_MISMATCH');
  const roster=p.identities;
  fail(Array.isArray(roster)&&roster.length>0&&new Set(roster.map(i=>i.subject)).size===roster.length,'DISTINCT_NATIVE_IDENTITIES_REQUIRED');
  for(const [role,count] of Object.entries({admin:2,marketing:1,sales:2,presales:1,finance:2,approver:1,legal:1,viewer:1})){
@@ -55,7 +55,7 @@ export function verifyNativeReceipt({receiptPath,publicKey,sha,camsSha,phase='be
   fail(unique(results,'id',cases.length),name+'_INDIVIDUAL_UAT_REQUIRED');
   for(const c of cases){
    const t=results.find(x=>x.id===c.id);
-   fail(t&&t.release_sha===sha&&t.status==='PASS'&&t.execution_kind==='authenticated_native_hostinger_staging'&&nonempty(t.actual_result)&&t.scope_verified===true&&t.sod_checked===true&&roster.some(i=>i.subject===t.tester_subject&&i.mfa_verified===true&&i.auth_method==='native_business_totp'&&i.active_membership_verified===true)&&Number.isFinite(Date.parse(t.executed_at))&&Date.parse(t.executed_at)<=now,name+'_UAT_NOT_PASS_'+c.id);
+   fail(t&&t.release_sha===sha&&t.status==='PASS'&&t.execution_kind==='authenticated_native_hostinger_staging'&&nonempty(t.actual_result)&&t.scope_verified===true&&t.sod_checked===true&&roster.some(i=>i.subject===t.tester_subject&&i.mfa_verified===true&&i.auth_method==='native_business_totp'&&i.active_membership_verified===true)&&Number.isFinite(Date.parse(t.executed_at))&&Date.parse(t.executed_at)<=issued,name+'_UAT_NOT_PASS_'+c.id);
    proof(t.evidence);
   }
  }
