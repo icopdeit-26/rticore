@@ -3,7 +3,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches: ['fix/operational-finance-outbox-20261127']
+    branches: [main, 'fix/operational-finance-outbox-20261127']
   workflow_dispatch:
 permissions:
   contents: read
