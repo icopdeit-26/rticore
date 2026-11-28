@@ -26,7 +26,8 @@
         "0074_native_job_recovery.sql",
         "0075_flexguard_historical_review_guard.sql",
         "0076_flexguard_acknowledgement_guard.sql",
-        "0077_native_dfir_custody.sql"
+        "0077_native_dfir_custody.sql",
+        "0078_native_soc_sla.sql"
       ]
     },
     {

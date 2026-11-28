@@ -2,7 +2,7 @@
 import {readBoundedJSON} from '@/lib/bounded-json';
 import {supportingOriginal as vaultOriginal,ServiceError} from '@/lib/service-operations';
 import {TENANT} from '@/lib/sales-workflow';
-import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpProjectUnit} from '@/lib/erp-core';
+import {erpReply,erpError,ERPError,erpAssert,erpId,erpText,erpOrigin,erpGrant,erpAtom,erpProjectUnit,erpPeriod} from '@/lib/erp-core';
 import {isDefenseRole,DEFENSE_CASE_KINDS,defenseProjects,hasCyberGrant} from '@/lib/defense-team';
 export const dynamic='force-dynamic';
 // Vault validation errors (wrong/foreign/expired document) surface as 4xx, not as a generic ERP 503.
@@ -45,6 +45,16 @@ export async function GET(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;
  try{
   const u=new URL(req.url);
+  const slaProject=u.searchParams.get('sla_project_id');
+  if(slaProject!==null){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native SLA required',403);
+   erpAssert(erpId(slaProject),'Project ID wajib');
+   const entity=await erpProjectUnit(a.identity.db,slaProject);
+   const grant=await a.identity.db.prepare('SELECT rticore_native_soc_actor(?,?,?,?) AS role').bind(TENANT,entity,slaProject,a.identity.email).first<{role:string|null}>();
+   erpAssert(grant?.role===a.identity.role,'Akses SOC SLA ditolak',403);
+   const rows=await a.identity.db.prepare('SELECT *,round(within_sla::numeric*10000/observations)::integer AS sla_compliance_bps FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? ORDER BY period_code DESC,created_at DESC LIMIT 201').bind(TENANT,entity,slaProject).all();
+   return erpReply({success:true,role:a.identity.role,entries:rows.results.slice(0,200),truncated:rows.results.length>200,financial_posting:false});
+  }
   const custodyCase=u.searchParams.get('custody_case_id');
   if(custodyCase!==null){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger'&&!a.identity.rolePreview,'Native custody required',403);
@@ -70,6 +80,31 @@ export async function POST(req:Request){
  const a=await authorizeBoQ(req);if(!a.ok)return a.response;const {db,role,email}=a.identity;
  try{
   erpAssert(!a.identity.rolePreview,'Role preview tidak diizinkan mengubah Cyber Operations',403);erpOrigin(req);const v=await readBoundedJSON(req,7000) as Record<string,unknown>;
+  if(v.action==='submit_soc_sla'||v.action==='review_soc_sla'){
+   erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native SLA required',503);
+   erpAssert(erpId(v.project_id),'Project ID wajib');
+   const project=v.project_id;const entity=await erpProjectUnit(db,project);
+   const grant=await db.prepare('SELECT rticore_native_soc_actor(?,?,?,?) AS role').bind(TENANT,entity,project,email).first<{role:string|null}>();
+   erpAssert(grant?.role===role,'Akses SOC SLA ditolak',403);
+   const p=await db.prepare('SELECT opportunity_id FROM rticore_delivery_projects WHERE tenant_id=? AND id=?').bind(TENANT,project).first<{opportunity_id:string}>();
+   erpAssert(p,'Project tidak ditemukan',404);
+   if(v.action==='submit_soc_sla'){
+    erpAssert(['admin','defense_leader'].includes(role),'Maker SOC SLA wajib',403);
+    erpAssert(erpPeriod(v.period_code)&&erpId(v.document_id),'Periode dan dokumen wajib');
+    const valid=(x:unknown,min:number,max:number):x is number=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=min&&x<=max;
+    erpAssert(valid(v.observations,1,10000000)&&valid(v.within_sla,0,v.observations)&&valid(v.alerts_triaged,0,10000000)&&valid(v.incidents_escalated,0,v.alerts_triaged),'Metrik tidak valid');
+    erpAssert((v.mttd_minutes===null||valid(v.mttd_minutes,0,525600))&&(v.mttr_minutes===null||valid(v.mttr_minutes,0,525600)),'MTTD/MTTR tidak valid');
+    const doc=await supportingOriginal(db,v.document_id,p.opportunity_id);const id=crypto.randomUUID();
+    await erpAtom(a.identity,'1=1',[],[db.prepare('INSERT INTO rticore_native_soc_sla(id,tenant_id,legal_entity_id,project_id,period_code,observations,within_sla,alerts_triaged,incidents_escalated,mttd_minutes,mttr_minutes,document_id,document_sha256,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,TENANT,entity,project,v.period_code,v.observations,v.within_sla,v.alerts_triaged,v.incidents_escalated,v.mttd_minutes,v.mttr_minutes,v.document_id,doc.sha256.toLowerCase(),email)],'cyber',id,'SOC_SLA_SUBMIT',{project_id:project,period:v.period_code,document_id:v.document_id});
+    return erpReply({success:true,id,status:'pending'},201);
+   }
+   erpAssert(role==='approver','Independent approver wajib',403);
+   erpAssert(erpId(v.id)&&typeof v.approve==='boolean'&&erpText(v.notes,12,800),'Review tidak valid');
+   const row=await db.prepare("SELECT document_id FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='pending'").bind(TENANT,entity,project,v.id).first<{document_id:string}>();
+   erpAssert(row,'SLA pending tidak ditemukan',404);await supportingOriginal(db,row.document_id,p.opportunity_id);
+   await erpAtom(a.identity,"EXISTS(SELECT 1 FROM rticore_native_soc_sla WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=? AND status='pending' AND lower(created_by)<>?)",[TENANT,entity,project,v.id,email.toLowerCase()],[db.prepare("UPDATE rticore_native_soc_sla SET status=?,reviewed_by=?,reviewed_at=now(),review_notes=? WHERE tenant_id=? AND legal_entity_id=? AND project_id=? AND id=?").bind(v.approve?'approved':'rejected',email,v.notes.trim(),TENANT,entity,project,v.id)],'cyber',v.id,'SOC_SLA_REVIEW',{approved:v.approve});
+   return erpReply({success:true,status:v.approve?'approved':'rejected'});
+  }
   if(v.action==='append_custody'){
    erpAssert(process.env.RTICORE_RUNTIME==='hostinger','Native custody required',503);
    erpAssert(erpId(v.id)&&erpId(v.document_id)&&erpText(v.evidence_tag,3,64)&&erpText(v.notes,12,800),'Case, dokumen, tag dan catatan wajib');

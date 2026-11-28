@@ -13,6 +13,7 @@ export const REQUIRED_NATIVE_COMMANDS=[
  'rticore_native_recovery_command(text,text,text,text,text,text,text)',
  'rticore_native_dfir_append(text,text,text,text,text,text,text,text,text,integer)',
  'rticore_native_dfir_actor(text,text,text,text)',
+ 'rticore_native_soc_actor(text,text,text,text)',
  'cams_review_command(text,text,text,text,text,text,bigint,text)'
 ];
 // Same signature can survive a stale migration; compare exact stored function body.
