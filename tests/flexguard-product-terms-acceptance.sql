@@ -106,18 +106,6 @@ BEGIN
  r:=rticore_fg_review('defendit360','fg-terms-a',checker,r->>'id',true,'Synthetic purchase approval');lot:=r->>'lot_id';
  r:=rticore_fg_submit('defendit360','fg-terms-a',maker,wid,'reservation',2,NULL,lot,NULL,NULL,'FG-CI-RESERVE-00001','Synthetic reserve request');
  reservation:=r->>'id';PERFORM rticore_fg_review('defendit360','fg-terms-a',checker,reservation,true,'Synthetic reserve approval');
- r:=rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-1','Synthetic PSA consumption');rid:=r->>'id';
- IF r->>'credits'<>'1' OR r->>'status'<>'pending_approval' OR EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger WHERE id=rid) THEN RAISE EXCEPTION 'PSA_SUBMIT_FAILED'; END IF;
- r:=rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-1','Synthetic PSA consumption');
- IF r->>'id'<>rid OR r->>'replayed'<>'true' THEN RAISE EXCEPTION 'PSA_REPLAY_FAILED'; END IF;
- SELECT count(*) INTO before_n FROM rticore_flexguard_requests WHERE wallet_id=wid;
- BEGIN
-  PERFORM rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-2','Synthetic duplicate request');
-  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
- EXCEPTION WHEN unique_violation THEN NULL; END;
- IF (SELECT count(*) FROM rticore_flexguard_requests WHERE wallet_id=wid)<>before_n THEN RAISE EXCEPTION 'DUPLICATE_PARTIAL_REQUEST'; END IF;
- r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
- IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
 END $fg$;
 -- A-R11: prove evidence-backed workflow and no automatic ledger mutation on the live disposable fixture.
 DO $service$
@@ -161,6 +149,21 @@ BEGIN
  BEGIN
  DELETE FROM rticore_native_fg_portal_binding WHERE submission_id='portal-quote-ci';
  RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_BINDING_IMMUTABLE' THEN RAISE; END IF; END;
+
+ -- Link the new service intake independently; reuse of a submission is forbidden.
+ INSERT INTO rticore_native_fg_service_request(id,tenant_id,legal_entity_id,wallet_id,project_id,contract_id,customer_id,request_code,title,scope_summary,created_by,last_actor,last_notes,last_document_id,last_document_sha256) VALUES('service-intake-ci','defendit360','fg-terms-a',wid,'fg-ci-project','fg-ci-contract','fg-ci-customer','SR-002','Synthetic customer intake','Synthetic customer intake scope',maker,maker,'Synthetic customer request reviewed','fg-ci-doc',repeat('b',64));
+ INSERT INTO rticore_native_fg_portal_binding(submission_id,tenant_id,legal_entity_id,wallet_id,request_id,target_version,kind,reviewer_email) VALUES('portal-sub-ci','defendit360','fg-terms-a',wid,'service-intake-ci',1,'service_request',maker);
+ IF NOT EXISTS(SELECT 1 FROM rticore_native_fg_portal_binding WHERE submission_id='portal-sub-ci' AND request_id='service-intake-ci') THEN RAISE EXCEPTION 'PORTAL_INTAKE_FAILED';END IF;
+ -- Original reservation remains untouched until an accepted service milestone.
+ UPDATE rticore_native_fg_service_request SET status='in_delivery',version=4,last_actor=maker,last_notes='Synthetic posted reservation verified',reservation_id=(SELECT id FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid AND idempotency_key='FG-CI-RESERVE-00001') WHERE id='service-ci';
+ INSERT INTO rticore_document_library(id,tenant_id,opportunity_id,kind,version,file_name,media_type,byte_length,sha256,iv,chunk_count,created_by) VALUES
+ ('fg-ci-qa-doc','defendit360','fg-ci-opportunity','supporting',3,'synthetic-qa.pdf','application/pdf',1,repeat('e',64),repeat('a',16),1,'ci'),
+ ('fg-ci-delivery-accept-doc','defendit360','fg-ci-opportunity','supporting',4,'synthetic-accept.pdf','application/pdf',1,repeat('f',64),repeat('a',16),1,'ci');
+ UPDATE rticore_native_fg_service_request SET status='qa_passed',version=5,last_actor=checker,last_notes='Synthetic independent QA',last_document_id='fg-ci-qa-doc',last_document_sha256=repeat('e',64) WHERE id='service-ci';
+ BEGIN UPDATE rticore_native_fg_service_request SET status='accepted',version=6,last_actor=checker,last_notes='Synthetic missing customer delivery approval',last_document_id='fg-ci-delivery-accept-doc',last_document_sha256=repeat('f',64) WHERE id='service-ci';RAISE EXCEPTION 'UNEXPECTED_SUCCESS';EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_ACCEPTANCE_REQUIRED' THEN RAISE;END IF;END;
+ INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,request_id,request_version,notes,idempotency_key) VALUES('portal-delivery-ci','defendit360','fg-terms-a',wid,customer,'delivery_acceptance','service-ci',5,'Synthetic authenticated delivery decision','portal-delivery-0001');
+ UPDATE rticore_native_fg_service_request SET status='accepted',version=6,last_actor=checker,last_notes='Synthetic independent delivery acceptance review',last_document_id='fg-ci-delivery-accept-doc',last_document_sha256=repeat('f',64) WHERE id='service-ci';
+ IF NOT EXISTS(SELECT 1 FROM rticore_native_fg_portal_binding WHERE submission_id='portal-delivery-ci' AND request_id='service-ci' AND target_version=6) OR (SELECT count(*) FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid)<>ledger_before THEN RAISE EXCEPTION 'PORTAL_DELIVERY_BINDING_FAILED'; END IF;
  INSERT INTO rticore_native_fg_portal_credential(email,password_hash,totp_cipher,enrolled_at) VALUES(customer,'synthetic-not-a-usable-password-hash','synthetic-not-a-usable-totp',now());
  INSERT INTO rticore_native_fg_portal_session(token_hash,email,expires_at) VALUES(repeat('e',64),customer,now()+interval '1 hour');
  UPDATE rticore_native_fg_portal_grant SET status='revoked',revoked_by=checker,revoked_at=now(),revocation_notes='Synthetic access revocation' WHERE id='portal-grant-ci';
@@ -170,6 +173,33 @@ BEGIN
  INSERT INTO rticore_native_fg_portal_submission(id,tenant_id,legal_entity_id,wallet_id,email,kind,notes,idempotency_key) VALUES('portal-revoked-ci','defendit360','fg-terms-a',wid,customer,'service_request','Synthetic revoked customer request','portal-submission-0003');
  RAISE EXCEPTION 'UNEXPECTED_SUCCESS'; EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_PORTAL_ACCESS_DENIED' THEN RAISE; END IF; END;
 END $portal$;
+
+-- Continue the SAME accepted service into PSA consumption, without creating a second wallet or journal.
+DO $service_psa$
+DECLARE wid text; lot text; reservation text; rid text; r jsonb; before_n bigint; maker constant text:='fg-terms-maker@example.invalid'; checker constant text:='fg-terms-checker@example.invalid';
+BEGIN
+ SELECT id INTO STRICT wid FROM rticore_flexguard_wallets WHERE contract_id='fg-ci-contract' AND status='active';
+ SELECT id INTO STRICT lot FROM rticore_flexguard_credit_lots WHERE wallet_id=wid AND invoice_id='fg-ci-invoice';
+ SELECT id INTO STRICT reservation FROM rticore_flexguard_enterprise_ledger WHERE wallet_id=wid AND idempotency_key='FG-CI-RESERVE-00001';
+ IF NOT EXISTS(SELECT 1 FROM rticore_native_fg_service_request WHERE id='service-ci' AND status='accepted' AND reservation_id=reservation) THEN RAISE EXCEPTION 'SERVICE_ACCEPTANCE_MISSING';END IF;
+ r:=rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-1','Synthetic PSA consumption');rid:=r->>'id';
+ IF r->>'credits'<>'1' OR r->>'status'<>'pending_approval' OR EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger WHERE id=rid) THEN RAISE EXCEPTION 'PSA_SUBMIT_FAILED'; END IF;
+ r:=rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-1','Synthetic PSA consumption');
+ IF r->>'id'<>rid OR r->>'replayed'<>'true' THEN RAISE EXCEPTION 'PSA_REPLAY_FAILED'; END IF;
+ SELECT count(*) INTO before_n FROM rticore_flexguard_requests WHERE wallet_id=wid;
+ BEGIN
+  PERFORM rticore_fg_psa_submit('defendit360','fg-terms-a',maker,wid,lot,reservation,'fg-ci-milestone','standard_analyst','["fg-ci-ts"]','FG-CI-PSA-CONSUME-2','Synthetic duplicate request');
+  RAISE EXCEPTION 'UNEXPECTED_SUCCESS';
+ EXCEPTION WHEN unique_violation THEN NULL; END;
+ IF (SELECT count(*) FROM rticore_flexguard_requests WHERE wallet_id=wid)<>before_n THEN RAISE EXCEPTION 'DUPLICATE_PARTIAL_REQUEST'; END IF;
+ r:=rticore_fg_review('defendit360','fg-terms-a',checker,rid,true,'Synthetic PSA independent approval');
+ IF r->>'status'<>'posted' OR NOT EXISTS(SELECT 1 FROM rticore_flexguard_enterprise_ledger l JOIN rticore_finance_integration_events e ON e.id=l.finance_outbox_event_id AND e.tenant_id=l.tenant_id WHERE l.id=rid AND l.credit_amount=1 AND l.financial_value_cents=10000 AND e.event_type='flexguard.credit_consumed' AND e.status='received' AND e.resulting_journal_id IS NULL) THEN RAISE EXCEPTION 'PSA_POST_OUTBOX_FAILED'; END IF;
+
+ r:=rticore_fg_submit('defendit360','fg-terms-a',maker,wid,'reservation_release',1,NULL,lot,reservation,NULL,'FG-CI-RELEASE-00001','Synthetic release of unused reserved credit');
+ PERFORM rticore_fg_review('defendit360','fg-terms-a',checker,r->>'id',true,'Synthetic independent release approval');
+ BEGIN UPDATE rticore_native_fg_service_request SET status='closed',version=7,last_actor=checker,last_notes='Synthetic premature service closure',consumption_id=rid WHERE id='service-ci';RAISE EXCEPTION 'UNEXPECTED_SUCCESS';EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'FLEXGUARD_SERVICE_CONSUMPTION_INVALID' THEN RAISE;END IF;END;
+END $service_psa$;
+
 
 -- Continue the SAME positive PSA consumption fixture through actual GL docking.
 -- The AR journal represents the already approved and paid invoice, not a second invoice.
@@ -242,6 +272,9 @@ BEGIN
  IF n IS DISTINCT FROM 190000::bigint THEN RAISE EXCEPTION 'LIABILITY_RECONCILIATION_FAILED'; END IF;
  IF NOT EXISTS(SELECT 1 FROM rticore_finance_journal_workflows w JOIN rticore_gl_journals j ON j.id=w.journal_id AND j.tenant_id=w.tenant_id WHERE j.id=jid AND w.lifecycle_stage='posted' AND j.created_by=maker AND j.reviewed_by=checker AND j.posted_by=poster AND w.approved_by=checker AND w.posted_by=poster) THEN RAISE EXCEPTION 'INDEPENDENT_LIFECYCLE_MISSING'; END IF;
  IF (SELECT count(*) FROM rticore_fg_finance_links WHERE legal_entity_id='fg-terms-a')<>2 THEN RAISE EXCEPTION 'DUPLICATE_FINANCE_LINK'; END IF;
+ -- No automatic posting or service closure: independently acknowledge Finance first, then close.
+ UPDATE rticore_native_fg_service_request SET status='closed',version=7,last_actor=checker,last_notes='Synthetic Finance acknowledgement and service closure',consumption_id=(SELECT id FROM rticore_flexguard_enterprise_ledger WHERE finance_outbox_event_id=consume_event) WHERE id='service-ci';
+ IF NOT EXISTS(SELECT 1 FROM rticore_native_fg_service_request WHERE id='service-ci' AND status='closed' AND version=7) OR (SELECT count(*) FROM rticore_native_fg_portal_binding WHERE request_id='service-ci')<>2 THEN RAISE EXCEPTION 'SERVICE_END_TO_END_FAILED'; END IF;
 END $journey$;
 DO $cat$
 DECLARE r jsonb; sid text; rate text; maker text:='fg-terms-maker@example.invalid'; checker text:='fg-terms-checker@example.invalid'; payload jsonb:='{"service_code":"FG-CI-SVC","service_name":"CI service","service_category":"web_app_pentest","description":"Synthetic service description","scope_summary":"Synthetic service scope","complexity_level":"standard","min_mandays_tenths":10,"standard_mandays_tenths":20,"max_mandays_tenths":50,"effective_date":"2026-11-27","service_version":1}';
