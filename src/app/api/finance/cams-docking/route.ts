@@ -60,17 +60,18 @@ export async function POST(req:Request){
 }
 // Read back the persisted status for both GET and idempotent POST replay.
 async function currentReceipt(db:ReturnType<typeof getLocalPostgresDB>,r:Receipt){
- const j=await db.prepare("SELECT j.id,j.status,j.created_by,j.reviewed_by,j.posted_by,j.reviewed_at,j.posted_at,p.period FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.id=j.period_id WHERE j.tenant_id=? AND j.legal_entity_id=? AND j.source_type='camsrti' AND j.source_key=?").bind(TENANT,r.legal_entity_id,r.idempotency_key).first<{id:string;status:string;period:string;created_by:string;reviewed_by:string|null;posted_by:string|null;reviewed_at:string|null;posted_at:string|null}>();
+ const j=await db.prepare("SELECT j.id,j.status,j.created_by,j.reviewed_by,j.posted_by,j.reviewed_at,j.posted_at,p.period FROM rticore_gl_journals j JOIN rticore_gl_periods p ON p.tenant_id=j.tenant_id AND p.legal_entity_id=j.legal_entity_id AND p.id=j.period_id WHERE j.tenant_id=? AND j.legal_entity_id=? AND j.source_type='camsrti' AND j.source_key=?").bind(TENANT,r.legal_entity_id,r.idempotency_key).first<{id:string;status:string;period:string;created_by:string;reviewed_by:string|null;posted_by:string|null;reviewed_at:string|null;posted_at:string|null}>();
  if(!j)return receipt(r);
  if(j.status!=='posted')return receipt(r,j.status==='rejected'?'rejected':'pending_review',j.id);
- const lines=await db.prepare('SELECT l.account_id,l.debit_cents,l.credit_cents,d.cost_center_id FROM rticore_gl_lines l LEFT JOIN rticore_finance_journal_dimensions d ON d.tenant_id=l.tenant_id AND d.line_id=l.id WHERE l.tenant_id=? AND l.journal_id=?').bind(TENANT,j.id).all<{account_id:string;debit_cents:string|number;credit_cents:string|number;cost_center_id:string|null}>();
+ const lines=await db.prepare('SELECT l.account_id,l.debit_cents,l.credit_cents,d.cost_center_id FROM rticore_gl_lines l LEFT JOIN rticore_finance_journal_dimensions d ON d.tenant_id=l.tenant_id AND d.journal_id=l.journal_id AND d.line_id=l.id AND d.legal_entity_id=? WHERE l.tenant_id=? AND l.journal_id=?').bind(r.legal_entity_id,TENANT,j.id).all<{account_id:string;debit_cents:string|number;credit_cents:string|number;cost_center_id:string|null}>();
+ if(!lines.success)throw new DockingError('RECONCILIATION_UNAVAILABLE',503);
  const mapped=typeof r.mapped_lines_json==='string'?JSON.parse(r.mapped_lines_json) as MappedLine[]:r.mapped_lines_json;
  const w=await db.prepare('SELECT currency,exchange_rate_micro,lifecycle_stage,submitted_by,checked_by,approved_by,posted_by,checked_at,approved_at,posted_at FROM rticore_finance_journal_workflows WHERE tenant_id=? AND journal_id=? AND legal_entity_id=?').bind(TENANT,j.id,r.legal_entity_id).first<{currency:string;exchange_rate_micro:number|string;lifecycle_stage:string;submitted_by:string|null;checked_by:string|null;approved_by:string|null;posted_by:string|null;checked_at:string|null;approved_at:string|null;posted_at:string|null}>();
  const matches=j.period===r.period_code&&w?.currency==='IDR'&&Number(w.exchange_rate_micro)===1000000&&independentPostingEvidence(j,w)&&lineSignature(mapped)===lineSignature(lines.results.map(l=>({accountId:l.account_id,costCenterId:l.cost_center_id,debit:String(l.debit_cents),credit:String(l.credit_cents)})));
  return receipt(r,matches?'reconciled':'mismatch',j.id);
 }
 export async function GET(req:Request){
- try{const {db,source,entity}=context(req);const key=new URL(req.url).searchParams.get('idempotencyKey');if(!key||!/^OUTBOX-JRN-[0-9a-f-]{36}$/i.test(key))throw new DockingError('INVALID_IDEMPOTENCY');
+ try{const {db,source,entity}=context(req);const params=new URL(req.url).searchParams,key=params.get('idempotencyKey');if(params.getAll('idempotencyKey').length!==1||[...params.keys()].some(k=>k!=='idempotencyKey')||!key||!/^OUTBOX-JRN-[0-9a-f-]{36}$/i.test(key))throw new DockingError('INVALID_IDEMPOTENCY');
  const r=await load(db,key);if(!r||r.source_tenant_id!==source||r.legal_entity_id!==entity)throw new DockingError('RECEIPT_NOT_FOUND',404);
  return reply(await currentReceipt(db,r));
  }catch(e){return err(e);}

@@ -1,13 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
-function fixture(name,{role='finance',preview=false,enabled=true,authenticated=true,row=null,rows=[],failed=false}={}){
+function fixture(name,{role='finance',preview=false,enabled=true,authenticated=true,row=null,rows=[],failed=false,body={},origin='https://example.invalid'}={}){
  const source=fs.readFileSync('src/app/api/erp/'+name+'/route.ts','utf8'),exp={},queries=[];
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const db={prepare:sql=>({bind:(...args)=>{queries.push({sql,args});return {first:async()=>row,all:async()=>({success:!failed,results:rows})};}})};
- vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:'hostinger',RTICORE_SERVICE_CATALOG_ENABLED:enabled?'1':'0',RTICORE_HISTORICAL_REVIEW_ENABLED:enabled?'1':'0'}},require:n=>{
+ vm.runInNewContext(code,{exports:exp,URL,process:{env:{RTICORE_RUNTIME:'hostinger',RTICORE_SERVICE_CATALOG_ENABLED:enabled?'1':'0',RTICORE_HISTORICAL_REVIEW_ENABLED:enabled?'1':'0',RTICORE_PUBLIC_ORIGIN:origin}},require:n=>{
   if(n==='@/lib/boq-auth')return {authorizeBoQ:async()=>authenticated?{ok:true,identity:{db,email:'review@example.invalid',role,rolePreview:preview}}:{ok:false,response:{status:401}}};
   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
-  if(n==='@/lib/bounded-json')return {};
-  if(n==='@/lib/erp-core')return {erpAssert:(ok,m,status=422)=>{if(!ok)throw Object.assign(Error(m),{status});},erpId:x=>typeof x==='string'&&x.length>0,erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503})};
+  if(n==='@/lib/bounded-json')return {readBoundedJSON:async()=>body};
+  if(n==='@/lib/erp-core')return {erpAssert:(ok,m,status=422)=>{if(!ok)throw Object.assign(Error(m),{status});},erpId:x=>typeof x==='string'&&x.length>0,erpText:(x,min,max)=>typeof x==='string'&&x.trim().length>=min&&x.length<=max,erpOrigin:()=>{},erpReply:(body,status=200)=>({body,status}),erpError:e=>({status:e.status||503})};
   throw Error(n);
  }});
  return {queries,run:()=>exp.GET({url:'https://example.invalid/api/erp/'+name+'?legal_entity_id=entity-a'+(name==='pricing-engine'?'&snapshot_id=snapshot-a':'')}),get:q=>exp.GET({url:'https://example.invalid/api/erp/'+name+'?'+q}),exp};
@@ -188,3 +188,43 @@ test('advisory pricing withholds incomplete registers and invalid or future serv
 });
 
  test('pricing migrations have one transaction and one command definition',()=>{for(const file of ['0090_native_pricing_fixed_tm.sql','0091_native_pricing_recurring.sql','0092_native_pricing_tier_volume.sql','0093_native_pricing_bundle_value.sql']){const sql=fs.readFileSync('deployment/hostinger/migrations/'+file,'utf8');assert.equal((sql.match(/COMMIT;/g)||[]).length,1);assert.equal((sql.match(/CREATE OR REPLACE FUNCTION rticore_catalog_workflow_command/g)||[]).length,1);}});
+
+test('pricing evidence rejects unknown or duplicate scope before any database read',async()=>{
+ for(const q of ['legal_entity_id=entity-a&snapshot_id=snapshot-a&mode=all','legal_entity_id=entity-a&snapshot_id=a&snapshot_id=b','legal_entity_id=a&legal_entity_id=b&snapshot_id=a']){
+  const f=fixture('pricing-engine');assert.equal((await f.get(q)).status,422);assert.equal(f.queries.length,0);
+ }
+});
+test('historical allocation API enforces independent role boundary before calling SQL',async()=>{
+ const origin='https://example.invalid',body={legal_entity_id:'entity-a',lot_id:'lot-a',invoice_sha256:'a'.repeat(64),notes:'Review of original invoice evidence',original_documents_reviewed:true};
+ for(const [role,action,status] of [['finance','approve',403],['approver','submit',403],['finance','submit',201],['approver','approve',200]]){
+  const f=fixture('flexguard-historical-review',{role,body:{...body,action},row:{result:{status:'fixture'}}});
+  const result=await f.exp.POST({url:origin+'/api/erp/flexguard-historical-review',headers:{get:()=>origin}});
+  assert.equal(result.status,status);assert.equal(f.queries.length,status===403?0:1);
+ }
+});
+test('CAMS acknowledgement refuses ambiguous selectors and failed financial line reads',async()=>{
+ const source=fs.readFileSync('src/app/api/finance/cams-docking/route.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const key='OUTBOX-JRN-12345678-1234-1234-1234-123456789abc', origin='https://example.invalid';
+ function setup(failed){
+  const exports={},queries=[];
+  class DockingError extends Error{constructor(code,status=422){super(code);this.code=code;this.status=status;}}
+  const receipt={id:'receipt-a',source_tenant_id:'cams-a',source_journal_id:'journal-a',idempotency_key:key,payload_hash:'hash',legal_entity_id:'entity-a',period_code:'2026-11',mapped_lines_json:[{accountId:'a',debit:'100',credit:'0'}]};
+  const db={prepare:sql=>({bind:(...args)=>{queries.push({sql,args});return {first:async()=>sql.includes('rticore_cams_finance_inbox')?receipt:sql.includes('rticore_gl_journals')?{id:'gl-a',status:'posted',period:'2026-11'}:{currency:'IDR',exchange_rate_micro:1000000},all:async()=>({success:!failed,results:[{account_id:'a',debit_cents:100,credit_cents:0}]})};}})};
+  vm.runInNewContext(code,{exports,URL,Response,process:{env:{CAMS_FINANCE_DOCKING_ENABLED:'true',CAMS_FINANCE_SOURCE_TENANT_ID:'cams-a',CAMS_FINANCE_LEGAL_ENTITY_ID:'entity-a',CAMS_FINANCE_COA_MAP_JSON:'{}'}},require:n=>{
+   if(n==='node:crypto')return {randomUUID:()=> 'fixture'};
+   if(n==='@/lib/postgres-db')return {getLocalPostgresDB:()=>db};
+   if(n==='@/lib/cams-runtime-boundary')return {camsDatabaseMode:()=> 'hostinger'};
+   if(n==='@/lib/sales-workflow')return {TENANT:'defendit360'};
+   if(n==='@/lib/bounded-json')return {RequestBodyError:class extends Error{}};
+   if(n==='@/lib/cams-journal-contract')return {DockingError,serviceRequestContextAllowed:()=>true,validToken:()=>true,independentPostingEvidence:()=>true,lineSignature:()=> 'same'};
+   throw Error(n);
+  }});
+  return {queries,get:q=>exports.GET({url:origin+'/?'+q,headers:{get:()=>null}})};
+ }
+ const a=setup(false);assert.equal((await a.get('idempotencyKey='+key+'&idempotencyKey='+key)).status,422);assert.equal(a.queries.length,0);
+ const b=setup(false);assert.equal((await b.get('idempotencyKey='+key+'&entity=other')).status,422);assert.equal(b.queries.length,0);
+ const c=setup(true);assert.equal((await c.get('idempotencyKey='+key)).status,503);
+ const d=setup(false);const result=await d.get('idempotencyKey='+key);assert.equal(result.status,200);assert.equal((await result.json()).status,'reconciled');
+ const line=d.queries.find(x=>x.sql.includes('rticore_gl_lines'));assert.match(line.sql,/d\.journal_id=l\.journal_id/);assert.match(line.sql,/d\.legal_entity_id=\?/);assert.deepEqual(line.args,['entity-a','defendit360','gl-a']);
+});

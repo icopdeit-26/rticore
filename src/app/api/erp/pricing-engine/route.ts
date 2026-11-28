@@ -11,7 +11,7 @@ export async function GET(req:Request){
   const {db,email,role,rolePreview}=a.identity;
   erpAssert(!rolePreview&&['finance','approver'].includes(role),'Akses ditolak',403);
   const q=new URL(req.url).searchParams,entity=q.get('legal_entity_id'),id=q.get('snapshot_id');
-  erpAssert(q.getAll('legal_entity_id').length===1&&q.getAll('snapshot_id').length===1&&erpId(entity)&&erpId(id),'Entity dan snapshot wajib');
+  erpAssert(q.getAll('legal_entity_id').length===1&&q.getAll('snapshot_id').length===1&&[...q.keys()].every(k=>['legal_entity_id','snapshot_id'].includes(k))&&erpId(entity)&&erpId(id),'Entity dan snapshot wajib');
   const row=await db.prepare(`SELECT s.id,s.status,s.calculation,s.calculation_sha256,
    s.calculation_sha256=encode(sha256(convert_to(s.calculation::text,'UTF8')),'hex') AS digest_valid
    FROM rticore_catalog_pricing_snapshots s WHERE s.tenant_id=? AND s.legal_entity_id=? AND s.id=?

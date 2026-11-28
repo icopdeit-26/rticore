@@ -30,6 +30,7 @@ export async function POST(req:Request){
   erpAssert(req.headers.get('origin')===process.env.RTICORE_PUBLIC_ORIGIN,'Origin tidak diizinkan',403);erpOrigin(req);
   const v=await readBoundedJSON(req,4000) as Record<string,unknown>;
   erpAssert(erpId(v.legal_entity_id)&&erpId(v.lot_id)&&['submit','approve'].includes(String(v.action))&&typeof v.invoice_sha256==='string'&&/^[0-9a-f]{64}$/.test(v.invoice_sha256)&&erpText(v.notes,12,350)&&v.original_documents_reviewed===true,'Bukti dan konfirmasi review dokumen asli wajib');
+  erpAssert(v.action==='submit'?a.identity.role==='finance':a.identity.role==='approver','Maker-checker historical review wajib',403);
   const r=await a.identity.db.prepare('SELECT rticore_fg_historical_allocation_review(?,?,?,?,?,?,?) AS result').bind(TENANT,v.legal_entity_id,a.identity.email,String(v.action),v.lot_id,v.invoice_sha256,v.notes).first<{result:unknown}>();
   erpAssert(r,'Review tidak tersedia',503);return erpReply({success:true,result:r.result},v.action==='submit'?201:200);
  }catch(e){if(/FLEXGUARD_(ACCESS_DENIED|APPROVAL_DENIED|SELF_APPROVAL|SCOPE_INVALID)/.test(String(e)))return erpReply({success:false,message:'Kewenangan review ditolak'},403);return erpError(e);}
